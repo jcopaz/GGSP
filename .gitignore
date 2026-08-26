@@ -1,0 +1,32 @@
+# Segredos — nunca versionar.
+.streamlit/secrets.toml
+
+# Dado real da MRS (SAP, orçamento, justificativas) — nunca versionar.
+# O warehouse é recriado do zero a cada upload (ver build_star_schema.py),
+# não precisa (e não deve) estar no git.
+data/raw/
+data/staging/
+data/warehouse/
+
+# Material de reunião/negócio interno — não é código, não entra no deploy.
+Conceito/
+text.txt
+
+# Planilha solta na raiz (mesmo dado sensível do data/raw, ficou fora por engano).
+Base-Zero Preços 2026 - Malha_VF(ajustado posterg pag.) - Copia.xlsx
+
+# Pacote scaffold obsoleto (auth/RBAC feito sem acesso ao repo real — ver
+# docs/05-publicacao-online-e-seguranca.md). Não é usado pelo app.
+Orcamento_GGSP_Pacote_Unico_Unificado/
+Orcamento_GGSP_Pacote_Unico_Unificado.zip
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Rede de segurança extra: qualquer planilha/banco solto que apareça fora
+# das pastas acima nunca deve subir por engano.
+*.xlsx
+*.xlsb
+*.duckdb

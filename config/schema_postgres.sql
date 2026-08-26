@@ -1,0 +1,151 @@
+-- Schema de segurança e negócio do Painel Orçamento GGSP — Neon Postgres.
+--
+-- Rode este script inteiro no console SQL do Neon (Dashboard > seu projeto >
+-- SQL Editor) ou via `psql "$POSTGRES_URL" -f config/schema_postgres.sql`.
+-- Idempotente (pode rodar de novo sem duplicar nada).
+--
+-- Este banco guarda SÓ o que precisa sobreviver entre reprocessamentos do
+-- painel: usuários, justificativas, delegação e auditoria. O warehouse
+-- analítico (dim_*/fact_orcamento/fact_realizado/...) continua em DuckDB
+-- local, gerado do zero a cada upload por build_star_schema.py — não entra
+-- aqui (decisão de 2026-08-26: não existe "histórico de base" a preservar,
+-- e exportação sempre sai da base recém-processada).
+--
+-- Sem Row Level Security: o painel Streamlit fala com este banco usando uma
+-- única connection string, server-side (nunca exposta ao navegador) — quem
+-- decide "pode ou não" é o código Python (src/auth/permissions.py), não uma
+-- policy de banco por usuário autenticado (não há client per-user aqui,
+-- diferente de um app que fala direto com o Postgres do navegador).
+
+create schema if not exists app;
+
+-- ---------------------------------------------------------------------------
+-- app.usuario
+-- Login e RBAC próprios (sem depender de nenhum provedor de auth externo).
+-- Senha nunca em texto plano — só o hash bcrypt.
+-- ---------------------------------------------------------------------------
+create table if not exists app.usuario (
+    id uuid primary key default gen_random_uuid(),
+    matricula text unique,
+    email text unique,
+    senha_hash text not null,
+    nome_completo text not null,
+    papel text not null check (papel in ('gg', 'gerente', 'especialista_analista', 'admin')),
+    gg_id text,
+    gerencia_id text,
+    ativo boolean not null default true,
+    permissao_upload boolean not null default false,
+    permissao_exportacao boolean not null default true,
+    permissao_justificativa_macro boolean not null default false,
+    permissao_justificativa_micro boolean not null default false,
+    criado_em timestamptz not null default now(),
+    atualizado_em timestamptz not null default now(),
+    ultimo_login timestamptz,
+
+    constraint chk_login_tem_identificador check (matricula is not null or email is not null)
+);
+
+comment on table app.usuario is
+    'Login e RBAC próprios do painel. senha_hash é sempre bcrypt — nunca gravar/logar senha em texto plano. Usuário inativo (ativo=false) não deve acessar nada — checar sempre no app.';
+
+-- ---------------------------------------------------------------------------
+-- app.fact_explicacao_log
+-- Log append-only da justificativa de causa (Macro=Pacote / Micro=Conta ou
+-- Centro de Custo) — ver docs/03-processo-justificativas-causas.md, seção 2.2.
+-- Regra de ouro: NUNCA fazer UPDATE de valor/descrição numa linha existente.
+-- Toda edição insere uma linha nova com versao+1 e vigente=true; a versão
+-- anterior vira vigente=false (única exceção de UPDATE permitida, feita pela
+-- aplicação na mesma transação do INSERT novo).
+-- ---------------------------------------------------------------------------
+create table if not exists app.fact_explicacao_log (
+    id bigserial primary key,
+    explicacao_id uuid not null,
+    versao int not null,
+    vigente boolean not null default true,
+    gg_id text not null,
+    pacote_id text not null,
+    conta_interna_id text,
+    centro_custo_id text,
+    nivel text not null check (nivel in ('macro', 'micro')),
+    ano int not null,
+    mes int not null check (mes between 1 and 12),
+    categoria text not null,
+    valor_explicado numeric not null,
+    descricao text not null,
+    refs_micro text[],
+    autor_id uuid not null references app.usuario (id),
+    autor_nome text not null,
+    autor_gerencia text not null,
+    criado_em timestamptz not null default now(),
+    substitui_id uuid,
+    motivo_edicao text,
+    status_ciclo text not null default 'rascunho' check (status_ciclo in ('rascunho', 'consolidado')),
+    origem text not null default 'dashboard' check (origem in ('dashboard', 'importacao_legado')),
+
+    -- nível micro exige exatamente 1 dos 2 campos; nível macro exige nenhum.
+    constraint chk_nivel_campos check (
+        (nivel = 'macro' and conta_interna_id is null and centro_custo_id is null)
+        or
+        (nivel = 'micro' and (
+            (conta_interna_id is not null and centro_custo_id is null)
+            or
+            (conta_interna_id is null and centro_custo_id is not null)
+        ))
+    ),
+    constraint chk_categoria_nao_e_calculada check (categoria <> 'Não Justificado')
+);
+
+create index if not exists idx_explicacao_vigente
+    on app.fact_explicacao_log (explicacao_id, vigente)
+    where vigente = true;
+
+create index if not exists idx_explicacao_pacote_periodo
+    on app.fact_explicacao_log (pacote_id, ano, mes)
+    where vigente = true;
+
+comment on table app.fact_explicacao_log is
+    'Log append-only de justificativa de causa. Nunca fazer UPDATE de valor/descrição numa linha existente — sempre INSERT de nova versão. O motor de cálculo (calcular_explicacao) só soma vigente=true.';
+
+-- ---------------------------------------------------------------------------
+-- app.delegacao_justificativa
+-- Preparação para a delegação futura: um Gerente delega a um Especialista/
+-- Analista a responsabilidade de justificar um recorte específico (Pacote OU
+-- Conta OU Centro de Custo). Schema nasce agora; a tela de delegação (UI)
+-- fica para uma entrega futura — não implementar UI ainda.
+-- ---------------------------------------------------------------------------
+create table if not exists app.delegacao_justificativa (
+    id uuid primary key default gen_random_uuid(),
+    gerente_id uuid not null references app.usuario (id),
+    especialista_id uuid not null references app.usuario (id),
+    pacote_id text,
+    conta_interna_id text,
+    centro_custo_id text,
+    vigencia_inicio date not null default current_date,
+    vigencia_fim date,
+    ativo boolean not null default true,
+    criado_em timestamptz not null default now(),
+
+    constraint chk_delegacao_tem_escopo check (
+        pacote_id is not null or conta_interna_id is not null or centro_custo_id is not null
+    )
+);
+
+comment on table app.delegacao_justificativa is
+    'Preparação para delegação de responsáveis por justificativa (Gerente -> Especialista/Analista). Schema criado agora; UI de delegação é entrega futura.';
+
+-- ---------------------------------------------------------------------------
+-- app.log_auditoria
+-- Toda mutação relevante (upload, gestão de usuário, justificativa) grava
+-- aqui: quem, quando, o quê. Nunca apagar linhas desta tabela pela aplicação.
+-- ---------------------------------------------------------------------------
+create table if not exists app.log_auditoria (
+    id bigserial primary key,
+    usuario_id uuid references app.usuario (id),
+    acao text not null,
+    recurso text not null,
+    detalhe jsonb,
+    criado_em timestamptz not null default now()
+);
+
+comment on table app.log_auditoria is
+    'Log de auditoria append-only: toda mutação (upload, gestão de usuário, justificativa) grava aqui. Nunca editar/apagar por aqui.';

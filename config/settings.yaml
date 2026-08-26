@@ -1,0 +1,80 @@
+# config/settings.yaml
+# Caminhos de arquivo e taxonomia de causas do painel de explicação de Delta.
+# A lista de categorias vem daqui (não hardcoded no código) porque o PMO pode
+# ajustar a taxonomia no futuro — ver docs/00-especificacao-consolidada.md, seção 4.
+
+caminhos:
+  data_raw: "data/raw"
+  base_zero: "data/raw/Base-Zero Orç. Aprovado SP e VP.xlsx"
+  realizado: "data/raw/Base Analítico - Realizado Ger. SP.xlsx"
+  # Fonte trazida em 2026-08-10: Orçado OPEX x Realizado já cruzados por
+  # Pacote+Conta, cobrindo os 5 GGs. Opcional — se o arquivo não existir,
+  # build_star_schema.py pula essa tabela sem erro.
+  consulta_contas: "data/raw/Consulta de Contas.xlsx"
+  # De/para mestre entre código de conta e "conta interna" (COD_CG_SAP) —
+  # une Orçamento (Base Zero) e Realizado (SAP) numa conta só no Nível 4.
+  # Opcional — sem ele, conta_interna_id/nome caem de volta pro código
+  # bruto sem nome (comportamento de antes de 2026-08-10).
+  catalogo_contas: "data/raw/Catalago de Contas.xlsx"
+  # CAPEX de Projetos e Obras — trazido em 2026-08-11, ainda em tabelas
+  # separadas (`fact_cji4_capex_obras` Orçado, `fact_cji3_capex_obras`
+  # Realizado), NÃO somadas a fact_orcamento/fact_realizado (que
+  # continuam Base Zero/Consulta de Contas): o escopo de Gerência desses
+  # dados ainda não foi confirmado como sendo só GGG_0054/DINFRA (ver
+  # docs/02-perguntas-em-aberto.md, item 21). Arquivos opcionais.
+  cji4_capex_obras: "data/raw/CJI4.xlsx"
+  catalogo_capex_obras: "data/raw/Catalago CAPEX Obras.xlsx"
+  cji3_capex_obras: "data/raw/CJI3 2026 EXPORT_20260811_152541.xlsx"
+  # De/para do PCM (trazido em 2026-08-17) pra redistribuir o Combustível
+  # Terceiros que chega do SAP com GERENCIA="#GERENCIA INEXISTENTE" (CC
+  # CGG050). Opcional — sem ele, essa fatia continua em "Não atribuído".
+  # Ver `_aplicar_correcao_combustivel_terceiros` em build_star_schema.py.
+  transferencia_combustivel_terceiros: "data/raw/Transferência Combustível Terceiras - FA, MG e RJ vf 30.04 1.xlsx"
+  # Base mestra de planejamento de CAPEX Obras — mais rica que CJI4/CJI3
+  # (multi-versão, multi-ano). Tabelas próprias `fact_pce_consolidado`/
+  # `fact_pce_realizado`, não somadas a nenhuma outra fact table.
+  # "Consolidado.xlsx" (trazida em 2026-08-19, mesma tarde — substitui
+  # "PCE Base Luiz.xlsx" como fonte de `pce_consolidado`) é só a aba
+  # "consolidado", já no formato que o usuário confirmou como upload
+  # padrão futuro pra Label do Especialista/demais análises CAPEX — sem
+  # aba "Realizado", por isso `pce_realizado` continua apontando pro
+  # arquivo antigo (única fonte com essa aba até hoje). Arquivos opcionais.
+  pce_consolidado: "data/raw/Consolidado.xlsx"
+  pce_realizado: "data/raw/PCE Base Luiz.xlsx"
+  data_staging: "data/staging"
+  explicacoes: "data/staging/explicacoes.csv"
+  # Saída do simulador de causas (Painel > modo simulação) — nunca é o
+  # arquivo real, só existe pra popular os gráficos pra demonstração.
+  explicacoes_simuladas: "data/staging/explicacoes_simuladas.csv"
+  data_warehouse: "data/warehouse"
+  warehouse_db: "data/warehouse/painel.duckdb"
+
+# Escopo de GG deste painel — confirmado com o usuário em 2026-08-10 que
+# "DINFRA" aqui é só GER. GERAL DE INFRAESTRUTURA (SP). Os outros GGs que
+# vêm juntos nos exports de Realizado/Consulta de Contas (TI/Operações e
+# os 2 "OFF DIR DE INFRAESTRUTURA") são de fora do escopo deste painel —
+# ver docs/02-perguntas-em-aberto.md. Lista (não um único valor) porque o
+# escopo real de DINFRA deve crescer (RJ/FA/LC) — adicionar aqui, não
+# hardcoded no código.
+gg_escopo_dinfra:
+  - "GGG_0054"
+
+# Ano fiscal coberto pelo Orçamento Aprovado (Base Zero) carregado hoje.
+# GAP: Base Zero não tem coluna de ano explícita — o ano é inferido do
+# rótulo "Total P26" / "Vl <mês>" (Valor Financeiro Reajustado) do export.
+# Ver docs/02-perguntas-em-aberto.md, item 5 (escopo de dados ainda parcial).
+ano_fiscal_orcamento: 2026
+
+# Taxonomia oficial de causas do PMO (spec consolidada, seção 4).
+# Lista fechada — não inventar categoria nova. "Não Justificado" nunca é
+# preenchido manualmente, é sempre o resíduo calculado
+# (Delta Total - soma das causas registradas).
+categorias_causa:
+  - "Físico"
+  - "Efeito Preço"
+  - "Não Previsto"
+  - "Carry Over"
+  - "Ajuste Contábil"
+  - "Realizado Não Contabilizado"
+  - "Taxa Bom/Mix"
+  - "Não Justificado"
