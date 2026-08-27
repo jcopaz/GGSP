@@ -1,8 +1,10 @@
 """Label do Especialista — CAPEX Obras, fonte `fact_pce_consolidado`
 (Consolidado.xlsx, trazida em 2026-08-19 à tarde — substitui "PCE Base
 Luiz.xlsx" como padrão de rotina pra essa Label e demais análises CAPEX,
-pedido do usuário) e `fact_pce_realizado` (ainda vem de "PCE Base
-Luiz.xlsx" — não tem aba "Realizado" no arquivo novo).
+pedido do usuário) e `fact_pce_realizado` (desde 2026-08-27, derivada em
+código do CJI3 + Catálogo CAPEX Obras — ver
+`build_star_schema._derivar_pce_realizado` — não depende mais de nenhum
+arquivo separado; "PCE Base Luiz.xlsx" foi removido do pipeline).
 
 Filtros próprios da página (Gerência / Classificação Atualizada / Grupo /
 Versão), não os globais da sidebar (`filtros.py`) — essa base não
@@ -192,11 +194,12 @@ def dados_pce_grupo(
 
 
 def _tabela_pce_realizado_existe(con: duckdb.DuckDBPyConnection) -> bool:
-    """`fact_pce_realizado` só existe se PCE Base Luiz.xlsx já foi
-    enviado (zona "Sob demanda" própria, upload raro) — sem isso, a
-    query direto na tabela quebra com duckdb.CatalogException (visto em
-    produção 2026-08-27, ver docs/04-licoes-aprendidas.md). Checar antes
-    de consultar em vez de deixar quebrar."""
+    """`fact_pce_realizado` é derivada do CJI3 (ver
+    `build_star_schema._derivar_pce_realizado`) — só existe se o CJI3
+    também tiver sido carregado. Sem isso, a query direto na tabela
+    quebra com duckdb.CatalogException (visto em produção 2026-08-27, ver
+    docs/04-licoes-aprendidas.md). Checar antes de consultar em vez de
+    deixar quebrar."""
     (n,) = con.execute(
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'fact_pce_realizado'"
     ).fetchone()

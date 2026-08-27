@@ -414,3 +414,22 @@ cuidado numa decisão anterior.
 **Correção**: adicionada zona de upload "Sob demanda" pra `pce_realizado` em `TIPOS_ARQUIVO` (`app.py`). Além disso, `pce_especialista.py` ganhou `_tabela_pce_realizado_existe()` e os 2 pontos que consultavam `fact_pce_realizado` direto passaram a checar antes — devolvem 0/vazio se a tabela ainda não existir, em vez de quebrar (mesma defesa mesmo com a zona de upload nova, cobre o caso de ninguém ter subido o arquivo ainda).
 
 **Lição**: "arquivo colocado manualmente no disco, fora da rotina de upload" é uma decisão que só faz sentido enquanto o app roda só local — no dia em que ele for publicado, todo arquivo que o pipeline lê precisa de algum caminho pelo qual ele possa chegar até lá (upload pela tela, ou os dois: zona de upload rara e defesa contra tabela ausente). Vale revisar todo `cfg["caminhos"].get(...)` usado em `build_star_schema.py` que NÃO tem entrada correspondente em `TIPOS_ARQUIVO` antes de publicar qualquer painel — é a mesma pergunta do item 18 ("esse caminho pode não existir?"), mas aplicada a arquivos opcionais que nunca tiveram tela de upload nenhuma.
+
+---
+
+## 20. `fact_pce_realizado` deixa de depender de "PCE Base Luiz.xlsx" — derivada do CJI3 + Catálogo CAPEX Obras (2026-08-27)
+
+**Contexto**: a correção do item 19 (zona de upload pra PCE Base Luiz.xlsx) resolveu o crash, mas o usuário levantou um problema mais de fundo: essa planilha é curada manualmente por uma pessoa (Luiz) — deixar o painel permanentemente dependente dela é frágil (qualquer mudança no jeito dele montar o arquivo quebra o painel) e vai contra o objetivo de ter o mínimo de planilhas manuais, com o máximo construído em código a partir das bases cruas do SAP.
+
+**Investigação (dado real, não suposição)**:
+- `Grupo`/`Classificação` do Catálogo CAPEX Obras **não é** a mesma coisa que `Grupo`/`Classificação` da aba Realizado do Luiz, apesar do nome igual — Catálogo é grosso (CUSTOS DO PROPRIETÁRIO, RATEIOS...), Realizado é fino (SERVIÇOS, MATERIAIS, ENGENHARIA...). Divergência real, não serve pra substituir direto.
+- Testado se `Classe de custo` (já capturado pelo CJI3) explica a Classificação fina: **não** — o mesmo `Classe de custo` aparece com Classificação diferente em lançamentos diferentes (não é lookup).
+- Testado `Objeto` (código de objeto do SAP — já vem no export CJI3, só não era extraído): **100% determinístico**, 0 de 1.188 Objetos únicos com mais de 1 Classificação no dado real. Não é julgamento por lançamento, é uma tabela De/Para pequena e estável.
+- `Classificação atualizada` (A+1..A+8/Não renovação): confirmado pelo usuário que vem do Catálogo CAPEX Obras — testado no dado real, 100% consistente por projeto (0 de 95 `E_PEP` com valor conflitante ou ausente).
+- Escopo mais amplo (mais anos/Gerências) do arquivo do Luiz: usuário confirmou que ainda é necessário pra comparação histórica — não mexido por enquanto, usuário vai confirmar com o Luiz se isso é sobre CJI3/CJI4 especificamente.
+
+**Correção**: `Objeto → Classificação` extraído do histórico e congelado em `config/catalogo_objeto_classificacao.csv` (1.188 linhas, taxonomia — sem valor de R$, git-versionado). `load_catalogo_capex_obras` passou a carregar `Classificação atualizada`. `load_cji3_capex_obras_realizado` passou a extrair `Objeto`/`Denominação objeto`. Nova função `build_star_schema._derivar_pce_realizado`: junta CJI3 + catálogo Objeto + Catálogo CAPEX Obras, sem ler nenhum arquivo do Luiz. `load_pce_realizado` removida, zona de upload `pce_realizado` removida de `TIPOS_ARQUIVO`.
+
+**Validado contra o dado real antes de publicar**: mesmo total exato de `fact_cji3_capex_obras` (R$438.470.763,94, 11.507 lançamentos — sem duplicar, sem perder nada), só 3 lançamentos (R$1.303,58, irrisório) caem em "NÃO CLASSIFICADO" por Objeto novo fora do catálogo congelado, 0 nulos em Classificação atualizada.
+
+**Lição**: quando uma "planilha personalizada" parece ser só uma pessoa cruzando fontes que o sistema já tem, vale testar empiricamente contra o dado real (não confiar em suposição nem em nome de coluna igual) se a classificação é: (a) lookup determinístico por alguma chave que já existe na fonte crua (aqui, Objeto) — vira catálogo estável, elimina a planilha; ou (b) julgamento genuíno por transação — aí a dependência de alguém preencher é real e não dá pra eliminar em código. A resposta certa muda a arquitetura inteira, e só o dado real revela qual das duas é.

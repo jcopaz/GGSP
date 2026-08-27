@@ -12,6 +12,8 @@ import re
 
 import pandas as pd
 
+from src.config import RAIZ_PROJETO
+
 MESES_PT = {
     "jan": 1, "fev": 2, "mar": 3, "abr": 4, "mai": 5, "jun": 6,
     "jul": 7, "ago": 8, "set": 9, "out": 10, "nov": 11, "dez": 12,
@@ -451,6 +453,15 @@ def load_catalogo_capex_obras(path: str) -> pd.DataFrame:
     do cronograma) — não agrega, devolve a granularidade original; quem
     usa decide se quer 1 linha por projeto (ex.: primeira ocorrência) ou
     manter o detalhe por etapa.
+
+    `classificacao_atualizada` (coluna "Classificação atualizada" —
+    valores A+1..A+8/"Não renovação", ciclo de renovação de portfólio)
+    passou a ser carregada em 2026-08-27: é 100% consistente por projeto
+    (0 de 95 `E_PEP` com mais de 1 valor, verificado no dado real) e
+    nunca vazia — vira a fonte de `fact_pce_realizado.classificacao_atualizada`
+    (`build_star_schema._derivar_pce_realizado`), eliminando a dependência
+    de "PCE Base Luiz.xlsx" pra esse campo (confirmado pelo usuário que
+    vem do Catálogo, e os valores batem 1:1 nos dados reais).
     """
     df = pd.read_excel(path, sheet_name="Auxiliar")
     return pd.DataFrame({
@@ -464,6 +475,7 @@ def load_catalogo_capex_obras(path: str) -> pd.DataFrame:
         "grupo": df["Grupo"],
         "origem": df["Origem"],
         "nome_simplificado": df["Nome Simplificado"],
+        "classificacao_atualizada": df["Classificação atualizada"],
     })
 
 
@@ -581,51 +593,29 @@ def load_pce_consolidado(path: str) -> pd.DataFrame:
     return resultado
 
 
-def load_pce_realizado(path: str) -> pd.DataFrame:
-    """Carrega a aba "Realizado" de "PCE Base Luiz.xlsx" (trazida em
-    2026-08-19) — Realizado de CAPEX Obras no grão de lançamento, mesmo
-    padrão de `load_cji3_capex_obras_realizado` (exclui `estornado='X'`),
-    mas com escopo mais amplo (mais anos/Gerências que o CJI3 isolado —
-    confirmado com o usuário em 2026-08-19 que a diferença de total é
-    escopo, não erro de dado).
+def carregar_catalogo_objeto_classificacao() -> pd.DataFrame:
+    """Tabela De/Para `Objeto` (código SAP) -> `Classificação` fina
+    (SERVIÇOS/MATERIAIS/ENGENHARIA...), congelada em
+    `config/catalogo_objeto_classificacao.csv`.
 
-    Usa `ANO Lançamento` (já vem pronto, inteiro) em vez de derivar de
-    `Data de lançamento` como o CJI3 faz — aqui a coluna já existe pronta
-    no export. `mes` deriva de `Data de lançamento` (mesma coluna usada
-    pro CJI3, intervalo mais limpo que `Data do documento`).
+    Substitui a dependência de "PCE Base Luiz.xlsx" (removida em
+    2026-08-27) — achado: `Objeto` determina a Classificação de forma
+    100% consistente (0 de 1.188 objetos únicos com mais de 1 valor,
+    verificado no dado real de 2026-08-27), não é julgamento por
+    lançamento. É por isso que dá pra tratar como catálogo estável em vez
+    de precisar reenviar um arquivo curado a cada rodada — ver
+    `build_star_schema._derivar_pce_realizado` e
+    `docs/04-licoes-aprendidas.md`, item 20.
 
-    A coluna **`Classificação`** (não `Classificação atualizada`) é o
-    equivalente exato da `Descrição` de `load_pce_consolidado` — mesmos
-    valores (SERVIÇOS, MATERIAIS, ENGENHARIA...), achado em 2026-08-19
-    ao procurar onde a categoria fina do Realizado vivia (não tem coluna
-    chamada "Descrição" aqui, é essa).
-
-    `grupo` passa por `_reclassificar_grupo` igual ao Consolidado — aqui
-    a coluna bruta já vinha consistente nos dados vistos até 2026-08-19,
-    mas a derivação garante que um reupload futuro com o mesmo tipo de
-    inconsistência do FC06+06 não vaze pro filtro sem passar pela regra.
+    Não é arquivo de upload (não muda por rodada de dado) — arquivo do
+    próprio repositório, path fixo relativo à raiz do projeto. Se um
+    `Objeto` novo aparecer numa rodada futura sem estar aqui, fica sem
+    Classificação (fica "NÃO CLASSIFICADO", ver `_derivar_pce_realizado`)
+    até alguém atualizar este CSV — não trava o reprocessamento.
     """
-    df = pd.read_excel(path, sheet_name="Realizado", header=1)
-    df.columns = [str(c).strip() if isinstance(c, str) else c for c in df.columns]
-    df = df[df["estornado"].isna() & df["Definição do projeto"].notna()].copy()
-
-    data_lancamento = pd.to_datetime(df["Data de lançamento"], errors="coerce")
-    resultado = pd.DataFrame({
-        "ano": pd.to_numeric(df["ANO Lançamento"], errors="coerce").astype("Int64"),
-        "mes": data_lancamento.dt.month,
-        "e_pep_projeto": df["Definição do projeto"],
-        "elemento_pep": df["Elemento PEP"],
-        "nome_empreendimento": df["Empreendimento"],
-        "gerencia_obras": df["Gerência"],
-        "grupo": df["Grupo"],
-        "descricao": df["Classificação"],
-        "classificacao_atualizada": df["Classificação atualizada"],
-        "numero_documento": df["Nº documento"],
-        "data_documento": pd.to_datetime(df["Data do documento"], errors="coerce"),
-        "data_lancamento": data_lancamento,
-        "valor_realizado": pd.to_numeric(df["Valor/moed.transação"], errors="coerce").fillna(0.0),
-    })
-    return _reclassificar_grupo(resultado)
+    caminho = RAIZ_PROJETO / "config" / "catalogo_objeto_classificacao.csv"
+    df = pd.read_csv(caminho, dtype={"objeto": str})
+    return df
 
 
 def load_transferencia_combustivel_terceiros(path: str) -> pd.DataFrame:
@@ -696,6 +686,16 @@ def load_cji3_capex_obras_realizado(path: str) -> pd.DataFrame:
         "mes": data_lancamento.dt.month,
         "e_pep_projeto": df["Definição do projeto"],
         "elemento_pep": df["Elemento PEP"],
+        # `objeto`/`denominacao_objeto` — adicionados em 2026-08-27, fonte
+        # de `fact_pce_realizado.descricao` via
+        # config/catalogo_objeto_classificacao.csv (ver
+        # build_star_schema._derivar_pce_realizado): achado 2026-08-27 de
+        # que `Objeto` determina a Classificação fina (SERVIÇOS/MATERIAIS/
+        # ENGENHARIA...) de forma 100% consistente — não é julgamento por
+        # lançamento, é uma tabela De/Para pequena e estável. Já vinha no
+        # export CJI3 sem ser extraído.
+        "objeto": df["Objeto"],
+        "denominacao_objeto": df["Denominação objeto"],
         "classe_custo": pd.to_numeric(df["Classe de custo"], errors="coerce").astype("Int64").astype(str),
         "centro_custo_parceiro": df["Cent.custo  parceiro"],
         "numero_documento": df["Nº documento"],

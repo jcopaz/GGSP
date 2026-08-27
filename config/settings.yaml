@@ -31,16 +31,21 @@ caminhos:
   # Ver `_aplicar_correcao_combustivel_terceiros` em build_star_schema.py.
   transferencia_combustivel_terceiros: "data/raw/Transferência Combustível Terceiras - FA, MG e RJ vf 30.04 1.xlsx"
   # Base mestra de planejamento de CAPEX Obras — mais rica que CJI4/CJI3
-  # (multi-versão, multi-ano). Tabelas próprias `fact_pce_consolidado`/
-  # `fact_pce_realizado`, não somadas a nenhuma outra fact table.
-  # "Consolidado.xlsx" (trazida em 2026-08-19, mesma tarde — substitui
-  # "PCE Base Luiz.xlsx" como fonte de `pce_consolidado`) é só a aba
-  # "consolidado", já no formato que o usuário confirmou como upload
-  # padrão futuro pra Label do Especialista/demais análises CAPEX — sem
-  # aba "Realizado", por isso `pce_realizado` continua apontando pro
-  # arquivo antigo (única fonte com essa aba até hoje). Arquivos opcionais.
+  # (multi-versão, multi-ano). Tabela própria `fact_pce_consolidado`, não
+  # somada a nenhuma outra fact table. "Consolidado.xlsx" (trazida em
+  # 2026-08-19 à tarde — substitui "PCE Base Luiz.xlsx" como fonte) é só
+  # a aba "consolidado", formato confirmado pelo usuário como upload
+  # padrão pra Label do Especialista/demais análises CAPEX. Opcional.
+  #
+  # `pce_realizado` (Nível Realizado da Label do Especialista) removido
+  # em 2026-08-27 — "PCE Base Luiz.xlsx" era planilha curada manualmente
+  # (risco: mudança no jeito do Luiz montar o arquivo quebrava o painel).
+  # `fact_pce_realizado` agora é derivada em código do CJI3 +
+  # Catálogo CAPEX Obras (ver `build_star_schema._derivar_pce_realizado`,
+  # `config/catalogo_objeto_classificacao.csv`) — decisão do usuário de
+  # reduzir pro mínimo de planilhas manuais, construindo o máximo possível
+  # a partir das bases cruas do SAP que já sobem pela rotina normal.
   pce_consolidado: "data/raw/Consolidado.xlsx"
-  pce_realizado: "data/raw/PCE Base Luiz.xlsx"
   data_staging: "data/staging"
   explicacoes: "data/staging/explicacoes.csv"
   # Saída do simulador de causas (Painel > modo simulação) — nunca é o

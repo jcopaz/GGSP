@@ -4,6 +4,19 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 3.0.0 — 2026-08-27
+
+- **`fact_pce_realizado` deixa de depender de "PCE Base Luiz.xlsx"**
+  (planilha curada manualmente) — agora derivada em código do CJI3 +
+  Catálogo CAPEX Obras (nova tabela De/Para `Objeto → Classificação`,
+  `config/catalogo_objeto_classificacao.csv`, achado empírico: 100%
+  determinístico no dado real). Zona de upload `pce_realizado` removida
+  — menos uma planilha manual na rotina. Validado contra dado real: mesmo
+  total exato do CJI3, sem duplicar/perder valor. Ver
+  `docs/04-licoes-aprendidas.md`, item 20. Mudança de integridade de
+  dado (como um número central é calculado) — bump MAJOR pela própria
+  regra de versionamento do projeto.
+
 ## 2.0.2 — 2026-08-27
 
 - Corrige `duckdb.CatalogException` na página "CAPEX Obras — Especialista":

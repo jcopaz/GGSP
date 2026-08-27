@@ -86,6 +86,8 @@ import pandas as pd
 
 from src.config import carregar_config
 from src.ingestion.loaders import (
+    _reclassificar_grupo,
+    carregar_catalogo_objeto_classificacao,
     load_base_zero,
     load_catalogo_capex_obras,
     load_catalogo_contas,
@@ -93,7 +95,6 @@ from src.ingestion.loaders import (
     load_cji4_capex_obras,
     load_consulta_contas,
     load_pce_consolidado,
-    load_pce_realizado,
     load_realizado,
     load_realizado_documentos,
     load_transferencia_combustivel_terceiros,
@@ -570,6 +571,58 @@ def _reshape_cji3_capex_obras(
     return df
 
 
+def _derivar_pce_realizado(
+    df_cji3_capex_obras: pd.DataFrame,
+    df_catalogo: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """`fact_pce_realizado` (Realizado da "CAPEX Obras — Especialista")
+    derivada inteiramente do CJI3 (já reshapeado com nome/Gerência do
+    Catálogo, ver `_reshape_cji3_capex_obras`) + Catálogo CAPEX Obras —
+    substitui a leitura direta de "PCE Base Luiz.xlsx" (removida em
+    2026-08-27, ver docs/04-licoes-aprendidas.md item 20). Objetivo do
+    usuário: mínimo de planilhas manuais, o máximo construído a partir
+    das bases cruas do SAP que já sobem pela rotina normal.
+
+    - `descricao` (Classificação fina: SERVIÇOS/MATERIAIS/ENGENHARIA...)
+      vem de `carregar_catalogo_objeto_classificacao()` via `objeto` —
+      achado 2026-08-27: 100% determinístico por Objeto no dado real, não
+      é julgamento por lançamento.
+    - `grupo` deriva de `descricao` via `_reclassificar_grupo`, mesma
+      regra já usada em `load_pce_consolidado`/o antigo `load_pce_realizado`.
+    - `classificacao_atualizada` (A+1..A+8/Não renovação) vem do Catálogo
+      CAPEX Obras via `e_pep_projeto` — confirmado pelo usuário e 100%
+      consistente por projeto no dado real (nenhum projeto com valor
+      conflitante ou ausente).
+
+    Objeto sem entrada no catálogo (não visto ainda) fica com `descricao`
+    = "NÃO CLASSIFICADO" e `grupo` = `None` — não trava o reprocessamento,
+    só fica sem cair em nenhum dos 8 blocos de Análise por Grupo até o
+    catálogo ser atualizado.
+    """
+    catalogo_objeto = carregar_catalogo_objeto_classificacao()
+    df = df_cji3_capex_obras.merge(
+        catalogo_objeto[["objeto", "classificacao"]], on="objeto", how="left"
+    )
+    df = df.rename(columns={"classificacao": "descricao"})
+    df["descricao"] = df["descricao"].fillna("NÃO CLASSIFICADO")
+    df["grupo"] = pd.NA
+    df = _reclassificar_grupo(df)
+
+    if df_catalogo is not None and not df_catalogo.empty:
+        classif_atual = df_catalogo[
+            ["e_pep_projeto", "classificacao_atualizada"]
+        ].drop_duplicates(subset=["e_pep_projeto"], keep="first")
+        df = df.merge(classif_atual, on="e_pep_projeto", how="left")
+    else:
+        df["classificacao_atualizada"] = pd.NA
+
+    return df[[
+        "ano", "mes", "e_pep_projeto", "elemento_pep", "nome_empreendimento",
+        "gerencia_obras", "grupo", "descricao", "classificacao_atualizada",
+        "numero_documento", "data_documento", "data_lancamento", "valor_realizado",
+    ]]
+
+
 def _agregar_fact_orcamento(df_orc: pd.DataFrame) -> pd.DataFrame:
     chaves = [
         "ano", "mes", "pacote_id", "familia_pacote", "conta_orcamento_id",
@@ -659,22 +712,28 @@ def build_star_schema() -> str:
             df_cji3_fin, df_catalogo_capex_obras, catalogo_contas
         )
 
-    # "PCE Base Luiz.xlsx" (trazida em 2026-08-19) — base mestra de
-    # planejamento de CAPEX Obras, tabelas próprias `fact_pce_consolidado`/
-    # `fact_pce_realizado`, mesmo padrão de isolamento do CJI4/CJI3 (ver
-    # decisão no topo do módulo): não soma com fact_orcamento/fact_realizado
-    # nem com fact_cji4/fact_cji3_capex_obras — usuário confirmou em
-    # 2026-08-19 que a Label do Especialista usa essa fonte à parte, com
-    # filtro de Versão próprio (não tem "a" versão oficial única aqui).
+    # "Consolidado.xlsx" — base mestra de planejamento de CAPEX Obras,
+    # tabela própria `fact_pce_consolidado`, mesmo padrão de isolamento do
+    # CJI4/CJI3 (ver decisão no topo do módulo): não soma com
+    # fact_orcamento/fact_realizado nem com fact_cji4/fact_cji3_capex_obras
+    # — usuário confirmou em 2026-08-19 que a Label do Especialista usa
+    # essa fonte à parte, com filtro de Versão próprio (não tem "a" versão
+    # oficial única aqui).
     caminho_pce_consolidado = cfg["caminhos"].get("pce_consolidado")
     df_pce_consolidado = None
     if caminho_pce_consolidado and os.path.exists(caminho_pce_consolidado):
         df_pce_consolidado = load_pce_consolidado(caminho_pce_consolidado)
 
-    caminho_pce_realizado = cfg["caminhos"].get("pce_realizado")
+    # `fact_pce_realizado` — removida a dependência de "PCE Base Luiz.xlsx"
+    # em 2026-08-27 (planilha curada manualmente, arriscada de manter:
+    # qualquer mudança no jeito do Luiz montar o arquivo quebrava o
+    # painel). Derivada agora inteiramente do CJI3 (já carregado acima) +
+    # Catálogo CAPEX Obras — ver `_derivar_pce_realizado` e
+    # docs/04-licoes-aprendidas.md, item 20. Só existe se o CJI3 também
+    # existir (mesma fonte).
     df_pce_realizado = None
-    if caminho_pce_realizado and os.path.exists(caminho_pce_realizado):
-        df_pce_realizado = load_pce_realizado(caminho_pce_realizado)
+    if df_cji3_capex_obras is not None:
+        df_pce_realizado = _derivar_pce_realizado(df_cji3_capex_obras, df_catalogo_capex_obras)
 
     # Escopo de GG (config `gg_escopo_dinfra`, confirmado com o usuário em
     # 2026-08-10 — ver comentário no settings.yaml): os exports de
