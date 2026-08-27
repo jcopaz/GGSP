@@ -23,17 +23,60 @@ _MSG_CREDENCIAIS_INVALIDAS = "Matrícula/e-mail ou senha incorretos."
 
 
 def _inject_login_css() -> None:
-    """Centraliza o card de login e esconde a sidebar (vazia nessa tela —
+    """Card de login centralizado sobre fundo neutro, com identidade visual
+    Fin360 (azul-marinho + dourado). Sidebar escondida (vazia nessa tela —
     todo conteúdo de sidebar só é montado depois do gate de sessão)."""
     st.markdown(
         """
         <style>
         [data-testid="stSidebar"] { display: none !important; }
+        [data-testid="stAppViewContainer"],
+        .stApp {
+            background: #eef1f6 !important;
+        }
         .main .block-container,
         [data-testid="stMainBlockContainer"] {
-            max-width: 460px !important;
-            margin: 0 auto !important;
-            padding-top: 4rem !important;
+            max-width: 420px !important;
+            margin: 6vh auto !important;
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 2.75rem 2.5rem 2rem !important;
+            box-shadow: 0 12px 34px rgba(15, 23, 42, 0.10);
+            text-align: center;
+        }
+        .main .block-container h1,
+        [data-testid="stMainBlockContainer"] h1 {
+            font-size: 1.85rem !important;
+            font-weight: 800 !important;
+            color: #0f2f52;
+            margin: 0.9rem 0 0.15rem !important;
+            letter-spacing: 0.02em;
+        }
+        div[data-testid="stForm"] {
+            text-align: left;
+            margin-top: 1.4rem;
+            border: none !important;
+            padding: 0 !important;
+        }
+        div[data-testid="stForm"] .stTextInput input {
+            border-radius: 10px !important;
+        }
+        div[data-testid="stForm"] .stFormSubmitButton button,
+        div[data-testid="stForm"] .stButton button {
+            width: 100%;
+            background: linear-gradient(135deg, #0f2f52 0%, #1d5488 100%) !important;
+            color: #ffffff !important;
+            border: none !important;
+            border-radius: 10px !important;
+            padding: 0.7rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.02em;
+            margin-top: 0.4rem;
+        }
+        div[data-testid="stExpander"] {
+            text-align: left;
+            margin-top: 0.75rem;
+            border-radius: 10px !important;
         }
         </style>
         """,
@@ -67,10 +110,17 @@ def _autenticar(identificador: str, senha: str) -> tuple[bool, str]:
 
 def render_login() -> None:
     _inject_login_css()
-    render_logo_video(width=220)
+    render_logo_video(size=112)
     st.title("Fin360")
-    st.caption("GER. GERAL DE INFRAESTRUTURA (SP) — acesso restrito")
-    st.caption(f"v{APP_VERSION}")
+    st.markdown(
+        f"""
+        <div style="color:#64748b; font-size:0.85rem; margin-top:-0.3rem;">
+            GER. GERAL DE INFRAESTRUTURA (SP) &middot; acesso restrito
+            <span style="opacity:0.6;"> &middot; v{APP_VERSION}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     with st.form("form_login", clear_on_submit=False):
         identificador = st.text_input("Matrícula ou e-mail", placeholder="Ex: 123456 ou seu.nome@mrs.com.br")

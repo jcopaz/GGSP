@@ -4,6 +4,13 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 2.0.1 — 2026-08-27
+
+- Redesenho da tela de login: card branco centralizado sobre fundo neutro,
+  logo em moldura circular (recorta a margem escura do vídeo fonte via
+  `transform: scale`), tipografia e botão com a cor da marca (azul-marinho
+  Fin360). Mesma moldura circular aplicada ao logo da sidebar.
+
 ## 2.0.0 — 2026-08-27
 
 - Tela de login centralizada (CSS) e vídeo de logo corrigido — `static/`
