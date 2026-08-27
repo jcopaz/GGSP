@@ -384,3 +384,13 @@ cuidado numa decisão anterior.
 **Correção**: adicionado um shim no topo de `app.py`, antes de qualquer import `src.*`: calcula a raiz do projeto via `Path(__file__).resolve().parent.parent.parent` e insere em `sys.path` se ainda não estiver lá. Funciona independente de como o executor invoca o arquivo.
 
 **Lição**: um projeto que só roda via `python -m streamlit run` a partir da raiz está com essa dependência de `sys.path` escondida — nunca fica evidente até o dia em que alguém (ou alguma plataforma de deploy) executa o arquivo de um jeito diferente. Ao preparar qualquer app Python multi-módulo para deploy pela primeira vez, adicionar o shim de `sys.path` no entrypoint é mais seguro do que confiar no jeito como ele "sempre foi rodado localmente".
+
+---
+
+## 17. `duckdb.IOException` ao clicar "Reprocessar base" logo após o primeiro deploy (2026-08-27)
+
+**Causa raiz**: `build_star_schema()` (`src/model/build_star_schema.py:603-608`) devolve `caminho_db` mesmo quando os 2 arquivos obrigatórios (`base_zero`, `realizado`) ainda não existem em `data/raw/` — só imprime um aviso no console e retorna, **sem criar o arquivo `.duckdb`**. Isso nunca deu problema localmente porque o PC de desenvolvimento sempre teve `data/raw/` populado há meses. No primeiro deploy real (Streamlit Community Cloud), `data/raw/` nasce vazio (é gitignored, de propósito — dado sensível não vai pro git). O código em `pagina_upload()` chamava `_conectar()` (modo só-leitura) logo depois, sem checar se o arquivo de fato existia — abrir um arquivo inexistente em modo leitura quebra com `duckdb.IOException`, sem mensagem clara pro usuário.
+
+**Correção**: `pagina_upload()` agora checa `os.path.exists(caminho_db)` depois de `build_star_schema()` e antes de conectar — se faltar, mostra aviso claro pedindo pra subir Base Zero + Base Analítico SAP (Realizado) primeiro, em vez de deixar o app quebrar.
+
+**Lição**: uma função que "sai cedo sem fazer nada" (early return) precisa sinalizar isso de um jeito que o chamador consiga distinguir de "rodou e funcionou" — aqui, devolver o mesmo `caminho_db` nos dois casos (sucesso e "nada pra fazer ainda") escondeu a diferença. Vale generalizar pra qualquer pipeline que teve o primeiro deploy real: o ambiente de produção começa vazio (sem dado, sem base) de um jeito que o ambiente de desenvolvimento local — já rodado há meses com dado de verdade — nunca reproduz sozinho. Testar mentalmente o "dia zero" (pasta de dado vazia) antes do primeiro deploy real teria pego isso sem precisar do usuário bater de frente com o erro em produção.

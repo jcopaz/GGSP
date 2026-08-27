@@ -319,6 +319,21 @@ def pagina_upload() -> None:
             except Exception as exc:
                 st.error(f"Erro ao reprocessar: {exc}")
                 return
+            if not os.path.exists(caminho_db):
+                # build_star_schema() devolve o caminho mesmo sem criar o
+                # arquivo quando faltam os 2 arquivos obrigatórios em
+                # data/raw/ (base_zero/realizado) — comum logo após um
+                # deploy novo, onde data/raw/ nasce vazio. Sem essa checagem,
+                # a conexão abaixo (read_only=True) quebra com
+                # duckdb.IOException num arquivo que não existe (bug real,
+                # visto em produção 2026-08-27, ver docs/04-licoes-aprendidas.md).
+                st.warning(
+                    "Ainda faltam arquivos obrigatórios em 'data/raw/' — "
+                    "suba pelo menos a **Base Zero (Orçamento Aprovado)** e "
+                    "o **Base Analítico SAP (Realizado)** acima antes de "
+                    "reprocessar."
+                )
+                return
             con = _conectar()
             try:
                 linhas = []

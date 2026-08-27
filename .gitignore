@@ -1,5 +1,6 @@
 # Segredos — nunca versionar.
 .streamlit/secrets.toml
+hash.txt
 
 # Dado real da MRS (SAP, orçamento, justificativas) — nunca versionar.
 # O warehouse é recriado do zero a cada upload (ver build_star_schema.py),
