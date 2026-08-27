@@ -149,3 +149,25 @@ create table if not exists app.log_auditoria (
 
 comment on table app.log_auditoria is
     'Log de auditoria append-only: toda mutação (upload, gestão de usuário, justificativa) grava aqui. Nunca editar/apagar por aqui.';
+
+-- ---------------------------------------------------------------------------
+-- app.arquivo_bruto
+-- Cópia de segurança dos arquivos brutos de upload (data/raw/), um por
+-- "tipo" (mesmas chaves de TIPOS_ARQUIVO em app.py: base_zero, realizado,
+-- cji4_capex_obras etc.) — sempre o ÚLTIMO enviado, sobrescrito a cada novo
+-- upload (on conflict). Existe porque o disco do Streamlit Community Cloud
+-- não é garantido entre reboots (ver docs/05); com isso, o painel consegue
+-- se restaurar sozinho sem precisar reenviar arquivo que não mudou —
+-- upload manual só é necessário quando há um arquivo novo de verdade.
+-- ---------------------------------------------------------------------------
+create table if not exists app.arquivo_bruto (
+    tipo text primary key,
+    nome_original text not null,
+    conteudo bytea not null,
+    tamanho_bytes int not null,
+    enviado_por uuid references app.usuario (id),
+    enviado_em timestamptz not null default now()
+);
+
+comment on table app.arquivo_bruto is
+    'Backup do último arquivo bruto de cada tipo enviado via Upload de Dados — permite restaurar data/raw/ automaticamente após um reboot do Streamlit Cloud, sem reenviar arquivo que não mudou.';

@@ -22,6 +22,25 @@ from src.versao import APP_VERSION
 _MSG_CREDENCIAIS_INVALIDAS = "Matrícula/e-mail ou senha incorretos."
 
 
+def _inject_login_css() -> None:
+    """Centraliza o card de login e esconde a sidebar (vazia nessa tela —
+    todo conteúdo de sidebar só é montado depois do gate de sessão)."""
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] { display: none !important; }
+        .main .block-container,
+        [data-testid="stMainBlockContainer"] {
+            max-width: 460px !important;
+            margin: 0 auto !important;
+            padding-top: 4rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _autenticar(identificador: str, senha: str) -> tuple[bool, str]:
     if not identificador.strip() or not senha:
         return False, _MSG_CREDENCIAIS_INVALIDAS
@@ -47,6 +66,7 @@ def _autenticar(identificador: str, senha: str) -> tuple[bool, str]:
 
 
 def render_login() -> None:
+    _inject_login_css()
     render_logo_video(width=220)
     st.title("Fin360")
     st.caption("GER. GERAL DE INFRAESTRUTURA (SP) — acesso restrito")

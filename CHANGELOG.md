@@ -4,6 +4,20 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 2.0.0 — 2026-08-27
+
+- Tela de login centralizada (CSS) e vídeo de logo corrigido — `static/`
+  precisa estar em `src/dashboard/static/` (mesma pasta do script
+  principal), não na raiz do repositório; movido de lugar.
+- **Nova tabela no schema Postgres**: `app.arquivo_bruto` — guarda o
+  último arquivo bruto de cada tipo enviado no Upload de Dados. O painel
+  agora se restaura sozinho depois de um reboot do Streamlit Cloud (disco
+  efêmero apagado): `_garantir_base_pronta()` restaura os arquivos do
+  Neon e reprocessa a base automaticamente, sem precisar reenviar arquivo
+  que não mudou. Upload manual só é necessário quando há arquivo novo de
+  verdade. **Requer rodar de novo `config/schema_postgres.sql` no Neon**
+  (idempotente — só cria a tabela nova, não afeta as existentes).
+
 ## 1.0.0 — 2026-08-27
 
 Primeira versão publicada online (antes só rodava local, sem controle

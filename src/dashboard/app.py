@@ -68,6 +68,7 @@ import streamlit as st
 
 from src.auth.session import (
     clear_session,
+    get_id,
     get_nome,
     get_papel,
     init_session,
@@ -75,6 +76,12 @@ from src.auth.session import (
 )
 from src.auth.login import render_login
 from src.config import carregar_config
+from src.ingestion.arquivo_bruto import (
+    info_arquivo_bruto,
+    listar_tipos_salvos,
+    restaurar_arquivo_bruto,
+    salvar_arquivo_bruto,
+)
 from src.dashboard.filtros import renderizar_badge_filtros_ativos, renderizar_filtros_sidebar
 from src.dashboard.nivel1_diretoria import gg_padrao, render_nivel1
 from src.dashboard.mapa_calor_gerencia_pacote import render_mapa_calor_gerencia_pacote
@@ -209,6 +216,35 @@ def _conectar(read_only: bool = True) -> duckdb.DuckDBPyConnection:
     return duckdb.connect(CFG["caminhos"]["warehouse_db"], read_only=read_only)
 
 
+def _garantir_base_pronta() -> None:
+    """Roda 1x por sessão de script: se o warehouse não existir (disco
+    efêmero do Streamlit Cloud apagado num reboot), tenta restaurar os
+    arquivos brutos a partir do backup no Neon e reconstrói a base sozinho
+    — sem precisar de reenvio manual quando não há arquivo novo de verdade.
+    Falha silenciosa por completo: se o Neon estiver fora do ar ou não
+    houver backup nenhum, simplesmente não faz nada — as telas continuam
+    mostrando o aviso normal de "base não processada", e o usuário sempre
+    pode subir manualmente."""
+    if st.session_state.get("_base_restaurada_tentativa"):
+        return
+    st.session_state["_base_restaurada_tentativa"] = True
+
+    if os.path.exists(CFG["caminhos"]["warehouse_db"]):
+        return
+
+    try:
+        tipos_salvos = listar_tipos_salvos()
+        restaurou_algo = False
+        for tipo, info in TIPOS_ARQUIVO.items():
+            if tipo in tipos_salvos and info["caminho"]:
+                if restaurar_arquivo_bruto(tipo, info["caminho"]):
+                    restaurou_algo = True
+        if restaurou_algo:
+            build_star_schema()
+    except Exception:
+        pass
+
+
 def _base_pronta(con: duckdb.DuckDBPyConnection) -> bool:
     (n_tabelas,) = con.execute(
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'fact_orcamento'"
@@ -249,6 +285,21 @@ def _validar_explicacoes_csv(dados: bytes) -> str | None:
 def _zona_upload(tipo: str, info: dict) -> None:
     st.subheader(info["titulo"])
     st.caption(f"Formato aceito: {', '.join(info['extensoes'])}")
+
+    # Mostra a última versão salva no Neon (backup, sobrevive a reboot) —
+    # ajuda a responder "preciso subir de novo ou já está guardado?" sem
+    # precisar adivinhar. Falha silenciosa: se o Neon estiver indisponível
+    # aqui, só não mostra a legenda, não trava a tela de upload.
+    try:
+        salvo = info_arquivo_bruto(tipo)
+    except Exception:
+        salvo = None
+    if salvo:
+        st.caption(
+            f"💾 Última versão salva: '{salvo['nome_original']}' "
+            f"({salvo['enviado_em']:%d/%m/%Y %H:%M})"
+        )
+
     arquivo = st.file_uploader(
         "Arquivo", type=[e.lstrip(".") for e in info["extensoes"]],
         key=f"upload-{tipo}", label_visibility="collapsed",
@@ -273,6 +324,19 @@ def _zona_upload(tipo: str, info: dict) -> None:
     with open(info["caminho"], "wb") as f:
         f.write(dados)
     st.session_state[marcador_key] = marcador_atual
+
+    # Backup no Neon — sobrevive a reboot do Streamlit Cloud. Best-effort:
+    # se o Neon falhar aqui, o upload local já foi salvo e continua
+    # funcionando normalmente pra esta sessão, só não fica restaurável
+    # depois de um reboot.
+    try:
+        salvar_arquivo_bruto(tipo, arquivo.name, dados, get_id())
+    except Exception as exc:
+        st.warning(
+            f"Arquivo salvo localmente, mas não consegui guardar backup no "
+            f"banco (vai precisar reenviar se o app reiniciar): {exc}"
+        )
+
     st.success(
         f"'{arquivo.name}' salvo em {info['caminho']}. "
         f"Clique em 'Reprocessar base' para atualizar o painel."
@@ -708,6 +772,7 @@ def _preparar_filtros_globais() -> None:
 
 st.title("Fin360 — Painel Executivo de Explicação de Delta (GG Infraestrutura SP)")
 _renderizar_usuario_logado()
+_garantir_base_pronta()
 _preparar_modo_simulacao()
 _preparar_filtros_globais()
 
