@@ -46,6 +46,21 @@ from __future__ import annotations
 
 import io
 import os
+import sys
+from pathlib import Path
+
+# Garante que a raiz do repositório esteja no sys.path antes de qualquer
+# "from src.xxx import yyy" abaixo. Necessário porque nem todo executor
+# adiciona a raiz do projeto ao path sozinho ao rodar este arquivo como
+# "main module" — funcionava local via `python -m streamlit run ...`
+# (o -m adiciona o cwd), mas o Streamlit Community Cloud executa o main
+# module de um jeito que não adiciona a raiz, só o diretório do próprio
+# arquivo — sem isso, todo import "src.*" falha com
+# "ModuleNotFoundError: No module named 'src'" (visto em produção
+# 2026-08-27, ver docs/05-publicacao-online-e-seguranca.md).
+_RAIZ_PROJETO = Path(__file__).resolve().parent.parent.parent
+if str(_RAIZ_PROJETO) not in sys.path:
+    sys.path.insert(0, str(_RAIZ_PROJETO))
 
 import duckdb
 import pandas as pd
@@ -85,10 +100,20 @@ st.set_page_config(page_title="Painel Executivo de Explicação de Delta — GG 
 # Gate de sessão (Camada 2) — nenhuma página roda sem login. Precisa vir
 # logo após set_page_config (única chamada Streamlit permitida antes) e
 # antes de qualquer outro st.* — fail closed.
+#
+# ORCAMENTO_SKIP_LOGIN: bypass só para rodar localmente enquanto a rede da
+# MRS bloquear a conexão direta até o Neon (porta 5432) — mesmo bloqueio já
+# visto no SMTP da Brevo, ver docs/05-publicacao-online-e-seguranca.md.
+# Padrão é sempre exigir login (fail closed); só pula se a variável de
+# ambiente estiver setada explicitamente. No Streamlit Cloud essa variável
+# não existe, então o login continua obrigatório lá — não desative isso
+# em produção nem esqueça ligado sem perceber.
 init_session()
-if not is_logged_in():
+if not is_logged_in() and os.environ.get("ORCAMENTO_SKIP_LOGIN") != "1":
     render_login()
     st.stop()
+elif os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
+    st.warning("⚠️ Login desativado (ORCAMENTO_SKIP_LOGIN=1) — só para uso local. Nunca deixe isso ligado no deploy.")
 
 CFG = carregar_config()
 

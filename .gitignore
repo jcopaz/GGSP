@@ -20,6 +20,13 @@ Base-Zero Preços 2026 - Malha_VF(ajustado posterg pag.) - Copia.xlsx
 Orcamento_GGSP_Pacote_Unico_Unificado/
 Orcamento_GGSP_Pacote_Unico_Unificado.zip
 
+# Clutter/backups locais que não são usados pelo app em produção — cópias
+# antigas, docs duplicados, diffs soltos. Continuam no disco, só não sobem.
+docs/Nova pasta/
+src/dashboard/Backup/
+src/TXT/
+*.diff
+
 # Python
 __pycache__/
 *.pyc
