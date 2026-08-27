@@ -4,6 +4,15 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 2.0.2 — 2026-08-27
+
+- Corrige `duckdb.CatalogException` na página "CAPEX Obras — Especialista":
+  `fact_pce_realizado` (fonte "PCE Base Luiz.xlsx") não tinha zona de
+  upload própria — nova zona "Sob demanda" em `TIPOS_ARQUIVO`, mais guard
+  defensivo em `pce_especialista.py` (devolve 0/vazio se a tabela ainda
+  não existir, em vez de quebrar). Ver `docs/04-licoes-aprendidas.md`,
+  item 19.
+
 ## 2.0.1 — 2026-08-27
 
 - Redesenho da tela de login: card branco centralizado sobre fundo neutro,

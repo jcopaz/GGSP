@@ -191,13 +191,29 @@ def dados_pce_grupo(
     ).df()
 
 
+def _tabela_pce_realizado_existe(con: duckdb.DuckDBPyConnection) -> bool:
+    """`fact_pce_realizado` só existe se PCE Base Luiz.xlsx já foi
+    enviado (zona "Sob demanda" própria, upload raro) — sem isso, a
+    query direto na tabela quebra com duckdb.CatalogException (visto em
+    produção 2026-08-27, ver docs/04-licoes-aprendidas.md). Checar antes
+    de consultar em vez de deixar quebrar."""
+    (n,) = con.execute(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'fact_pce_realizado'"
+    ).fetchone()
+    return n > 0
+
+
 def dados_pce_realizado_total(
     con: duckdb.DuckDBPyConnection, gerencias: list[str], classificacoes: list[str],
     valores: list[str] | None = None, coluna: str = "descricao",
 ) -> float:
     """Total Realizado dentro do recorte — `valores`/`coluna` opcionais
     (`fact_pce_realizado` tem tanto `grupo` quanto `descricao`, mesmos
-    nomes de coluna que `fact_pce_consolidado` — ver docstring do módulo)."""
+    nomes de coluna que `fact_pce_consolidado` — ver docstring do módulo).
+    Devolve 0.0 se `fact_pce_realizado` ainda não existir (arquivo PCE
+    Base Luiz.xlsx ainda não enviado)."""
+    if not _tabela_pce_realizado_existe(con):
+        return 0.0
     frag, params = _filtros_extra(gerencias, classificacoes, valores, coluna=coluna)
     where = " WHERE 1=1" + frag
     (valor,) = con.execute(
@@ -289,11 +305,14 @@ def _dados_empreendimento_bloco(
         f"FROM fact_pce_consolidado WHERE versao = ?{frag} GROUP BY 1",
         [versao_forecast] + params_extra,
     ).df()
-    real = con.execute(
-        f"SELECT e_pep_projeto, SUM(valor_realizado) AS realizado "
-        f"FROM fact_pce_realizado WHERE 1=1{frag} GROUP BY 1",
-        params_extra,
-    ).df()
+    if _tabela_pce_realizado_existe(con):
+        real = con.execute(
+            f"SELECT e_pep_projeto, SUM(valor_realizado) AS realizado "
+            f"FROM fact_pce_realizado WHERE 1=1{frag} GROUP BY 1",
+            params_extra,
+        ).df()
+    else:
+        real = pd.DataFrame(columns=["e_pep_projeto", "realizado"])
 
     df = orc.merge(fc, on="e_pep_projeto", how="outer").merge(real, on="e_pep_projeto", how="outer")
     df[["orcado", "forecast", "realizado"]] = df[["orcado", "forecast", "realizado"]].fillna(0.0)

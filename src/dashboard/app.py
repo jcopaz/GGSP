@@ -170,8 +170,8 @@ TIPOS_ARQUIVO = {
     # (CAPEX Obras) e demais análises CAPEX. Só a aba "consolidado", já no
     # formato padrão confirmado pelo usuário. `fact_pce_realizado` não
     # entra nesta zona — sem aba "Realizado" neste arquivo, continua
-    # lendo de "PCE Base Luiz.xlsx" direto (fora da rotina de upload por
-    # enquanto, ver settings.yaml).
+    # lendo de "PCE Base Luiz.xlsx" direto (zona própria "Sob demanda"
+    # logo abaixo, ver `pce_realizado`).
     "pce_consolidado": {
         "titulo": "Consolidado (CAPEX Obras — Label do Especialista)",
         "extensoes": (".xlsx",),
@@ -202,6 +202,20 @@ TIPOS_ARQUIVO = {
         "titulo": "Explicações de Causa (CSV de apoio)",
         "extensoes": (".csv",),
         "caminho": CFG["caminhos"]["explicacoes"],
+        "grupo": "Sob demanda",
+    },
+    # PCE Base Luiz.xlsx — fonte de fact_pce_realizado (Nível Realizado da
+    # "CAPEX Obras — Especialista"). Ficava fora da rotina de upload
+    # (decisão original: atualiza raramente, dava pra colocar direto em
+    # data/raw/ no ambiente local). Isso quebrava sempre no deploy online
+    # (duckdb.CatalogException: fact_pce_realizado nunca existia, sem
+    # nenhuma forma de colocar o arquivo lá — visto em produção
+    # 2026-08-27, ver docs/04-licoes-aprendidas.md) — precisa de uma zona
+    # de upload própria mesmo raramente usada.
+    "pce_realizado": {
+        "titulo": "PCE Base Luiz (CAPEX Obras — Realizado do Especialista)",
+        "extensoes": (".xlsx",),
+        "caminho": CFG["caminhos"].get("pce_realizado", ""),
         "grupo": "Sob demanda",
     },
     # "Transferência Combustível Terceiros" (Plano de Manutenção do PCM)
