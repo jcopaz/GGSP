@@ -10,6 +10,8 @@ aberto.
 """
 from __future__ import annotations
 
+import os
+
 import pandas as pd
 
 COLUNAS_EXPLICACAO = [
@@ -20,6 +22,14 @@ CATEGORIA_CALCULADA = "Não Justificado"
 
 
 def carregar_explicacoes(caminho_csv: str) -> pd.DataFrame:
+    if not os.path.exists(caminho_csv):
+        # "Ainda não existe" = "nenhuma justificativa preenchida ainda", não
+        # é erro — comum logo após um deploy novo, onde data/staging/ nasce
+        # vazio (o CSV só é criado quando alguém salva a 1ª explicação pelo
+        # painel, ver docs/04-licoes-aprendidas.md). Sem essa checagem,
+        # pd.read_csv quebra com FileNotFoundError (visto em produção
+        # 2026-08-27).
+        return pd.DataFrame(columns=COLUNAS_EXPLICACAO)
     df = pd.read_csv(caminho_csv)
     faltando = set(COLUNAS_EXPLICACAO) - set(df.columns)
     if faltando:

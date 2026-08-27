@@ -394,3 +394,13 @@ cuidado numa decisão anterior.
 **Correção**: `pagina_upload()` agora checa `os.path.exists(caminho_db)` depois de `build_star_schema()` e antes de conectar — se faltar, mostra aviso claro pedindo pra subir Base Zero + Base Analítico SAP (Realizado) primeiro, em vez de deixar o app quebrar.
 
 **Lição**: uma função que "sai cedo sem fazer nada" (early return) precisa sinalizar isso de um jeito que o chamador consiga distinguir de "rodou e funcionou" — aqui, devolver o mesmo `caminho_db` nos dois casos (sucesso e "nada pra fazer ainda") escondeu a diferença. Vale generalizar pra qualquer pipeline que teve o primeiro deploy real: o ambiente de produção começa vazio (sem dado, sem base) de um jeito que o ambiente de desenvolvimento local — já rodado há meses com dado de verdade — nunca reproduz sozinho. Testar mentalmente o "dia zero" (pasta de dado vazia) antes do primeiro deploy real teria pego isso sem precisar do usuário bater de frente com o erro em produção.
+
+---
+
+## 18. `FileNotFoundError` no CSV de explicações no primeiro deploy — mesma classe do item 17 (2026-08-27)
+
+**Causa raiz**: `carregar_explicacoes()` (`src/engine/explanation_engine.py`) fazia `pd.read_csv(caminho_csv)` direto, sem checar se `data/staging/explicacoes.csv` existia. Local, esse CSV já existia há meses (uso real contínuo). No primeiro deploy, `data/staging/` nasce vazio (gitignored) — ninguém preencheu nenhuma justificativa ainda nesta instância nova, então o arquivo genuinamente não existe. Quebrou com `FileNotFoundError` ao abrir a Visão Resumo Executivo (que chama `calcular_explicacao` → `carregar_explicacoes`).
+
+**Correção**: `carregar_explicacoes()` agora trata "arquivo não existe" como "nenhuma justificativa preenchida ainda" — devolve um `DataFrame` vazio com as colunas certas (`COLUNAS_EXPLICACAO`) em vez de quebrar. O resto do motor (`calcular_explicacao`, `validar_categorias`) já lida bem com DataFrame vazio (soma 0, sem erro) — não precisou mudar mais nada.
+
+**Lição reforçada**: mesmo padrão do item 17 — qualquer arquivo que hoje só existe porque o ambiente de desenvolvimento local acumulou meses de uso real (warehouse, CSV de apoio, o que for) é um candidato certo a quebrar no "dia zero" de um ambiente novo. Antes de considerar um deploy pronto, vale listar todo `pd.read_csv`/`open`/`duckdb.connect` que lê um caminho de `data/` e confirmar que cada um trata "arquivo ainda não existe" como estado válido (vazio), não como bug.
