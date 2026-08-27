@@ -50,12 +50,12 @@ def _enviar_email_senha(destinatario: str, nome: str, senha_temp: str) -> bool:
 
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = "[Orçamento GGSP] Sua nova senha temporária"
+        msg["Subject"] = "[Fin360] Sua nova senha temporária"
         msg["From"] = smtp_cfg.get("remetente", smtp_cfg.get("usuario", ""))
         msg["To"] = destinatario
         corpo = f"""
         <p>Olá, {nome},</p>
-        <p>Recebemos um pedido de reset de senha para sua conta no Painel Orçamento GGSP.</p>
+        <p>Recebemos um pedido de reset de senha para sua conta no Fin360.</p>
         <p>Sua nova senha temporária é: <b style="font-size:1.15em">{senha_temp}</b></p>
         <p>Use essa senha para entrar. Se não foi você quem pediu, avise um administrador.</p>
         """

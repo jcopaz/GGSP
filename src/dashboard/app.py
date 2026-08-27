@@ -94,8 +94,10 @@ from src.dashboard.pce_especialista import render_pce_especialista
 from src.engine.explanation_engine import COLUNAS_EXPLICACAO, validar_categorias
 from src.engine.simulador import gerar_explicacoes_simuladas
 from src.model.build_star_schema import build_star_schema
+from src.branding import render_logo_video
+from src.versao import APP_VERSION
 
-st.set_page_config(page_title="Painel Executivo de Explicação de Delta — GG Infraestrutura (SP)", layout="wide")
+st.set_page_config(page_title="Fin360 — GG Infraestrutura (SP)", layout="wide")
 
 # Gate de sessão (Camada 2) — nenhuma página roda sem login. Precisa vir
 # logo após set_page_config (única chamada Streamlit permitida antes) e
@@ -640,6 +642,8 @@ def pagina_pce_especialista() -> None:
 
 def _renderizar_usuario_logado() -> None:
     with st.sidebar:
+        render_logo_video(width=140)
+        st.caption(f"Fin360 · v{APP_VERSION}")
         st.caption(f"👤 {get_nome()} · {get_papel()}")
         if st.button("Sair", use_container_width=True):
             clear_session()
@@ -702,7 +706,7 @@ def _preparar_filtros_globais() -> None:
         con.close()
 
 
-st.title("Painel Executivo de Explicação de Delta — GG Infraestrutura (SP) (MRS)")
+st.title("Fin360 — Painel Executivo de Explicação de Delta (GG Infraestrutura SP)")
 _renderizar_usuario_logado()
 _preparar_modo_simulacao()
 _preparar_filtros_globais()

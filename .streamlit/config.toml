@@ -1,0 +1,4 @@
+[server]
+# Necessário para servir static/fin360.mp4 (logo em vídeo da tela de login
+# e da sidebar) — ver src/branding.py.
+enableStaticServing = true

@@ -16,6 +16,8 @@ from src.auth.queries import (
 )
 from src.auth.senha import verificar_senha
 from src.auth.session import set_usuario
+from src.branding import render_logo_video
+from src.versao import APP_VERSION
 
 _MSG_CREDENCIAIS_INVALIDAS = "Matrícula/e-mail ou senha incorretos."
 
@@ -45,8 +47,10 @@ def _autenticar(identificador: str, senha: str) -> tuple[bool, str]:
 
 
 def render_login() -> None:
-    st.title("Painel Orçamento GGSP")
+    render_logo_video(width=220)
+    st.title("Fin360")
     st.caption("GER. GERAL DE INFRAESTRUTURA (SP) — acesso restrito")
+    st.caption(f"v{APP_VERSION}")
 
     with st.form("form_login", clear_on_submit=False):
         identificador = st.text_input("Matrícula ou e-mail", placeholder="Ex: 123456 ou seu.nome@mrs.com.br")
