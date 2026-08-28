@@ -101,7 +101,7 @@ from src.dashboard.pce_especialista import render_pce_especialista
 from src.engine.explanation_engine import COLUNAS_EXPLICACAO, validar_categorias
 from src.engine.simulador import gerar_explicacoes_simuladas
 from src.model.build_star_schema import build_star_schema
-from src.branding import inject_shell_css
+from src.branding import inject_shell_css, render_page_banner
 from src.versao import APP_VERSION
 
 st.set_page_config(page_title="Fin360 — GG Infraestrutura (SP)", layout="wide")
@@ -720,10 +720,19 @@ def _renderizar_usuario_logado() -> None:
     `st.logo()` só aceita imagem, não vídeo — mas aceita **GIF animado**,
     que mantém o loop (pedido do usuário: "logo tem que ter movimento
     igual ao do login"). `fin360_logo.gif` é gerado a partir do
-    `fin360.mp4` (75 frames, 110x110, paleta de 64 cores — ~600 KB, leve
-    o bastante pro primeiro carregamento da sidebar). `icon_image` (PNG
-    estático) é o que aparece só no estado colapsado da sidebar, onde
-    animação não faz diferença.
+    `fin360.mp4` (38 frames, 280x280, paleta de 64 cores — ~1.4 MB;
+    reescalado em 2026-08-28 pra acompanhar o logo em 330px via CSS —
+    ver `inject_shell_css`). `icon_image` (PNG estático) é o que aparece
+    só no estado colapsado da sidebar, onde animação não faz diferença.
+
+    **Conflito registrado** (pedido posterior pediu usar `fin360.mp4`
+    direto, sem converter pra GIF): mantive o GIF de propósito — é a
+    única forma encontrada de ter a marca animada E corretamente
+    posicionada acima do menu (`st.logo()` é o mecanismo que resolve o
+    posicionamento, e ele não aceita vídeo). Usar o vídeo direto via
+    `with st.sidebar:` volta a ter o problema de posição já resolvido.
+    Se essa ressalva não for aceitável, precisa de decisão explícita —
+    não revertida sozinha aqui.
 
     Precisa ficar fora de `with st.sidebar:` (não é sensível a container
     ambiente). Versão/assinatura ficam no rodapé

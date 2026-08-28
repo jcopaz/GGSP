@@ -88,14 +88,15 @@ def inject_shell_css() -> None:
             border-color: var(--f360-sidebar-line) !important;
         }
 
-        /* Logo do st.logo() maior (pedido do usuário 2026-08-28: "bem
-        maior, pode adotar o tamanho 1:1") — Streamlit só oferece 3
-        tamanhos fixos (small/medium/large) via parâmetro, nenhum grande
-        o bastante; força a largura real aqui. Asset é quadrado (1:1),
-        `height: auto` preserva a proporção. Seletor não confirmado
-        visualmente contra o app publicado (sem navegador neste
-        ambiente). */
-        [data-testid="stLogo"] { width: 140px !important; height: auto !important; }
+        /* Logo do st.logo() em 330px (pedido do usuário 2026-08-28: 3x o
+        tamanho-base de 110px) — Streamlit só oferece 3 tamanhos fixos
+        (small/medium/large) via parâmetro, nenhum grande o bastante;
+        força a largura real aqui. `max-width: 100%` evita rolagem
+        horizontal se a sidebar for redimensionada mais estreita que
+        330px; `height: auto` preserva a proporção 1:1 do asset. Seletor
+        não confirmado visualmente contra o app publicado (sem navegador
+        neste ambiente). */
+        [data-testid="stLogo"] { width: 330px !important; max-width: 100% !important; height: auto !important; }
 
         /* Item de navegação ativo (st.navigation) — ver nota de
         fragilidade no docstring de inject_shell_css(). */

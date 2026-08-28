@@ -4,6 +4,23 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 3.3.1 — 2026-08-28 (hotfix urgente, durante reunião)
+
+- **Corrige `NameError: name 'render_page_banner' is not defined`** na
+  página de Upload — import esquecido em `app.py` (todos os outros 12
+  arquivos que passaram a usar `render_page_banner` na v3.3.0 já
+  importavam certo; só `app.py` tinha uma linha de import existente que
+  eu deveria ter estendido, não criei nova). Confirmado via AppTest
+  antes e depois do fix.
+- Logo do `st.logo()` em **330px** (3x o tamanho anterior). GIF
+  regerado em resolução maior (280x280, 38 frames, ~1.4 MB) pra não
+  ficar borrado esticado.
+- Conflito registrado (não decidido sozinho): pedido novo pede usar
+  `fin360.mp4` direto em vez de GIF — mantive o GIF de propósito,
+  porque é a única forma que resolve posição (acima do menu) E
+  animação ao mesmo tempo (`st.logo()` não aceita vídeo). Ver docstring
+  de `_renderizar_usuario_logado` em `app.py`.
+
 ## 3.3.0 — 2026-08-28
 
 - **Card em gradiente em todas as páginas** (`render_page_banner`) — as
