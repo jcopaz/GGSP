@@ -433,3 +433,13 @@ cuidado numa decisão anterior.
 **Validado contra o dado real antes de publicar**: mesmo total exato de `fact_cji3_capex_obras` (R$438.470.763,94, 11.507 lançamentos — sem duplicar, sem perder nada), só 3 lançamentos (R$1.303,58, irrisório) caem em "NÃO CLASSIFICADO" por Objeto novo fora do catálogo congelado, 0 nulos em Classificação atualizada.
 
 **Lição**: quando uma "planilha personalizada" parece ser só uma pessoa cruzando fontes que o sistema já tem, vale testar empiricamente contra o dado real (não confiar em suposição nem em nome de coluna igual) se a classificação é: (a) lookup determinístico por alguma chave que já existe na fonte crua (aqui, Objeto) — vira catálogo estável, elimina a planilha; ou (b) julgamento genuíno por transação — aí a dependência de alguém preencher é real e não dá pra eliminar em código. A resposta certa muda a arquitetura inteira, e só o dado real revela qual das duas é.
+
+---
+
+## 21. `ImportError` no deploy mesmo com o repositório remoto 100% consistente — "Reboot" manual necessário (2026-08-28)
+
+**Causa raiz**: depois de um push com arquivo novo (`src/branding.py::inject_shell_css`, adicionado no mesmo commit que passou a importá-la em `app.py`), o app em produção quebrou com `ImportError` nessa importação. Conferido o repositório remoto direto (`git show origin/master:...`): os dois arquivos estavam corretos e consistentes no GitHub — não era bug de código nem push parcial. O redeploy automático do Streamlit Community Cloud (disparado pelo push) ficou com uma versão em cache de `branding.py` desatualizada, mesmo com `app.py` já novo — inconsistência do lado da plataforma, não do repositório.
+
+**Correção**: **Reboot app** manual (Manage app → ⋮ → Reboot app) força um clone git limpo de verdade (mesmo "🐙 Cloning repository..." completo visto nos logs) — resolve sempre, mesmo quando o redeploy automático fica inconsistente.
+
+**Lição**: já é a segunda vez que o redeploy automático do Streamlit Cloud fica dessincronizado do repositório remoto (a primeira foi o `ModuleNotFoundError` que "sumiu" só depois de reboot manual). Antes de investigar bug no próprio código depois de um push, checar `git show origin/master:<arquivo>` pra confirmar que o remoto está correto — se estiver, é quase sempre "Reboot app" que resolve, não código.

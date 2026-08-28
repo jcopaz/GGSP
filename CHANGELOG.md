@@ -4,6 +4,16 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 3.1.1 — 2026-08-28
+
+- Keep-awake do fin360.streamlit.app via GitHub Actions (ping a cada 30
+  min, `.github/workflows/keep-awake.yml`) — evita o app dormir por
+  inatividade no plano free do Streamlit Community Cloud.
+- Registrado: o "Reboot app" manual às vezes é necessário mesmo com push
+  novo — o redeploy automático pode ficar com arquivo desatualizado em
+  cache (visto em produção 2026-08-28, `ImportError` de `inject_shell_css`
+  mesmo com o repositório remoto 100% consistente).
+
 ## 3.1.0 — 2026-08-27
 
 - **Casca visual nova** (aprovada pelo usuário): sidebar navy sólido com

@@ -1,0 +1,22 @@
+# Mantém o Fin360 acordado no Streamlit Community Cloud.
+#
+# Community Cloud (plano free) dorme o app depois de um tempo sem
+# visitante — ping periódico na URL conta como visita e reseta esse
+# relógio. Intervalo de 30 min (não menor): a conta GitHub Free dá 2.000
+# minutos/mês de Actions em repositório privado, e cada execução é
+# cobrada em minuto cheio (mínimo 1 min mesmo pra um curl de 2 segundos)
+# — a cada 30 min = ~1.440 min/mês, com folga segura sob o limite. Um
+# intervalo menor (ex. 5 min) estouraria a cota sozinho.
+name: Keep Fin360 awake
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping fin360.streamlit.app
+        run: curl -sS -o /dev/null -w "HTTP %{http_code}\n" https://fin360.streamlit.app
