@@ -44,14 +44,6 @@ def _inject_login_css() -> None:
             box-shadow: 0 12px 34px rgba(15, 23, 42, 0.10);
             text-align: center;
         }
-        .main .block-container h1,
-        [data-testid="stMainBlockContainer"] h1 {
-            font-size: 1.85rem !important;
-            font-weight: 800 !important;
-            color: #0f2f52;
-            margin: 0.9rem 0 0.15rem !important;
-            letter-spacing: 0.02em;
-        }
         div[data-testid="stForm"] {
             text-align: left;
             margin-top: 1.4rem;
@@ -111,12 +103,13 @@ def _autenticar(identificador: str, senha: str) -> tuple[bool, str]:
 def render_login() -> None:
     _inject_login_css()
     render_logo_video(size=112)
-    st.title("Fin360")
     st.markdown(
         f"""
-        <div style="color:#64748b; font-size:0.85rem; margin-top:-0.3rem;">
-            GER. GERAL DE INFRAESTRUTURA (SP) &middot; acesso restrito
-            <span style="opacity:0.6;"> &middot; v{APP_VERSION}</span>
+        <div style="text-align:center;">
+            <h1 style="font-size:1.85rem;font-weight:800;color:#0f2f52;
+                margin:0.9rem 0 0.15rem;letter-spacing:0.02em;">Fin360</h1>
+            <div style="color:#64748b;font-size:0.85rem;">Acesso Restrito</div>
+            <div style="color:#94a3b8;font-size:0.75rem;margin-top:0.15rem;">v{APP_VERSION}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -142,3 +135,12 @@ def render_login() -> None:
 
     from src.auth.recuperar_senha import render_esqueci_senha
     render_esqueci_senha()
+
+    st.markdown(
+        """
+        <div style="text-align:center;color:#94a3b8;font-size:0.72rem;margin-top:1.5rem;">
+            Desenvolvimento: Julio Paz
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )

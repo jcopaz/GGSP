@@ -709,7 +709,16 @@ def pagina_pce_especialista() -> None:
 def _renderizar_usuario_logado() -> None:
     with st.sidebar:
         render_logo_video(size=88)
-        st.caption(f"Fin360 · v{APP_VERSION}")
+        st.markdown(
+            f"""
+            <div style="text-align:center;margin-top:0.3rem;">
+                <div style="font-weight:700;font-size:1rem;">Fin360</div>
+                <div style="color:#94a3b8;font-size:0.72rem;">v{APP_VERSION}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.divider()
         st.caption(f"👤 {get_nome()} · {get_papel()}")
         if st.button("Sair", use_container_width=True):
             clear_session()

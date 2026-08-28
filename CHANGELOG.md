@@ -4,6 +4,15 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 3.0.1 — 2026-08-27
+
+- Tela de login: "Fin360" e "Acesso Restrito" (removida a menção à GG,
+  pedido do usuário) centralizados abaixo da logo, versão centralizada
+  abaixo disso. Assinatura "Desenvolvimento: Julio Paz" no rodapé.
+- Sidebar: logo + "Fin360" + versão centralizados no topo (acima do
+  bloco "Plano de Manutenção"), separados por divisor do bloco de
+  identidade/logout do usuário logado.
+
 ## 3.0.0 — 2026-08-27
 
 - **`fact_pce_realizado` deixa de depender de "PCE Base Luiz.xlsx"**
