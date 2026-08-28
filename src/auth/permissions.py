@@ -18,6 +18,8 @@ config/settings.yaml), o recorte que importa no dia a dia é `gerencia_id`
 """
 from __future__ import annotations
 
+import os
+
 import streamlit as st
 
 from src.auth.session import get_papel, get_usuario, is_logged_in
@@ -116,4 +118,51 @@ def require_justificativa_micro() -> None:
     require_login()
     if not can_justificar_micro():
         st.error("🚫 Você não tem permissão para justificar no nível Conta/Centro de Custo.")
+        st.stop()
+
+
+def can_acessar_pagina(pagina: str) -> bool:
+    """Permissão por página (app.permissao_pagina) — adicionado em
+    2026-08-28 (integração v3.4.0). Admin sempre acessa tudo. Usuário sem
+    linha própria pra essa página é permitido por padrão (compatibilidade
+    com quem já existia antes desta tabela).
+
+    **Correção de segurança sobre o design original recebido**: se a
+    consulta ao Postgres falhar (indisponibilidade, rede), o pacote de
+    melhorias trazido pelo usuário devolvia `True` (fail **aberto** —
+    todo mundo vê tudo se o banco cair). Isso contradiz o resto do
+    projeto, que usa fail closed em ação crítica (ver `require_upload`
+    etc. acima). Aqui devolve `False` na falha — nega por padrão, não
+    libera. Registrado como decisão em
+    docs/06-administracao-auditoria-e-projecao.md.
+
+    `ORCAMENTO_SKIP_LOGIN=1` (bypass de login só local, ver app.py) libera
+    tudo aqui também — sem essa saída, o próprio flag de teste local
+    ficava inútil: sem usuário real de sessão, toda página seria negada
+    (fail closed corretamente, mas contra o propósito do flag, que é
+    "sem Neon, mas ainda dá pra olhar o painel"). Nunca fica ligado no
+    deploy (mesmo aviso já existente no app.py)."""
+    if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
+        return True
+    if is_admin():
+        return True
+    u = get_usuario()
+    if not u:
+        return False
+    try:
+        from src.auth.db import buscar_um
+
+        linha = buscar_um(
+            "select permitido from app.permissao_pagina where usuario_id = %s and pagina = %s",
+            (u["id"], pagina),
+        )
+        return True if linha is None else bool(linha["permitido"])
+    except Exception:
+        return False
+
+
+def require_acesso_pagina(pagina: str) -> None:
+    require_login()
+    if not can_acessar_pagina(pagina):
+        st.error("🚫 Você não tem permissão para acessar esta página.")
         st.stop()

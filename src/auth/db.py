@@ -20,7 +20,16 @@ import streamlit as st
 
 @contextmanager
 def conectar() -> Iterator[psycopg2.extensions.connection]:
-    conn = psycopg2.connect(st.secrets["postgres_url"])
+    # connect_timeout curto (segundos) — achado em 2026-08-28: sem isso,
+    # numa rede que bloqueia a porta em silêncio (não recusa, só some — ver
+    # docs/05-publicacao-online-e-seguranca.md), o TCP fica esperando pelo
+    # timeout padrão do SO (pode passar de 1 minuto). Isso virou problema
+    # de verdade quando a auditoria (best-effort, "nunca deve travar a ação
+    # principal") passou a rodar a cada visualização de página — uma
+    # tentativa de conexão travada travava a página inteira, não só o log.
+    # 8s tolera o "scale to zero" do Neon free (cold start) sem deixar a
+    # UI pendurada por muito tempo se o banco estiver mesmo inalcançável.
+    conn = psycopg2.connect(st.secrets["postgres_url"], connect_timeout=8)
     try:
         yield conn
         conn.commit()

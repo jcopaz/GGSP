@@ -4,6 +4,62 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 4.0.0 — 2026-08-28
+
+Integração do pacote de melhorias v3.4.0 (trazido pelo usuário, cópia em
+`fin360_melhorias_v3_4_0/`, fora do git) — arquivo por arquivo, não
+substituição em bloco. Detalhe completo em
+`docs/06-administracao-auditoria-e-projecao.md`.
+
+- **Nova página "Administração"** (`src/dashboard/administracao.py`),
+  exclusiva de admin: usuários (criar/editar/ativar, papel, permissões
+  operacionais), permissões por página, escopos de dado (cadastro/
+  consulta, ainda não aplicados em filtro — pendência documentada),
+  auditoria, histórico versionado de upload com reversão, cópias
+  auditadas de exportação.
+- **RBAC de navegação**: `can_acessar_pagina()` esconde página do menu
+  E revalida dentro dela (`_pagina_se_permitida`/`_com_guard_pagina` em
+  `app.py`) — não confia só em esconder. Usuário sem override continua
+  vendo tudo (compatibilidade). Administração nunca passa pelo override
+  genérico, é sempre `is_admin()` direto.
+- **Upload versionado**: `app.arquivo_bruto_versao` (nova) guarda todo o
+  histórico; `app.arquivo_bruto` (já existia) continua só com a última
+  versão pro auto-restore de reboot — as duas ficam em sincronia.
+- **4 tabelas novas no Neon** (`permissao_pagina`, `escopo_acesso`,
+  `artefato_exportado`, `arquivo_bruto_versao`) — **não 5**: o pacote
+  propunha `log_atividade`, redundante com `log_auditoria` já existente
+  (reaproveitada, não duplicada). SQL em `config/schema_postgres.sql`,
+  idempotente — **precisa ser rodado no Neon antes da Administração
+  funcionar**.
+- **2 correções de segurança/robustez sobre o design recebido**: (1)
+  `can_acessar_pagina` falhava aberto se o Postgres caísse (todo mundo
+  via tudo) — corrigido pra fail closed; (2) `src/auth/db.py::conectar()`
+  não tinha timeout de conexão — numa rede que bloqueia a porta em
+  silêncio, a auditoria (agora chamada a cada página) travava a UI
+  inteira esperando o timeout padrão do SO; corrigido com
+  `connect_timeout=8`.
+- `ORCAMENTO_SKIP_LOGIN=1` (bypass local) também libera o RBAC novo —
+  sem isso o próprio flag de teste local ficava inútil.
+- Achado durante a integração: `projecao_opex.py` e `administracao.py`
+  já tinham sido copiados pro repositório antes desta integração, mas
+  dependiam de peças que nunca tinham sido implementadas (coluna de
+  projeção em `tendencia.py`; `restaurar_versao_arquivo` em
+  `arquivo_bruto.py`) — as duas telas quebrariam ao abrir. Implementado
+  nesta rodada.
+- Limpeza: `devcontainer.json` solto na raiz (cópia idêntica do que já
+  existe em `.devcontainer/`) e `LEIA-ME-ENTREGA.md` removidos —
+  redundantes com este CHANGELOG e com `docs/06`.
+- Validado: `python -m compileall src tests` sem erro; testes de
+  reconciliação existentes (Fase 4/5) continuam batendo; `AppTest` do
+  `app.py` inteiro sem exceção como admin simulado e com
+  `ORCAMENTO_SKIP_LOGIN`; `render_administracao()` testado até o ponto
+  de conexão real com o Neon (falha esperada aqui — rede local não
+  alcança o Neon — não é bug de código).
+- **Não executado**: qualquer teste que dependa de dado real no Neon
+  (listar usuários/atividades/versões de verdade) — precisa do schema
+  aplicado e de acesso de rede que este ambiente não tem. Fica como
+  próximo passo do usuário: rodar o SQL, depois confirmar ao vivo.
+
 ## 3.4.0 — 2026-08-28
 
 - **Nova página "Projeção OPEX"** (Plano de Manutenção): 3 abas —

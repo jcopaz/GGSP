@@ -66,6 +66,8 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
+from src.auth.permissions import can_acessar_pagina, is_admin
+from src.dashboard.administracao import render_administracao
 from src.auth.session import (
     clear_session,
     get_id,
@@ -81,7 +83,9 @@ from src.ingestion.arquivo_bruto import (
     listar_tipos_salvos,
     restaurar_arquivo_bruto,
     salvar_arquivo_bruto,
+    salvar_versao_arquivo,
 )
+from src.auth.audit import registrar_atividade, registrar_visualizacao_pagina
 from src.dashboard.filtros import renderizar_badge_filtros_ativos, renderizar_filtros_sidebar
 from src.dashboard.nivel1_diretoria import gg_padrao, render_nivel1
 from src.dashboard.mapa_calor_gerencia_pacote import render_mapa_calor_gerencia_pacote
@@ -338,6 +342,12 @@ def _zona_upload(tipo: str, info: dict) -> None:
     # depois de um reboot.
     try:
         salvar_arquivo_bruto(tipo, arquivo.name, dados, get_id())
+        # Histórico versionado (Administração > reverter upload) — cada
+        # envio soma uma linha nova aqui, nunca sobrescreve (diferente do
+        # salvar_arquivo_bruto acima, que só guarda a última). Mesmo
+        # best-effort: se isso falhar, o upload em si já está salvo.
+        salvar_versao_arquivo(tipo, arquivo.name, dados, get_id())
+        registrar_atividade("upload", tipo, {"nome_arquivo": arquivo.name, "tamanho_bytes": len(dados)})
     except Exception as exc:
         st.warning(
             f"Arquivo salvo localmente, mas não consegui guardar backup no "
@@ -726,6 +736,13 @@ def pagina_pce_especialista() -> None:
         con.close()
 
 
+def pagina_administracao() -> None:
+    # Sem _conectar()/_base_pronta() de propósito: Administração só fala
+    # com o Neon (usuários/permissões/auditoria/uploads), não com o
+    # warehouse DuckDB local — não depende de "base processada".
+    render_administracao()
+
+
 def _renderizar_usuario_logado() -> None:
     """Bloco de marca + conta. `st.logo()` (2026-08-28) é o mecanismo
     oficial do Streamlit pra fixar uma marca acima do menu de
@@ -848,6 +865,38 @@ _garantir_base_pronta()
 _preparar_modo_simulacao()
 _preparar_filtros_globais()
 
+# RBAC por página (app.permissao_pagina) — adicionado em 2026-08-28.
+# `_pagina_se_permitida` faz as 2 coisas ao mesmo tempo: (1) esconde a
+# página do menu se `can_acessar_pagina` negar (devolve None,
+# `_somente_paginas` filtra) — e (2) embrulha a função da página com uma
+# revalidação da MESMA checagem antes de renderizar (defende contra
+# acesso direto, não confia só em esconder do menu — pedido explícito do
+# usuário: "não confiar apenas na ocultação da sidebar"). `chave` usa os
+# mesmos identificadores de PAGINAS em administracao.py — mudar um sem o
+# outro quebra o Editor de Permissões (fica mostrando/salvando uma chave
+# que a navegação não reconhece).
+def _com_guard_pagina(chave: str, funcao):
+    def _pagina_guardada() -> None:
+        if not can_acessar_pagina(chave):
+            st.error("🚫 Você não tem permissão para acessar esta página.")
+            st.stop()
+        registrar_visualizacao_pagina(chave)
+        funcao()
+
+    _pagina_guardada.__name__ = getattr(funcao, "__name__", chave)
+    return _pagina_guardada
+
+
+def _pagina_se_permitida(chave: str, funcao, titulo: str, icon: str, default: bool = False):
+    if not can_acessar_pagina(chave):
+        return None
+    return st.Page(_com_guard_pagina(chave, funcao), title=titulo, icon=icon, default=default)
+
+
+def _somente_paginas(itens: list) -> list:
+    return [item for item in itens if item is not None]
+
+
 # Navegação em 2 seções (dict, não lista — ver docstring do módulo).
 # Renomeado em 2026-08-12 (a pedido do usuário) pra "Plano de Manutenção"
 # / "Plano de Obras" — nomes que o próprio PMO usa (painel de referência
@@ -858,30 +907,30 @@ _preparar_filtros_globais()
 # (antes eram 2 separadas), porque as duas juntas SÃO o "Plano de
 # Manutenção" da referência, não 2 coisas diferentes.
 pg = st.navigation({
-    "Plano de Manutenção": [
-        st.Page(pagina_resumo_executivo, title="Visão Resumo Executivo — GGSP", icon="🧭", default=True),
-        st.Page(pagina_painel, title="Painel Executivo", icon="📊"),
-        st.Page(pagina_opex, title="Visão OPEX", icon="🛠️"),
+    "Plano de Manutenção": _somente_paginas([
+        _pagina_se_permitida("resumo_executivo", pagina_resumo_executivo, "Visão Resumo Executivo — GGSP", "🧭", default=True),
+        _pagina_se_permitida("painel_executivo", pagina_painel, "Painel Executivo", "📊"),
+        _pagina_se_permitida("visao_opex", pagina_opex, "Visão OPEX", "🛠️"),
         # Base Zero (área "Malha Capex", R$43MM) — só a fatia Malha por
         # enquanto. Infra (Drenagem/Saneamento Vegetal/pequenas obras)
         # ainda não tem arquivo carregado.
-        st.Page(pagina_capex, title="CAPEX Manutenção — Malha", icon="🏗️"),
-        st.Page(pagina_manutencao, title="Visão Manutenção (SP)", icon="🛠️"),
-        st.Page(pagina_projecao_opex, title="Projeção OPEX", icon="📈"),
-        st.Page(pagina_contas, title="Nível 4 — Contas", icon="🧾"),
-        st.Page(pagina_centro_custo, title="Nível 5 — Centro de Custo", icon="🏗️"),
-        st.Page(pagina_sap, title="Nível 6 — Rastreabilidade SAP", icon="🔎"),
-    ],
-    "Plano de Obras": [
-        st.Page(pagina_capex_resumo, title="Resumo Executivo", icon="🧭"),
-        st.Page(pagina_capex_painel, title="Painel Executivo", icon="📊"),
-        st.Page(pagina_capex_contas, title="Nível 4 — Contas", icon="🧾"),
-        st.Page(pagina_capex_rastreabilidade, title="Nível 6 — Rastreabilidade SAP", icon="🔎"),
+        _pagina_se_permitida("capex_manutencao", pagina_capex, "CAPEX Manutenção — Malha", "🏗️"),
+        _pagina_se_permitida("visao_manutencao", pagina_manutencao, "Visão Manutenção (SP)", "🛠️"),
+        _pagina_se_permitida("projecao_opex", pagina_projecao_opex, "Projeção OPEX", "📈"),
+        _pagina_se_permitida("contas", pagina_contas, "Nível 4 — Contas", "🧾"),
+        _pagina_se_permitida("centro_custo", pagina_centro_custo, "Nível 5 — Centro de Custo", "🏗️"),
+        _pagina_se_permitida("rastreabilidade_sap", pagina_sap, "Nível 6 — Rastreabilidade SAP", "🔎"),
+    ]),
+    "Plano de Obras": _somente_paginas([
+        _pagina_se_permitida("capex_resumo", pagina_capex_resumo, "Resumo Executivo", "🧭"),
+        _pagina_se_permitida("capex_painel", pagina_capex_painel, "Painel Executivo", "📊"),
+        _pagina_se_permitida("capex_contas", pagina_capex_contas, "Nível 4 — Contas", "🧾"),
+        _pagina_se_permitida("capex_rastreabilidade", pagina_capex_rastreabilidade, "Nível 6 — Rastreabilidade SAP", "🔎"),
         # Label do Especialista (PCE Base Luiz.xlsx, trazida em 2026-08-19)
         # — universo à parte de CJI4/CJI3, filtros próprios (Classificação
         # Atualizada/Gerência/Grupo/Versão), ver pce_especialista.py.
-        st.Page(pagina_pce_especialista, title="CAPEX Obras — Especialista", icon="📐"),
-    ],
+        _pagina_se_permitida("pce_especialista", pagina_pce_especialista, "CAPEX Obras — Especialista", "📐"),
+    ]),
     # "Upload de Dados" tinha saído da navegação em 2026-08-11 ("vamos
     # precisar reorganizar futuramente, pode tirar ela por enquanto").
     # Devolvida em 2026-08-17 (a pedido do usuário: reprocessar direto do
@@ -889,9 +938,16 @@ pg = st.navigation({
     # depender do terminal) numa seção própria — a página cobre arquivo
     # dos dois universos (Manutenção e Obras), não faz sentido só numa
     # das 2 seções de cima.
-    "Dados": [
-        st.Page(pagina_upload, title="Upload de Dados", icon="📤"),
-    ],
+    "Dados": _somente_paginas([
+        _pagina_se_permitida("upload", pagina_upload, "Upload de Dados", "📤"),
+    ]),
+    # Administração — sempre exclusiva de admin (checagem direta de papel,
+    # NÃO passa pelo can_acessar_pagina/permissao_pagina genérico: essa
+    # tela não pode ser liberada por engano via override de página, tem
+    # que continuar admin-only mesmo que alguém crie uma linha errada em
+    # app.permissao_pagina). Seção some do menu inteiro pra quem não é
+    # admin (lista vazia, "Dados"-style).
+    **({"Administração": [st.Page(_com_guard_pagina("administracao", pagina_administracao), title="Gestão e Auditoria", icon="🛡️")]} if is_admin() else {}),
 })
 pg.run()
 _renderizar_rodape_sidebar()

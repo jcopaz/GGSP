@@ -28,6 +28,13 @@ src/dashboard/Backup/
 src/TXT/
 *.diff
 
+# Pacote de melhorias v3.4.0 (2026-08-28) — material de referência pra
+# integração manual (arquivo por arquivo), não é o destino final. As
+# peças reais já foram trazidas pro repositório principal (ver CHANGELOG
+# e docs/06-administracao-auditoria-e-projecao.md). Continua no disco
+# como histórico, só não sobe pro git.
+fin360_melhorias_v3_4_0/
+
 # Python
 __pycache__/
 *.pyc

@@ -171,3 +171,104 @@ create table if not exists app.arquivo_bruto (
 
 comment on table app.arquivo_bruto is
     'Backup do último arquivo bruto de cada tipo enviado via Upload de Dados — permite restaurar data/raw/ automaticamente após um reboot do Streamlit Cloud, sem reenviar arquivo que não mudou.';
+
+-- =============================================================================
+-- Extensão 2026-08-28: Administração (permissão por página, escopos, upload
+-- versionado, exportação auditada). Integração do pacote de melhorias v3.4.0
+-- trazido pelo usuário — 4 tabelas novas, não 5: o pacote propunha
+-- `app.log_atividade`, redundante com `app.log_auditoria` já existente acima
+-- (mesmas colunas, mesmo propósito) — reaproveitada em vez de duplicada.
+-- Idempotente, não toca nas tabelas já criadas acima.
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- app.permissao_pagina
+-- Override por usuário de quais páginas ele vê — chave (`pagina`) usa os
+-- mesmos identificadores da navegação em app.py (ver PAGINAS em
+-- src/dashboard/administracao.py). Sem linha para um (usuario_id, pagina),
+-- o acesso é permitido por padrão — mantém compatibilidade com usuário já
+-- existente antes desta tabela existir (ver `can_acessar_pagina` em
+-- src/auth/permissions.py). Admin sempre acessa tudo, independente do que
+-- estiver aqui (checado em código, não precisa de linha própria).
+-- ---------------------------------------------------------------------------
+create table if not exists app.permissao_pagina (
+    usuario_id uuid not null references app.usuario (id) on delete cascade,
+    pagina text not null,
+    permitido boolean not null default true,
+    atualizado_em timestamptz not null default now(),
+    primary key (usuario_id, pagina)
+);
+
+comment on table app.permissao_pagina is
+    'Override por usuário de visibilidade de página. Sem linha = permitido (compatibilidade com usuário pré-existente). Admin ignora esta tabela, sempre acessa tudo.';
+
+-- ---------------------------------------------------------------------------
+-- app.escopo_acesso
+-- Recorte de dado que um usuário pode ver (Projeto/Elemento PEP/PEP
+-- Filho/Gerência/Coordenação/Centro de Custo/Pacote) — infraestrutura de
+-- cadastro/consulta só; NENHUMA página aplica isso em filtro de consulta
+-- ainda (decisão deliberada, ver docs/06-administracao-auditoria-e-
+-- projecao.md — aplicar automaticamente sem validar contra o schema real
+-- de cada página arrisca alterar total/reconciliação). Admin não usa
+-- escopo (sempre vê tudo).
+-- ---------------------------------------------------------------------------
+create table if not exists app.escopo_acesso (
+    id uuid primary key default gen_random_uuid(),
+    usuario_id uuid not null references app.usuario (id) on delete cascade,
+    tipo text not null check (tipo in (
+        'projeto', 'elemento_pep', 'pep_filho', 'gerencia', 'coordenacao', 'centro_custo', 'pacote'
+    )),
+    valor text not null,
+    descricao text,
+    ativo boolean not null default true,
+    criado_em timestamptz not null default now(),
+    unique (usuario_id, tipo, valor)
+);
+
+comment on table app.escopo_acesso is
+    'Cadastro de escopo de dado por usuário. Só cadastro/consulta por enquanto — nenhuma query de dashboard aplica isso ainda, ver docs/06.';
+
+-- ---------------------------------------------------------------------------
+-- app.artefato_exportado
+-- Cópia auditada de todo arquivo exportado (CSV/XLSX/etc.) pelo painel —
+-- guarda o conteúdo inteiro, não só o registro, pra permitir re-baixar a
+-- cópia exata que foi exportada num momento passado.
+-- ---------------------------------------------------------------------------
+create table if not exists app.artefato_exportado (
+    id uuid primary key default gen_random_uuid(),
+    usuario_id uuid references app.usuario (id),
+    nome_arquivo text not null,
+    conteudo bytea not null,
+    tamanho_bytes bigint not null,
+    sha256 text not null,
+    filtros jsonb not null default '{}'::jsonb,
+    criado_em timestamptz not null default now()
+);
+
+comment on table app.artefato_exportado is
+    'Cópia auditada de cada exportação feita pelo painel — conteúdo completo, não só metadado, pra re-baixar a cópia exata.';
+
+-- ---------------------------------------------------------------------------
+-- app.arquivo_bruto_versao
+-- Histórico VERSIONADO dos uploads (complementa `app.arquivo_bruto`, que
+-- guarda só a última versão de cada tipo pro auto-restore de reboot —
+-- essa tabela continua existindo e funcionando como estava). Cada upload
+-- soma uma linha nova aqui, nunca sobrescreve — permite reverter pra uma
+-- versão anterior pela tela de Administração.
+-- ---------------------------------------------------------------------------
+create table if not exists app.arquivo_bruto_versao (
+    id uuid primary key default gen_random_uuid(),
+    tipo text not null,
+    nome_original text not null,
+    conteudo bytea not null,
+    tamanho_bytes bigint not null,
+    enviado_por uuid references app.usuario (id),
+    enviado_em timestamptz not null default now(),
+    ativo boolean not null default true
+);
+
+create index if not exists idx_arquivo_bruto_versao_tipo
+    on app.arquivo_bruto_versao (tipo, enviado_em desc);
+
+comment on table app.arquivo_bruto_versao is
+    'Histórico versionado de uploads — cada envio soma uma linha, nunca sobrescreve. app.arquivo_bruto continua guardando só a última versão (auto-restore de reboot); esta tabela é pra reversão manual pela Administração.';

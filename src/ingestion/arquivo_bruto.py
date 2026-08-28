@@ -63,3 +63,67 @@ def listar_tipos_salvos() -> set[str]:
     """Todos os `tipo` com backup salvo — usado por _garantir_base_pronta()
     pra restaurar em lote sem 1 SELECT por tipo."""
     return {linha["tipo"] for linha in buscar_todos("select tipo from app.arquivo_bruto")}
+
+
+# ---------------------------------------------------------------------------
+# Histórico VERSIONADO (app.arquivo_bruto_versao) — adicionado em 2026-08-28
+# pra tela de Administração (reversão manual de upload). Complementa as
+# funções acima, não substitui: `arquivo_bruto` continua sendo a "última
+# versão" usada pelo auto-restore de reboot; `arquivo_bruto_versao` guarda
+# TODAS as versões, cada upload soma uma linha nova (nunca sobrescreve).
+# ---------------------------------------------------------------------------
+
+def salvar_versao_arquivo(
+    tipo: str, nome_original: str, conteudo: bytes, usuario_id: str | None
+) -> None:
+    """Chamar sempre junto de `salvar_arquivo_bruto` (mesmo upload, as duas
+    tabelas) — nunca sozinha, senão o histórico e a "última versão" saem
+    de sincronia."""
+    executar(
+        """
+        insert into app.arquivo_bruto_versao (tipo, nome_original, conteudo, tamanho_bytes, enviado_por, enviado_em)
+        values (%s, %s, %s, %s, %s, now())
+        """,
+        (tipo, nome_original, conteudo, len(conteudo), usuario_id),
+    )
+
+
+def listar_versoes_arquivo(tipo: str | None = None, limite: int = 200) -> list[dict]:
+    """Metadados de versões salvas (sem o conteúdo) — mais recente primeiro.
+    `tipo=None` lista de todos os tipos (tela de Administração)."""
+    if tipo:
+        return buscar_todos(
+            "select id, tipo, nome_original, tamanho_bytes, enviado_por, enviado_em, ativo "
+            "from app.arquivo_bruto_versao where tipo = %s order by enviado_em desc limit %s",
+            (tipo, limite),
+        )
+    return buscar_todos(
+        "select v.id, v.tipo, v.nome_original, v.tamanho_bytes, v.enviado_em, v.ativo, "
+        "u.nome_completo from app.arquivo_bruto_versao v "
+        "left join app.usuario u on u.id = v.enviado_por "
+        "order by v.enviado_em desc limit %s",
+        (limite,),
+    )
+
+
+def restaurar_versao_arquivo(versao_id: str, caminho_destino: str) -> bool:
+    """Reversão manual (tela de Administração): busca o conteúdo da versão
+    pelo `id`, **sobrescreve** `caminho_destino` incondicionalmente (ao
+    contrário de `restaurar_arquivo_bruto`, que só preenche se estiver
+    faltando) — é uma reversão deliberada, não um auto-restore. Também
+    atualiza `app.arquivo_bruto` (última versão) com o mesmo conteúdo, pra
+    não ficar dessincronizada do que voltou pro disco (senão o próximo
+    reboot restauraria a versão errada). Devolve False se o `id` não
+    existir; quem chama decide a mensagem de erro."""
+    linha = buscar_um(
+        "select tipo, nome_original, conteudo, enviado_por from app.arquivo_bruto_versao where id = %s",
+        (versao_id,),
+    )
+    if not linha:
+        return False
+    os.makedirs(os.path.dirname(caminho_destino), exist_ok=True)
+    conteudo = bytes(linha["conteudo"])
+    with open(caminho_destino, "wb") as f:
+        f.write(conteudo)
+    salvar_arquivo_bruto(linha["tipo"], linha["nome_original"], conteudo, linha["enviado_por"])
+    return True
