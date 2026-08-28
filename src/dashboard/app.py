@@ -711,22 +711,37 @@ def pagina_pce_especialista() -> None:
 
 
 def _renderizar_usuario_logado() -> None:
+    """Bloco de marca + conta, topo da sidebar — chamado antes de
+    st.navigation(). Versão/assinatura moveram pro rodapé
+    (`_renderizar_rodape_sidebar`, chamado depois de `pg.run()`), pedido
+    do usuário em 2026-08-28 pra não repetir a versão duas vezes."""
     with st.sidebar:
-        render_logo_video(size=88)
+        render_logo_video(size=76)
         st.markdown(
-            f"""
-            <div style="text-align:center;margin-top:0.3rem;">
-                <div style="font-weight:700;font-size:1rem;">Fin360</div>
-                <div style="color:#94a3b8;font-size:0.72rem;">v{APP_VERSION}</div>
-            </div>
-            """,
+            '<div style="text-align:center;font-weight:700;font-size:0.98rem;margin:0.2rem 0 0.6rem;">Fin360</div>',
             unsafe_allow_html=True,
         )
-        st.divider()
         st.caption(f"👤 {get_nome()} · {get_papel()}")
         if st.button("Sair", use_container_width=True):
             clear_session()
             st.rerun()
+        st.divider()
+
+
+def _renderizar_rodape_sidebar() -> None:
+    """Rodapé fixo no fim da sidebar (versão + assinatura) — chamado
+    depois de `pg.run()` de propósito, pra ficar sempre abaixo de toda a
+    navegação, não só do bloco de marca do topo."""
+    with st.sidebar:
+        st.markdown(
+            f"""
+            <div style="text-align:center;margin-top:1rem;padding-top:0.8rem;
+                border-top:1px solid rgba(255,255,255,0.08);color:#8ea0bf;font-size:0.72rem;">
+                v{APP_VERSION}<br>Desenvolvido por Julio Paz
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def _preparar_modo_simulacao() -> None:
@@ -785,7 +800,10 @@ def _preparar_filtros_globais() -> None:
         con.close()
 
 
-st.title("Fin360 — Painel Executivo de Explicação de Delta (GG Infraestrutura SP)")
+# Título de app removido em 2026-08-28 (pedido do usuário: "reduza o
+# texto, deixe só o essencial") — cada página já tem seu próprio
+# st.header curto, e a marca Fin360 já está fixa na sidebar; repetir um
+# título longo no topo de toda página era redundante.
 _renderizar_usuario_logado()
 _garantir_base_pronta()
 _preparar_modo_simulacao()
@@ -836,3 +854,4 @@ pg = st.navigation({
     ],
 })
 pg.run()
+_renderizar_rodape_sidebar()

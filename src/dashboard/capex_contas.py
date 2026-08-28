@@ -119,12 +119,8 @@ def _render_card_nivel4(df_gerencia, df_conta) -> None:
 
 
 def render_nivel4_contas_capex(con: duckdb.DuckDBPyConnection) -> None:
-    st.header("Nível 4 — Contas (CAPEX)")
-    st.caption(
-        "Gerência de Obras → Projeto → Conta, Orçado (CJI4) x Real (CJI3) x "
-        "Delta numa linha só. Conta sem nome catalogado (Catálogo de "
-        "Contas) mostra só o código, nunca um nome inventado."
-    )
+    st.header("Contas")
+    st.caption("Conta sem nome catalogado mostra só o código, nunca um nome inventado.")
 
     tem_orc, tem_real = tabelas_disponiveis(con)
     if not tem_orc and not tem_real:

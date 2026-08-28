@@ -88,6 +88,21 @@ def inject_shell_css() -> None:
             border-color: var(--f360-sidebar-line) !important;
         }
 
+        /* Força a marca (logo/Fin360/usuário) acima do menu de navegação
+        automático do st.navigation — pedido do usuário em 2026-08-28
+        (a logo estava aparecendo abaixo de "Plano de Manutenção").
+        `st.navigation` parece fixar a própria posição do menu
+        independente da ordem de chamada no script (testado: chamar o
+        bloco de marca antes de st.navigation() no Python não bastou) —
+        essa regra tenta reordenar visualmente via flexbox, assumindo que
+        o menu e o resto do conteúdo da sidebar são irmãos dentro do
+        mesmo container flex (`stSidebarUserContent`, testid conhecido
+        pelo menos desde a era de `pages/`). Não testado contra o app
+        publicado (sem navegador neste ambiente) — confirmar visualmente
+        e ajustar se não funcionar. */
+        [data-testid="stSidebarUserContent"] { display: flex !important; flex-direction: column !important; }
+        [data-testid="stSidebarNav"] { order: 2 !important; }
+
         /* Item de navegação ativo (st.navigation) — ver nota de
         fragilidade no docstring de inject_shell_css(). */
         [data-testid="stSidebar"] a[aria-current="page"] {

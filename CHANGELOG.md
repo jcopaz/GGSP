@@ -4,6 +4,22 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 3.1.2 — 2026-08-28
+
+- Removido o `st.title` redundante do topo de toda página (pedido do
+  usuário: "reduza o texto, deixe só o essencial") — a marca já fica
+  fixa na sidebar, cada página já tem seu próprio `st.header` curto.
+- "Nível 4 — Contas (CAPEX)" encurtado pra "Contas", legenda longa
+  reduzida a uma linha.
+- Sidebar reestruturada: bloco de marca (logo/Fin360/usuário/Sair) no
+  topo, rodapé fixo (só "v{versão}" + "Desenvolvido por Julio Paz")
+  depois de toda a navegação — chamado depois de `pg.run()` de propósito.
+- Tentativa de reordenar a logo pra cima do menu de navegação via CSS
+  (`order` em flexbox) — **não verificado visualmente** (sem navegador
+  neste ambiente), pode precisar de ajuste depois de olhar ao vivo.
+- Testado via `AppTest` rodando `app.py` inteiro de ponta a ponta antes
+  de publicar (sem exceção).
+
 ## 3.1.1 — 2026-08-28
 
 - Keep-awake do fin360.streamlit.app via GitHub Actions (ping a cada 30
