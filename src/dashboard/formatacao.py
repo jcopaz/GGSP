@@ -101,3 +101,39 @@ def fmt_semaforo(status: str) -> str:
     emoji = _EMOJI_SEMAFORO.get(status, "")
     cor = _CORES_SEMAFORO_MD.get(status, "gray")
     return f"{emoji} :{cor}[**{status}**]"
+
+
+_ROTULO_SEMAFORO = {
+    "Verde": "Dentro da Faixa",
+    "Amarelo": "Atenção",
+    "Vermelho": "Fora da Faixa",
+    "Cinza": "Sem Dado",
+    "Roxo": "Não Justificado",
+}
+
+
+def fmt_semaforo_chip(status: str) -> str:
+    """Chip HTML do status do semáforo — mesmas cores de
+    src/dashboard/paleta.py (COR_ADERENCIA_*/COR_ROXO/COR_NEUTRO), pronto
+    pra colar num st.markdown(unsafe_allow_html=True). Redesenho de
+    2026-08-27 (casca visual do painel) — substitui o emoji solto do
+    `fmt_semaforo` nos cards novos; `fmt_semaforo` continua existindo pra
+    quem ainda usa a versão markdown."""
+    from src.dashboard.paleta import (
+        COR_ADERENCIA_ATENCAO, COR_ADERENCIA_FORA, COR_ADERENCIA_OK, COR_NEUTRO, COR_ROXO,
+    )
+
+    cor = {
+        "Verde": COR_ADERENCIA_OK,
+        "Amarelo": COR_ADERENCIA_ATENCAO,
+        "Vermelho": COR_ADERENCIA_FORA,
+        "Cinza": COR_NEUTRO,
+        "Roxo": COR_ROXO,
+    }.get(status, COR_NEUTRO)
+    rotulo = _ROTULO_SEMAFORO.get(status, status).upper()
+    return (
+        f'<span style="font-family:\'IBM Plex Mono\',ui-monospace,monospace;'
+        f'font-size:0.62rem;font-weight:600;letter-spacing:0.03em;'
+        f'padding:0.18rem 0.5rem;border-radius:999px;white-space:nowrap;'
+        f'background:{cor}1a;color:{cor};">{rotulo}</span>'
+    )

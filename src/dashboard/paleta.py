@@ -66,6 +66,13 @@ COR_ADERENCIA_OK = "#237804"
 COR_ADERENCIA_ATENCAO = "#b8730a"
 COR_ADERENCIA_FORA = "#a8071a"
 
+# ---- Roxo do semáforo (delta relevante sem justificativa, ver
+# src/engine/semaforo.py) — adicionado em 2026-08-27 junto com o
+# redesenho dos cards (fmt_semaforo_chip em formatacao.py). Antes só
+# existia via `:violet[]` do Streamlit (sem hex próprio) porque o único
+# consumidor era markdown nativo; um chip HTML precisa de um hex real. ----
+COR_ROXO = "#6a3d9a"
+
 
 def hex_para_rgb(cor_hex: str) -> tuple[int, int, int]:
     """"#a8071a" -> (168, 7, 26) — usado onde a cor precisa virar tupla RGB

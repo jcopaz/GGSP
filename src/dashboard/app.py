@@ -101,7 +101,7 @@ from src.dashboard.pce_especialista import render_pce_especialista
 from src.engine.explanation_engine import COLUNAS_EXPLICACAO, validar_categorias
 from src.engine.simulador import gerar_explicacoes_simuladas
 from src.model.build_star_schema import build_star_schema
-from src.branding import render_logo_video
+from src.branding import inject_shell_css, render_logo_video
 from src.versao import APP_VERSION
 
 st.set_page_config(page_title="Fin360 — GG Infraestrutura (SP)", layout="wide")
@@ -123,6 +123,10 @@ if not is_logged_in() and os.environ.get("ORCAMENTO_SKIP_LOGIN") != "1":
     st.stop()
 elif os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
     st.warning("⚠️ Login desativado (ORCAMENTO_SKIP_LOGIN=1) — só para uso local. Nunca deixe isso ligado no deploy.")
+
+# Casca visual (fundo/sidebar/tipografia) — só depois do gate, nunca
+# aparece na tela de login (que tem seu próprio CSS em auth/login.py).
+inject_shell_css()
 
 CFG = carregar_config()
 

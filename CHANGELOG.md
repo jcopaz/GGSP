@@ -4,6 +4,21 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 3.1.0 — 2026-08-27
+
+- **Casca visual nova** (aprovada pelo usuário): sidebar navy sólido com
+  indicador dourado só no item de navegação ativo (marca vira parte da
+  navegação, não só do login); fundo do conteúdo em cinza-azulado; tipografia
+  `Fraunces` (títulos) + `IBM Plex Sans` (interface) + `IBM Plex Mono`
+  (número) em todo o painel — `src/branding.py::inject_shell_css()`.
+- **Card de GG (Nível 1) redesenhado**: hierarquia rótulo → Delta grande
+  em monoespaçada → chip de status, em vez da tabela markdown antiga.
+  Chip reaproveita as cores reais do semáforo (`paleta.py`:
+  `COR_ADERENCIA_OK/ATENCAO/FORA`, novo `COR_ROXO`) — nova função
+  `fmt_semaforo_chip()` em `formatacao.py`. Paleta de gráfico intocada.
+- Testado via `AppTest` (render sem exceção, inclusive caso limite sem
+  orçamento/aderência indefinida) antes de publicar.
+
 ## 3.0.1 — 2026-08-27
 
 - Tela de login: "Fin360" e "Acesso Restrito" (removida a menção à GG,

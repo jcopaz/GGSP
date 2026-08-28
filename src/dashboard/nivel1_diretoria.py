@@ -23,7 +23,7 @@ import pandas as pd
 import streamlit as st
 
 from src.dashboard.filtros import clausula_periodo
-from src.dashboard.formatacao import escapar_cifrao_md, fmt_pct, fmt_reais_abrev, fmt_semaforo
+from src.dashboard.formatacao import fmt_pct, fmt_reais_abrev, fmt_semaforo_chip
 from src.engine.semaforo import classificar_semaforo
 
 GG_TOTAL = "DINFRA"
@@ -138,31 +138,73 @@ def resumo_nivel1(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
 
 def _render_card_gg(linha: pd.Series) -> None:
+    """Card redesenhado em 2026-08-27 (casca visual aprovada pelo usuário
+    — ver artefato de proposta na mesma sessão): hierarquia rótulo →
+    número grande → chip de status, em vez da tabela markdown antiga.
+    HTML próprio (não `st.container(border=True)`) porque o container
+    nativo não aceita CSS livre — mesma limitação que motivou a troca.
+
+    Real Físico não aparece separado de Real Contabilizado: são o mesmo
+    valor por definição (ver docstring do módulo, confirmado 2026-08-06)
+    — mostrar os dois rótulos com o mesmo número era redundante.
+    """
     delta = linha["delta_total"]
-    # Paleta restrita ao que o st.markdown ":cor[texto]" aceita (não é CSS livre).
-    cor_delta = "red" if delta > 0 else "green" if delta < 0 else "gray"
     rotulo = linha["gg_nome"] or linha["gg_id"]
     # Só por Aderência aqui — sem a checagem de Roxo (delta sem
     # justificativa), que exige o cálculo de causa feito no Nível 2/Resumo
     # Executivo, não disponível neste card (ver src/engine/semaforo.py).
     status_semaforo = classificar_semaforo(linha["aderencia"])
 
-    with st.container(border=True):
-        st.markdown(f"**{rotulo}** &nbsp; {fmt_semaforo(status_semaforo)}")
-        st.markdown(
-            escapar_cifrao_md(f"""
-            | | |
-            |---|---|
-            | Orçamento (CAPEX+OPEX) | {fmt_reais_abrev(linha["orcado"])} |
-            | &nbsp;&nbsp;↳ CAPEX | {fmt_reais_abrev(linha["orcado_capex"])} |
-            | &nbsp;&nbsp;↳ OPEX | {fmt_reais_abrev(linha["orcado_opex"])} |
-            | Forecast | — |
-            | Real Físico (OPEX) | {fmt_reais_abrev(linha["realizado"])} |
-            | Real Contabilizado (OPEX) | {fmt_reais_abrev(linha["realizado"])} |
-            | Delta (OPEX x OPEX) | :{cor_delta}[**{fmt_reais_abrev(delta)}**] |
-            | Aderência (OPEX x OPEX) | {fmt_pct(linha["aderencia"])} |
-            """)
-        )
+    orcado = linha["orcado"] or 0
+    pct_capex = (linha["orcado_capex"] / orcado * 100) if orcado else 0
+    pct_opex = (linha["orcado_opex"] / orcado * 100) if orcado else 0
+    cor_delta = "#a8071a" if delta > 0 else "#237804" if delta < 0 else "#5b6b85"
+    sinal = "+" if delta > 0 else ""
+
+    st.markdown(
+        f"""
+        <div style="background:#fff;border:1px solid #dfe5ef;border-radius:12px;
+            padding:1.15rem 1.25rem 1.05rem;box-shadow:0 1px 2px rgba(15,34,64,0.06);
+            margin-bottom:0.9rem;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.7rem;">
+            <div>
+              <div style="font-weight:600;font-size:0.92rem;color:#16213a;">{rotulo}</div>
+              <div style="font-size:0.72rem;color:#8697b3;margin-top:0.1rem;">OPEX × OPEX</div>
+            </div>
+            {fmt_semaforo_chip(status_semaforo)}
+          </div>
+          <div style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:1.5rem;
+              font-weight:500;color:{cor_delta};margin-bottom:0.65rem;">
+            {sinal}{fmt_reais_abrev(delta)}
+            <span style="font-family:'IBM Plex Sans',sans-serif;font-size:0.72rem;color:#8697b3;font-weight:400;">
+                · {fmt_pct(linha["aderencia"])} aderência
+            </span>
+          </div>
+          <div style="display:flex;gap:0.7rem;font-size:0.72rem;margin-bottom:0.6rem;">
+            <div style="flex:1;">
+              <div style="display:flex;justify-content:space-between;color:#8697b3;margin-bottom:0.28rem;">
+                CAPEX <b style="color:#16213a;font-family:'IBM Plex Mono',monospace;font-weight:500;">{fmt_reais_abrev(linha["orcado_capex"])}</b>
+              </div>
+              <div style="height:4px;border-radius:2px;background:#f5f7fb;overflow:hidden;">
+                <div style="height:100%;width:{pct_capex:.0f}%;background:#1f3864;"></div>
+              </div>
+            </div>
+            <div style="flex:1;">
+              <div style="display:flex;justify-content:space-between;color:#8697b3;margin-bottom:0.28rem;">
+                OPEX <b style="color:#16213a;font-family:'IBM Plex Mono',monospace;font-weight:500;">{fmt_reais_abrev(linha["orcado_opex"])}</b>
+              </div>
+              <div style="height:4px;border-radius:2px;background:#f5f7fb;overflow:hidden;">
+                <div style="height:100%;width:{pct_opex:.0f}%;background:#1f3864;"></div>
+              </div>
+            </div>
+          </div>
+          <div style="font-size:0.76rem;color:#5b6b85;border-top:1px solid #eef1f6;padding-top:0.5rem;">
+            Orçamento {fmt_reais_abrev(orcado)} &nbsp;·&nbsp; Realizado {fmt_reais_abrev(linha["realizado"])} &nbsp;·&nbsp; Forecast —
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_nivel1(con: duckdb.DuckDBPyConnection) -> None:
