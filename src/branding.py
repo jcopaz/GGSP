@@ -97,21 +97,39 @@ def inject_shell_css() -> None:
         do tema) — devolve pro padrão do tema (escuro), não herda o claro
         acima. */
         [data-testid="stSidebar"] [data-baseweb],
-        [data-testid="stSidebar"] [data-baseweb] *,
-        [data-testid="stSidebar"] [data-testid="stTooltipIcon"],
-        [data-testid="stSidebar"] [data-testid="stTooltipIcon"] * {
+        [data-testid="stSidebar"] [data-baseweb] * {
             color: initial;
         }
+        /* Ícone de ajuda ("?" de help=) escondido na sidebar — achado
+        2026-08-28: renderiza mal contra o fundo em gradiente (posição
+        estranha, contraste ruim), tentativa anterior de só recolorir não
+        resolveu. Mais seguro esconder do que continuar adivinhando CSS
+        sem conseguir ver o resultado ao vivo — o texto de ajuda em si não
+        é essencial pro filtro funcionar. */
+        [data-testid="stSidebar"] [data-testid="stTooltipIcon"] { display: none !important; }
         [data-testid="stSidebar"] hr { border-color: var(--f360-sidebar-line) !important; }
         [data-testid="stSidebar"] [data-testid="stCaptionContainer"] { color: var(--f360-sidebar-ink-muted) !important; }
-        [data-testid="stSidebar"] button {
+        /* Botão comum (secundário, ex. "Sair"/"Limpar filtros") — sutil.
+        `:not([kind="primary"])` é o que faltava: sem essa exclusão, esta
+        regra também achatava o botão PRIMÁRIO (ex. "Aplicar filtros",
+        type="primary") pro mesmo estilo fantasma — ficava sem contraste
+        nenhum, quase invisível contra o navy (achado 2026-08-28). */
+        [data-testid="stSidebar"] button:not([kind="primary"]) {
             background: rgba(255,255,255,0.06) !important;
             border: 1px solid var(--f360-sidebar-line) !important;
             color: var(--f360-sidebar-ink) !important;
         }
-        [data-testid="stSidebar"] button:hover {
+        [data-testid="stSidebar"] button:not([kind="primary"]):hover {
             background: rgba(255,255,255,0.12) !important;
             border-color: var(--f360-gold) !important;
+        }
+        /* Botão primário (ex. "Aplicar filtros") — deixa o tema global
+        cuidar (primaryColor dourado, já em .streamlit/config.toml),
+        só reforça contraste do texto pra garantir legibilidade em cima
+        do dourado. */
+        [data-testid="stSidebar"] button[kind="primary"] {
+            color: #16283f !important;
+            font-weight: 600 !important;
         }
         [data-testid="stSidebar"] [data-testid="stCheckbox"] label span {
             border-color: var(--f360-sidebar-line) !important;

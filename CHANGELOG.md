@@ -4,6 +4,18 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 4.0.2 — 2026-08-28
+
+- Ícone de ajuda ("?") escondido na sidebar — print do usuário mostrou
+  renderizando quebrado (posição e contraste ruins) contra o fundo em
+  gradiente; mais seguro esconder do que continuar ajustando cor às
+  cegas sem conseguir ver o resultado ao vivo.
+- Corrige botão "Aplicar filtros" (primário) quase invisível — a regra
+  de botão fantasma da sidebar não distinguia primário de secundário e
+  achatava os dois pro mesmo estilo sutil; agora só o secundário
+  ("Sair"/"Limpar filtros") fica sutil, o primário usa o dourado do
+  tema com texto reforçado.
+
 ## 4.0.1 — 2026-08-28
 
 - Corrige ícones de filtro ilegíveis na sidebar (seta de dropdown,
