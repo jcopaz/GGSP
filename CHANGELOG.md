@@ -4,6 +4,29 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 3.2.0 — 2026-08-28
+
+- **Logo da sidebar via `st.logo()`** — substitui a tentativa de CSS
+  (que não funcionava: o menu de `st.navigation()` fixa a própria
+  posição, independente da ordem de chamada no script). Frame estático
+  extraído de `fin360.mp4` (`src/dashboard/static/fin360_logo.png`) —
+  `st.logo()` só aceita imagem, não vídeo.
+- **Tema próprio no `config.toml`** (`primaryColor` dourado): corrige o
+  vermelho de fábrica do Streamlit em widgets nativos (tags de
+  multiselect, botão "Aplicar filtros") que ficava ilegível contra a
+  sidebar navy. Fundo do conteúdo principal voltou a branco
+  (`backgroundColor`), revertendo o cinza-azulado testado antes.
+- Filtro de Período (Ano/Trimestre/Mês) não fica mais dentro de um
+  expander recolhido — estático, sempre visível.
+- **Novo `render_page_banner()`** (`src/branding.py`): card em gradiente
+  navy/dourado pro cabeçalho de página (ícone + título + subtítulo
+  curto), substituindo `st.header()` + parágrafo longo de legenda.
+  Aplicado em "CAPEX Obras — Especialista" e "Contas" (CAPEX) nesta
+  rodada — mesmo padrão de banner usado em outros apps do usuário,
+  personalizado pra identidade do Fin360.
+- Testado via AppTest (app.py inteiro + os 2 banners novos contra o
+  warehouse local real) antes de publicar.
+
 ## 3.1.2 — 2026-08-28
 
 - Removido o `st.title` redundante do topo de toda página (pedido do

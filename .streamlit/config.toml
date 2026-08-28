@@ -2,3 +2,13 @@
 # Necessário para servir static/fin360.mp4 (logo em vídeo da tela de login
 # e da sidebar) — ver src/branding.py.
 enableStaticServing = true
+
+[theme]
+# Sem isso, todo widget "primário" nativo do Streamlit (tag de multiselect,
+# botão type="primary", ícone de fechar/seta) usa o vermelho de fábrica
+# (#FF4B4B) — ilegível/deslocado contra a sidebar navy nova (2026-08-28).
+# Define aqui em vez de remendar cada widget por CSS solto.
+primaryColor = "#c9932f"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f5f7fb"
+textColor = "#16213a"

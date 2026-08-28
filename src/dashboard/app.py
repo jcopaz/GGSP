@@ -101,7 +101,7 @@ from src.dashboard.pce_especialista import render_pce_especialista
 from src.engine.explanation_engine import COLUNAS_EXPLICACAO, validar_categorias
 from src.engine.simulador import gerar_explicacoes_simuladas
 from src.model.build_star_schema import build_star_schema
-from src.branding import inject_shell_css, render_logo_video
+from src.branding import inject_shell_css
 from src.versao import APP_VERSION
 
 st.set_page_config(page_title="Fin360 — GG Infraestrutura (SP)", layout="wide")
@@ -711,16 +711,23 @@ def pagina_pce_especialista() -> None:
 
 
 def _renderizar_usuario_logado() -> None:
-    """Bloco de marca + conta, topo da sidebar — chamado antes de
-    st.navigation(). Versão/assinatura moveram pro rodapé
-    (`_renderizar_rodape_sidebar`, chamado depois de `pg.run()`), pedido
-    do usuário em 2026-08-28 pra não repetir a versão duas vezes."""
+    """Bloco de marca + conta. `st.logo()` (2026-08-28) substitui o vídeo
+    customizado pro topo da sidebar: é o mecanismo oficial do Streamlit
+    pra fixar uma marca acima do menu de `st.navigation()` — a tentativa
+    anterior via CSS (`with st.sidebar: render_logo_video()`) não
+    funcionava porque o menu de navegação fica numa posição própria,
+    independente da ordem de chamada no script. `st.logo()` só aceita
+    imagem estática, não vídeo — frame extraído do fin360.mp4, ver
+    `scripts/` (processo documentado no commit). Precisa ficar fora de
+    `with st.sidebar:` (não é sensível a container ambiente).
+
+    Versão/assinatura ficam no rodapé (`_renderizar_rodape_sidebar`,
+    chamado depois de `pg.run()`), não repetidas aqui.
+    """
+    caminho_logo = str(_RAIZ_PROJETO / "src" / "dashboard" / "static" / "fin360_logo.png")
+    st.logo(caminho_logo, size="large")
+
     with st.sidebar:
-        render_logo_video(size=76)
-        st.markdown(
-            '<div style="text-align:center;font-weight:700;font-size:0.98rem;margin:0.2rem 0 0.6rem;">Fin360</div>',
-            unsafe_allow_html=True,
-        )
         st.caption(f"👤 {get_nome()} · {get_papel()}")
         if st.button("Sair", use_container_width=True):
             clear_session()

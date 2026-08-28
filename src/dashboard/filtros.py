@@ -178,7 +178,8 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
     3. CAPEX Obras (Projeto/PEP) — Projeto (`e_pep_projeto`) → Elemento PEP,
        adicionado em 2026-08-11, vocabulário próprio do CJI4/CJI3 (ver
        `_renderizar_filtro_capex_obras`), diferente do "PEP" do grupo 1.
-    4. Tempo (quando) — Período (Ano/Trimestre/Mês), já em expander.
+    4. Tempo (quando) — Período (Ano/Trimestre/Mês), estático (fora de
+       expander desde 2026-08-28, a pedido do usuário).
     """
     st.sidebar.divider()
     st.sidebar.caption("Filtros — ajuste e clique em Aplicar filtros")
@@ -277,13 +278,14 @@ def _renderizar_filtro_periodo(con: duckdb.DuckDBPyConnection) -> tuple[list[int
     meses = _meses_disponiveis(con)
     nome_para_mes = {nome: numero for numero, nome in _NOMES_MES.items()}
 
-    with st.sidebar.expander("📅 Período (Ano / Trimestre / Mês)", expanded=False):
-        anos_opt = st.multiselect("Ano", anos, key="w_periodo_anos")
-        trimestres_opt = st.multiselect("Trimestre", [f"T{t}" for t in trimestres], key="w_periodo_trimestres")
-        meses_opt = st.multiselect(
-            "Mês", [_NOMES_MES[m] for m in meses], key="w_periodo_meses",
-            help="Se Mês e Trimestre estiverem preenchidos ao mesmo tempo, Mês manda.",
-        )
+    # Estático (fora de expander) desde 2026-08-28, a pedido do usuário —
+    # antes ficava dentro de um st.sidebar.expander recolhido por padrão.
+    anos_opt = st.sidebar.multiselect("Ano", anos, key="w_periodo_anos")
+    trimestres_opt = st.sidebar.multiselect("Trimestre", [f"T{t}" for t in trimestres], key="w_periodo_trimestres")
+    meses_opt = st.sidebar.multiselect(
+        "Mês", [_NOMES_MES[m] for m in meses], key="w_periodo_meses",
+        help="Se Mês e Trimestre estiverem preenchidos ao mesmo tempo, Mês manda.",
+    )
 
     return (
         [int(a) for a in anos_opt],

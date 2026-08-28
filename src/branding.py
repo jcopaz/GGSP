@@ -52,7 +52,6 @@ def inject_shell_css() -> None:
             --f360-sidebar-ink-muted: #8ea0bf;
             --f360-sidebar-line: #2a3e5c;
             --f360-gold: #c9932f;
-            --f360-bg: #eef1f6;
         }
 
         html, body, [class*="css"] {
@@ -64,9 +63,10 @@ def inject_shell_css() -> None:
             letter-spacing: -0.01em;
         }
 
-        [data-testid="stAppViewContainer"], .stApp {
-            background: var(--f360-bg) !important;
-        }
+        /* Fundo do conteúdo principal: branco, definido em
+        .streamlit/config.toml ([theme] backgroundColor) — pedido do
+        usuário em 2026-08-28 pra reverter do cinza-azulado testado antes.
+        Não sobrescrever aqui de novo. */
 
         /* ---- Sidebar: vira a marca ---- */
         [data-testid="stSidebar"] {
@@ -88,20 +88,6 @@ def inject_shell_css() -> None:
             border-color: var(--f360-sidebar-line) !important;
         }
 
-        /* Força a marca (logo/Fin360/usuário) acima do menu de navegação
-        automático do st.navigation — pedido do usuário em 2026-08-28
-        (a logo estava aparecendo abaixo de "Plano de Manutenção").
-        `st.navigation` parece fixar a própria posição do menu
-        independente da ordem de chamada no script (testado: chamar o
-        bloco de marca antes de st.navigation() no Python não bastou) —
-        essa regra tenta reordenar visualmente via flexbox, assumindo que
-        o menu e o resto do conteúdo da sidebar são irmãos dentro do
-        mesmo container flex (`stSidebarUserContent`, testid conhecido
-        pelo menos desde a era de `pages/`). Não testado contra o app
-        publicado (sem navegador neste ambiente) — confirmar visualmente
-        e ajustar se não funcionar. */
-        [data-testid="stSidebarUserContent"] { display: flex !important; flex-direction: column !important; }
-        [data-testid="stSidebarNav"] { order: 2 !important; }
 
         /* Item de navegação ativo (st.navigation) — ver nota de
         fragilidade no docstring de inject_shell_css(). */
@@ -127,6 +113,39 @@ def inject_shell_css() -> None:
         'family=Fraunces:opsz,wght@9..144,500;9..144,600&'
         'family=IBM+Plex+Sans:wght@400;500;600;700&'
         'family=IBM+Plex+Mono:wght@400;500;600&display=swap">',
+        unsafe_allow_html=True,
+    )
+
+
+def render_page_banner(icone: str, titulo: str, subtitulo: str | None = None) -> None:
+    """Card em gradiente pro cabeçalho de página — substitui
+    `st.header()` + `st.caption()` longo soltos. Pedido do usuário em
+    2026-08-28, no mesmo formato de banner usado em outros apps dele
+    (ícone + título + subtítulo num card arredondado), personalizado pra
+    navy/dourado do Fin360 em vez do roxo do exemplo original.
+
+    `subtitulo` deve ser curto (1 linha) — é onde entra a fonte de dado/
+    aviso de filtro próprio da página, não o parágrafo inteiro que
+    existia antes."""
+    sub_html = (
+        f'<div style="color:#c3d0e6;font-size:0.85rem;margin-top:0.35rem;">{subtitulo}</div>'
+        if subtitulo else ""
+    )
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(135deg, #1c3250 0%, #16283f 100%);
+            border-radius: 14px; padding: 1.15rem 1.5rem; margin-bottom: 1.3rem;
+            box-shadow: 0 8px 22px rgba(15,34,64,0.16);
+        ">
+            <div style="display:flex;align-items:center;gap:0.6rem;">
+                <span style="font-size:1.25rem;">{icone}</span>
+                <span style="color:#e0ac52;font-size:1.3rem;font-weight:600;
+                    font-family:'Fraunces',Georgia,serif;">{titulo}</span>
+            </div>
+            {sub_html}
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 

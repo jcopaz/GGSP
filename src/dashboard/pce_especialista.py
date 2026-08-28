@@ -75,6 +75,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.formatacao import fmt_pct, fmt_reais_abrev
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.paleta import (
@@ -692,11 +693,9 @@ def _grafico_grupo(df: pd.DataFrame) -> go.Figure:
 
 
 def render_pce_especialista(con: duckdb.DuckDBPyConnection) -> None:
-    st.header("CAPEX Obras — Label do Especialista")
-    st.caption(
-        "Fonte: Consolidado.xlsx, aba \"consolidado\" (Orçado/Forecast, "
-        "multi-versão, grão mensal) + Realizado (PCE Base Luiz.xlsx). "
-        "Filtros próprios desta página — não usam a sidebar global."
+    render_page_banner(
+        "📐", "CAPEX Obras — Especialista",
+        "Orçado: Consolidado.xlsx · Realizado: CJI3 + Catálogo CAPEX Obras · Filtros próprios, não usam a sidebar global.",
     )
 
     tabelas = con.execute(

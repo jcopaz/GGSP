@@ -9,6 +9,7 @@ import duckdb
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.arvore_html import CSS_ARVORE, cabecalho_arvore, linha_resumo
 from src.dashboard.capex_dados import dados_contas, dados_gerencia_obras, rotulo_projeto, tabelas_disponiveis
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_reais_abrev
@@ -119,8 +120,7 @@ def _render_card_nivel4(df_gerencia, df_conta) -> None:
 
 
 def render_nivel4_contas_capex(con: duckdb.DuckDBPyConnection) -> None:
-    st.header("Contas")
-    st.caption("Conta sem nome catalogado mostra só o código, nunca um nome inventado.")
+    render_page_banner("🧾", "Contas", "Conta sem nome catalogado mostra só o código, nunca um nome inventado.")
 
     tem_orc, tem_real = tabelas_disponiveis(con)
     if not tem_orc and not tem_real:
