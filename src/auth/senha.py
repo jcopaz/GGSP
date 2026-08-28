@@ -6,6 +6,12 @@ import string
 
 import bcrypt
 
+# Senha padrão de todo usuário criado pela Administração (pedido do
+# usuário em 2026-08-28) — sempre junto de precisa_trocar_senha=True
+# (ver criar_usuario em queries.py), obrigando a pessoa a trocar no
+# primeiro login antes de ver qualquer página do painel.
+SENHA_PADRAO = "Fin360@123"
+
 
 def gerar_hash(senha: str) -> str:
     return bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")

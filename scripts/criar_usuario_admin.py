@@ -62,6 +62,9 @@ def main() -> None:
         permissao_exportacao=True,
         permissao_justificativa_macro=True,
         permissao_justificativa_micro=True,
+        # Esta pessoa já digitou a senha real dela agora (não é a padrão
+        # Fin360@123 da Administração) — não força trocar de novo.
+        precisa_trocar_senha=False,
     )
     print(f"\nUsuário Admin '{nome_completo}' criado com sucesso.")
 

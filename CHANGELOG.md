@@ -4,6 +4,28 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 4.1.0 — 2026-08-28
+
+- **Senha padrão obrigatória**: usuário criado pela Administração sempre
+  entra com `Fin360@123` e é travado numa tela de troca de senha
+  obrigatória no primeiro login (nova coluna
+  `app.usuario.precisa_trocar_senha`, migração idempotente em
+  `config/schema_postgres.sql` — precisa rodar de novo no Neon).
+- **Gerência/Pacote/Centro de Custo/Coordenação selecionáveis**: criar
+  usuário e Escopos de dados agora usam dropdown/multiseleção com valor
+  real do warehouse local (dim_gerencia/dim_pacote/fact_realizado), não
+  texto livre — dá pra escolher um, vários ou todos de uma vez.
+  Projeto/Elemento PEP/PEP Filho continuam texto livre (sem lista
+  fechada confiável na fonte ainda).
+- **Auditoria em horário de Brasília**: toda data/hora da Administração
+  (auditoria, upload, exportação) converte de UTC pra
+  America/São_Paulo antes de exibir.
+- Validado: `compileall`, reconciliação Fase 4/5, `AppTest` completo
+  (`app.py` como admin e com `ORCAMENTO_SKIP_LOGIN`,
+  `render_administracao()` com conexão real do warehouse local — passou
+  por toda a lógica nova, só parou no ponto esperado de conexão com o
+  Neon).
+
 ## 4.0.3 — 2026-08-28 (hotfix urgente)
 
 - **Corrige possível causa de "trocar de página derruba pra tela de

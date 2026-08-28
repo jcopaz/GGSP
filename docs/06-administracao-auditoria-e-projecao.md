@@ -118,6 +118,42 @@ tela de exportação de CSV/XLSX pra centralizar. Fica registrado como
 "infraestrutura pronta, sem consumidor ainda", não como pendência
 escondida.
 
+## Senha padrão + troca obrigatória (2026-08-28)
+
+Todo usuário criado pela Administração entra com a senha padrão
+`Fin360@123` (`src/auth/senha.py::SENHA_PADRAO`) e a coluna
+`app.usuario.precisa_trocar_senha` (nova, migração abaixo) começa `true`.
+No próximo login, `app.py` intercepta logo após o gate de sessão — antes
+de qualquer página, inclusive antes da casca visual — e mostra
+`render_trocar_senha_obrigatoria()` (`src/auth/login.py`): só sai dali
+depois de definir uma senha própria (mínimo 8 caracteres, diferente da
+padrão). `scripts/criar_usuario_admin.py` (bootstrap manual, senha
+digitada na hora) não ativa a flag — só a criação pela Administração.
+
+## Campos selecionáveis (Gerência/Escopos) (2026-08-28)
+
+O formulário de criar usuário e a aba de Escopos de dados agora buscam
+valor real do **warehouse DuckDB local** (não o Neon) pra virar dropdown/
+multiseleção, em vez de texto livre: Gerência (`dim_gerencia`), Pacote
+(`dim_pacote`), Centro de Custo e Coordenação (`fact_realizado`). Escopos
+desses 4 tipos usam `st.multiselect` — dá pra adicionar um, vários ou
+todos de uma vez, 1 linha em `app.escopo_acesso` por valor selecionado.
+
+`projeto`/`elemento_pep`/`pep_filho` continuam texto livre — não existe
+uma lista fechada confiável pra eles na fonte de dado ainda (`pep_filho`
+nem é campo que a fonte tem hoje — não inventado).
+
+`render_administracao()` agora recebe a conexão DuckDB como parâmetro
+opcional (`pagina_administracao()` em `app.py` abre se a base estiver
+processada); sem base pronta, cai pra texto livre nesses campos sem
+quebrar o resto da página.
+
+## Fuso horário (2026-08-28)
+
+Toda data/hora exibida na Administração (Auditoria, histórico de upload,
+exportações) converte de `timestamptz` (Postgres, UTC internamente) pra
+`America/Sao_Paulo` antes de mostrar (`administracao.py::_fmt_hora_br`).
+
 ## Migração pendente (ação do usuário)
 
 Rodar `config/schema_postgres.sql` inteiro no SQL Editor do Neon — é

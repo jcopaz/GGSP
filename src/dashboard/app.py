@@ -73,10 +73,11 @@ from src.auth.session import (
     get_id,
     get_nome,
     get_papel,
+    get_usuario,
     init_session,
     is_logged_in,
 )
-from src.auth.login import render_login
+from src.auth.login import render_login, render_trocar_senha_obrigatoria
 from src.config import carregar_config
 from src.ingestion.arquivo_bruto import (
     info_arquivo_bruto,
@@ -128,6 +129,18 @@ if not is_logged_in() and os.environ.get("ORCAMENTO_SKIP_LOGIN") != "1":
     st.stop()
 elif os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
     st.warning("⚠️ Login desativado (ORCAMENTO_SKIP_LOGIN=1) — só para uso local. Nunca deixe isso ligado no deploy.")
+
+# Troca de senha obrigatória (pedido do usuário 2026-08-28): usuário
+# criado pela Administração entra com a senha padrão (Fin360@123) e fica
+# preso aqui — nenhuma página do painel roda — até definir senha própria.
+_usuario_sessao = get_usuario()
+if (
+    _usuario_sessao
+    and _usuario_sessao.get("precisa_trocar_senha")
+    and os.environ.get("ORCAMENTO_SKIP_LOGIN") != "1"
+):
+    render_trocar_senha_obrigatoria()
+    st.stop()
 
 # Casca visual (fundo/sidebar/tipografia) — só depois do gate, nunca
 # aparece na tela de login (que tem seu próprio CSS em auth/login.py).
@@ -737,10 +750,26 @@ def pagina_pce_especialista() -> None:
 
 
 def pagina_administracao() -> None:
-    # Sem _conectar()/_base_pronta() de propósito: Administração só fala
-    # com o Neon (usuários/permissões/auditoria/uploads), não com o
-    # warehouse DuckDB local — não depende de "base processada".
-    render_administracao()
+    # Administração fala com o Neon (usuários/permissões/auditoria/
+    # uploads) SEM depender do warehouse local — mas os dropdowns de
+    # Gerência/Pacote/Centro de Custo/Coordenação (pedido do usuário
+    # 2026-08-28: "campo selecionável", não texto livre) precisam de
+    # dado real do warehouse. Passa a conexão só se a base já existir e
+    # estiver pronta; render_administracao() aceita None e cai pra texto
+    # livre nesses campos — nunca bloqueia o resto da página por causa
+    # disso.
+    caminho_db = CFG["caminhos"]["warehouse_db"]
+    con = None
+    if os.path.exists(caminho_db):
+        con = _conectar()
+        if not _base_pronta(con):
+            con.close()
+            con = None
+    try:
+        render_administracao(con)
+    finally:
+        if con is not None:
+            con.close()
 
 
 def _renderizar_usuario_logado() -> None:

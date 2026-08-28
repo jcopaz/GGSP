@@ -41,12 +41,21 @@ create table if not exists app.usuario (
     criado_em timestamptz not null default now(),
     atualizado_em timestamptz not null default now(),
     ultimo_login timestamptz,
+    -- Adicionado 2026-08-28: usuário criado pela Administração sempre com
+    -- senha padrão (Fin360@123) e essa flag ligada — obriga trocar no
+    -- primeiro login antes de ver qualquer página (ver src/auth/login.py).
+    precisa_trocar_senha boolean not null default false,
 
     constraint chk_login_tem_identificador check (matricula is not null or email is not null)
 );
 
 comment on table app.usuario is
     'Login e RBAC próprios do painel. senha_hash é sempre bcrypt — nunca gravar/logar senha em texto plano. Usuário inativo (ativo=false) não deve acessar nada — checar sempre no app.';
+
+-- app.usuario já existe em produção — "create table if not exists" acima
+-- não adiciona coluna nova numa tabela que já existe. ALTER explícito,
+-- idempotente (ADD COLUMN IF NOT EXISTS é sintaxe nativa do Postgres).
+alter table app.usuario add column if not exists precisa_trocar_senha boolean not null default false;
 
 -- ---------------------------------------------------------------------------
 -- app.fact_explicacao_log

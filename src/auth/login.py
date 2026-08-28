@@ -13,9 +13,10 @@ from src.auth.queries import (
     atualizar_ultimo_login,
     buscar_usuario_por_identificador,
     inserir_log_acesso,
+    trocar_senha_primeiro_login,
 )
-from src.auth.senha import verificar_senha
-from src.auth.session import set_usuario
+from src.auth.senha import SENHA_PADRAO, gerar_hash, verificar_senha
+from src.auth.session import get_usuario, set_usuario
 from src.branding import render_logo_video
 from src.versao import APP_VERSION
 
@@ -144,3 +145,54 @@ def render_login() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_trocar_senha_obrigatoria() -> None:
+    """Trava obrigatória de troca de senha — usuário criado pela
+    Administração sempre entra com a senha padrão (`SENHA_PADRAO`,
+    `precisa_trocar_senha=True`); antes de ver qualquer página do painel,
+    precisa definir uma senha própria. Chamado por app.py logo após o
+    gate de login, antes de `inject_shell_css()`/qualquer conteúdo —
+    mesmo padrão de "tela única, sem sidebar" do login."""
+    _inject_login_css()
+    render_logo_video(size=112)
+    st.markdown(
+        """
+        <div style="text-align:center;">
+            <h1 style="font-size:1.6rem;font-weight:800;color:#0f2f52;
+                margin:0.9rem 0 0.15rem;letter-spacing:0.02em;">Defina sua senha</h1>
+            <div style="color:#64748b;font-size:0.85rem;">
+                Primeiro acesso — troque a senha padrão antes de continuar.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    usuario = get_usuario()
+
+    with st.form("form_trocar_senha_obrigatoria"):
+        nova = st.text_input("Nova senha", type="password", placeholder="Mínimo 8 caracteres")
+        confirmar = st.text_input("Confirme a nova senha", type="password")
+        salvar = st.form_submit_button("Definir senha e entrar", use_container_width=True)
+
+        if salvar:
+            if len(nova) < 8:
+                st.error("A senha precisa ter pelo menos 8 caracteres.")
+            elif nova != confirmar:
+                st.error("As senhas não coincidem.")
+            elif nova == SENHA_PADRAO:
+                st.error("Escolha uma senha diferente da padrão.")
+            else:
+                trocar_senha_primeiro_login(usuario["id"], gerar_hash(nova))
+                # Atualiza a cópia em sessão também — senão o gate em
+                # app.py continuaria vendo precisa_trocar_senha=True (do
+                # login original) e voltaria pra esta tela num loop.
+                usuario["precisa_trocar_senha"] = False
+                set_usuario(usuario)
+                try:
+                    inserir_log_acesso(usuario["id"], "trocar_senha_primeiro_login")
+                except Exception:
+                    pass
+                st.success("Senha definida.")
+                st.rerun()

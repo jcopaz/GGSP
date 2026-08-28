@@ -28,8 +28,23 @@ def atualizar_ultimo_login(usuario_id: str) -> None:
 
 
 def atualizar_senha_hash(usuario_id: str, senha_hash: str) -> None:
+    """Usado pelo reset autoatendido (recuperar_senha.py) e pelo reset
+    manual do admin — não mexe em `precisa_trocar_senha` (o admin decide
+    se quer forçar troca ao redefinir; ver criar_usuario/
+    trocar_senha_primeiro_login)."""
     executar(
         "update app.usuario set senha_hash = %s, atualizado_em = now() where id = %s",
+        (senha_hash, usuario_id),
+    )
+
+
+def trocar_senha_primeiro_login(usuario_id: str, senha_hash: str) -> None:
+    """Fluxo de troca OBRIGATÓRIA no primeiro login (senha padrão
+    Fin360@123, ver src/auth/senha.py::SENHA_PADRAO) — grava o hash novo
+    E desliga `precisa_trocar_senha` na mesma operação, pra não entrar
+    em loop."""
+    executar(
+        "update app.usuario set senha_hash = %s, precisa_trocar_senha = false, atualizado_em = now() where id = %s",
         (senha_hash, usuario_id),
     )
 
@@ -56,18 +71,25 @@ def criar_usuario(
     permissao_exportacao: bool = True,
     permissao_justificativa_macro: bool = False,
     permissao_justificativa_micro: bool = False,
+    precisa_trocar_senha: bool = True,
 ) -> None:
+    """`precisa_trocar_senha=True` por padrão — todo usuário novo criado
+    pela Administração usa a senha padrão (Fin360@123, ver
+    src/auth/senha.py::SENHA_PADRAO) e é obrigado a trocar no primeiro
+    login (pedido do usuário em 2026-08-28)."""
     executar(
         """
         insert into app.usuario (
             matricula, email, senha_hash, nome_completo, papel, gg_id, gerencia_id,
             permissao_upload, permissao_exportacao,
-            permissao_justificativa_macro, permissao_justificativa_micro
-        ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            permissao_justificativa_macro, permissao_justificativa_micro,
+            precisa_trocar_senha
+        ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             matricula, email, senha_hash, nome_completo, papel, gg_id, gerencia_id,
             permissao_upload, permissao_exportacao,
             permissao_justificativa_macro, permissao_justificativa_micro,
+            precisa_trocar_senha,
         ),
     )
