@@ -42,7 +42,7 @@ create table if not exists app.usuario (
     atualizado_em timestamptz not null default now(),
     ultimo_login timestamptz,
     -- Adicionado 2026-08-28: usuário criado pela Administração sempre com
-    -- senha padrão (Fin360@123) e essa flag ligada — obriga trocar no
+    -- senha temporária única e essa flag ligada — obriga trocar no
     -- primeiro login antes de ver qualquer página (ver src/auth/login.py).
     precisa_trocar_senha boolean not null default false,
 

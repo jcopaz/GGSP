@@ -15,7 +15,7 @@ from src.auth.queries import (
     inserir_log_acesso,
     trocar_senha_primeiro_login,
 )
-from src.auth.senha import SENHA_PADRAO, gerar_hash, verificar_senha
+from src.auth.senha import gerar_hash, verificar_senha
 from src.auth.session import get_usuario, set_usuario
 from src.branding import render_logo_video
 from src.versao import APP_VERSION
@@ -149,7 +149,7 @@ def render_login() -> None:
 
 def render_trocar_senha_obrigatoria() -> None:
     """Trava obrigatória de troca de senha — usuário criado pela
-    Administração sempre entra com a senha padrão (`SENHA_PADRAO`,
+    Administração recebe uma senha temporária única (gerada na hora,
     `precisa_trocar_senha=True`); antes de ver qualquer página do painel,
     precisa definir uma senha própria. Chamado por app.py logo após o
     gate de login, antes de `inject_shell_css()`/qualquer conteúdo —
@@ -162,7 +162,7 @@ def render_trocar_senha_obrigatoria() -> None:
             <h1 style="font-size:1.6rem;font-weight:800;color:#0f2f52;
                 margin:0.9rem 0 0.15rem;letter-spacing:0.02em;">Defina sua senha</h1>
             <div style="color:#64748b;font-size:0.85rem;">
-                Primeiro acesso — troque a senha padrão antes de continuar.
+                Primeiro acesso — troque a senha temporária antes de continuar.
             </div>
         </div>
         """,
@@ -181,8 +181,6 @@ def render_trocar_senha_obrigatoria() -> None:
                 st.error("A senha precisa ter pelo menos 8 caracteres.")
             elif nova != confirmar:
                 st.error("As senhas não coincidem.")
-            elif nova == SENHA_PADRAO:
-                st.error("Escolha uma senha diferente da padrão.")
             else:
                 trocar_senha_primeiro_login(usuario["id"], gerar_hash(nova))
                 # Atualiza a cópia em sessão também — senão o gate em

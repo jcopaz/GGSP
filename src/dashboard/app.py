@@ -131,7 +131,7 @@ elif os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
     st.warning("⚠️ Login desativado (ORCAMENTO_SKIP_LOGIN=1) — só para uso local. Nunca deixe isso ligado no deploy.")
 
 # Troca de senha obrigatória (pedido do usuário 2026-08-28): usuário
-# criado pela Administração entra com a senha padrão (Fin360@123) e fica
+# criado pela Administração entra com uma senha temporária única e fica
 # preso aqui — nenhuma página do painel roda — até definir senha própria.
 _usuario_sessao = get_usuario()
 if (

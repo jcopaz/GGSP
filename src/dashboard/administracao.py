@@ -11,7 +11,7 @@ import streamlit as st
 from src.branding import render_page_banner
 from src.auth.permissions import require_admin
 from src.auth.queries import criar_usuario
-from src.auth.senha import SENHA_PADRAO, gerar_hash
+from src.auth.senha import gerar_hash, gerar_senha_temporaria
 from src.auth.admin_queries import *
 from src.auth.audit import registrar_atividade
 from src.config import carregar_config
@@ -140,15 +140,18 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
                     ger = None if escolha_ger == opcoes_ger[0] else escolha_ger.split(" — ")[0]
                 else:
                     ger = c2.text_input("Gerência ID")
-                st.caption(f"Senha inicial padrão: **{SENHA_PADRAO}** — a pessoa é obrigada a trocar no primeiro login.")
+                st.caption("Uma senha temporária única é gerada automaticamente na criação — a pessoa é obrigada a trocá-la no primeiro login.")
                 if st.form_submit_button("Criar usuário", type="primary"):
+                    senha_temporaria = gerar_senha_temporaria()
                     criar_usuario(
-                        nome_completo=nome, papel=papel, senha_hash=gerar_hash(SENHA_PADRAO),
+                        nome_completo=nome, papel=papel, senha_hash=gerar_hash(senha_temporaria),
                         matricula=matricula or None, email=email or None,
                         gg_id=gg or None, gerencia_id=ger or None,
                     )
                     registrar_atividade("criar_usuario", "administracao", {"matricula": matricula, "papel": papel})
-                    st.success(f"Usuário criado com a senha padrão ({SENHA_PADRAO}) — precisa trocar no primeiro login.")
+                    st.success(f"Usuário {nome or matricula or email} criado.")
+                    st.code(senha_temporaria, language=None)
+                    st.warning("Copie a senha acima agora — ela não será exibida novamente. Repasse com segurança à pessoa; a troca é obrigatória no primeiro login.")
         usuarios = listar_usuarios()
         st.dataframe(pd.DataFrame(usuarios), hide_index=True, use_container_width=True)
         if usuarios:

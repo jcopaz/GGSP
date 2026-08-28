@@ -39,10 +39,11 @@ def atualizar_senha_hash(usuario_id: str, senha_hash: str) -> None:
 
 
 def trocar_senha_primeiro_login(usuario_id: str, senha_hash: str) -> None:
-    """Fluxo de troca OBRIGATÓRIA no primeiro login (senha padrão
-    Fin360@123, ver src/auth/senha.py::SENHA_PADRAO) — grava o hash novo
-    E desliga `precisa_trocar_senha` na mesma operação, pra não entrar
-    em loop."""
+    """Fluxo de troca OBRIGATÓRIA no primeiro login (usuário criado pela
+    Administração recebe senha temporária única, ver
+    src/auth/senha.py::gerar_senha_temporaria) — grava o hash novo E
+    desliga `precisa_trocar_senha` na mesma operação, pra não entrar em
+    loop."""
     executar(
         "update app.usuario set senha_hash = %s, precisa_trocar_senha = false, atualizado_em = now() where id = %s",
         (senha_hash, usuario_id),
@@ -74,9 +75,11 @@ def criar_usuario(
     precisa_trocar_senha: bool = True,
 ) -> None:
     """`precisa_trocar_senha=True` por padrão — todo usuário novo criado
-    pela Administração usa a senha padrão (Fin360@123, ver
-    src/auth/senha.py::SENHA_PADRAO) e é obrigado a trocar no primeiro
-    login (pedido do usuário em 2026-08-28)."""
+    pela Administração recebe uma senha temporária única e aleatória
+    (`gerar_senha_temporaria()`, ver `administracao.py`) e é obrigado a
+    trocar no primeiro login (pedido do usuário em 2026-08-28; senha fixa
+    compartilhada removida no mesmo dia por achado de revisão de
+    segurança — ver docs/06)."""
     executar(
         """
         insert into app.usuario (

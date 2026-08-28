@@ -118,17 +118,28 @@ tela de exportação de CSV/XLSX pra centralizar. Fica registrado como
 "infraestrutura pronta, sem consumidor ainda", não como pendência
 escondida.
 
-## Senha padrão + troca obrigatória (2026-08-28)
+## Senha temporária única + troca obrigatória (2026-08-28, revisado 2026-08-28)
 
-Todo usuário criado pela Administração entra com a senha padrão
-`Fin360@123` (`src/auth/senha.py::SENHA_PADRAO`) e a coluna
-`app.usuario.precisa_trocar_senha` (nova, migração abaixo) começa `true`.
-No próximo login, `app.py` intercepta logo após o gate de sessão — antes
-de qualquer página, inclusive antes da casca visual — e mostra
-`render_trocar_senha_obrigatoria()` (`src/auth/login.py`): só sai dali
-depois de definir uma senha própria (mínimo 8 caracteres, diferente da
-padrão). `scripts/criar_usuario_admin.py` (bootstrap manual, senha
-digitada na hora) não ativa a flag — só a criação pela Administração.
+Todo usuário criado pela Administração recebe uma senha temporária
+**única e aleatória**, gerada na hora (`src/auth/senha.py::
+gerar_senha_temporaria()`, mesma função já usada no reset autoatendido),
+mostrada **uma única vez** na tela pra quem criou (`st.code`, sem ficar
+gravada em texto plano em lugar nenhum) — quem cria repassa com segurança
+pra pessoa. A coluna `app.usuario.precisa_trocar_senha` (migração abaixo)
+começa `true`. No próximo login, `app.py` intercepta logo após o gate de
+sessão — antes de qualquer página, inclusive antes da casca visual — e
+mostra `render_trocar_senha_obrigatoria()` (`src/auth/login.py`): só sai
+dali depois de definir uma senha própria (mínimo 8 caracteres).
+`scripts/criar_usuario_admin.py` (bootstrap manual, senha digitada na
+hora) não ativa a flag — só a criação pela Administração.
+
+Revisão do mesmo dia: a versão original usava uma senha padrão fixa
+(`Fin360@123`, literal no código, igual pra todo usuário novo) — achado de
+revisão de segurança automática, HIGH, "Hardcoded Credentials / Shared
+Default Password" (uma senha vazada expõe todas as contas ainda não
+trocadas, e o literal fica visível pra qualquer um com acesso ao
+repositório). Substituída por senha temporária única por usuário no mesmo
+dia, antes de qualquer deploy com a versão fixa.
 
 ## Campos selecionáveis (Gerência/Escopos) (2026-08-28)
 

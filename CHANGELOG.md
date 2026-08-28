@@ -4,6 +4,22 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 5.0.0 — 2026-08-28 (correção de segurança)
+
+- **Remove senha padrão fixa (achado HIGH de revisão de segurança)**: a
+  4.1.0 (abaixo) introduziu `SENHA_PADRAO = "Fin360@123"` — um literal no
+  código-fonte, igual pra todo usuário novo criado pela Administração.
+  Revisão automática de segurança classificou como HIGH: "Hardcoded
+  Credentials / Shared Default Password" (uma senha compartilhada e
+  visível no código expõe toda conta ainda não trocada). Substituído por
+  senha temporária **única e aleatória por usuário**
+  (`src/auth/senha.py::gerar_senha_temporaria()`, mesma função do reset
+  autoatendido), exibida uma única vez pra quem cria (`st.code`, nunca
+  gravada em texto plano) — a pessoa continua obrigada a trocar no
+  primeiro login. Sem migração de schema nova (reaproveita a coluna
+  `app.usuario.precisa_trocar_senha` já criada na 4.1.0). Bump MAJOR por
+  ser correção de segurança, não PATCH (regra do projeto).
+
 ## 4.1.0 — 2026-08-28
 
 - **Senha padrão obrigatória**: usuário criado pela Administração sempre
@@ -11,6 +27,7 @@ nada; PATCH = correção de bug. Bump a cada commit relevante.
   obrigatória no primeiro login (nova coluna
   `app.usuario.precisa_trocar_senha`, migração idempotente em
   `config/schema_postgres.sql` — precisa rodar de novo no Neon).
+  **Corrigido na 5.0.0 acima — senha fixa removida no mesmo dia.**
 - **Gerência/Pacote/Centro de Custo/Coordenação selecionáveis**: criar
   usuário e Escopos de dados agora usam dropdown/multiseleção com valor
   real do warehouse local (dim_gerencia/dim_pacote/fact_realizado), não
