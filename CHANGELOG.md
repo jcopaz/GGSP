@@ -4,6 +4,23 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 4.0.1 — 2026-08-28
+
+- Corrige ícones de filtro ilegíveis na sidebar (seta de dropdown,
+  "?" de ajuda): a regra genérica `[data-testid="stSidebar"] *
+  { color: claro }` também forçava o texto/ícone de DENTRO dos widgets
+  (multiselect, selectbox, tooltip de ajuda) pra claro — e a caixa
+  desses widgets é clara por padrão (tema global), então virava claro
+  sobre claro. Trocado por regra cirúrgica: só label/texto solto vira
+  claro; interior de widget (`[data-baseweb]`, ícone de tooltip) volta
+  pro padrão do tema. Não verificado visualmente (sem navegador neste
+  ambiente).
+- Deploy no Streamlit Cloud ficou (3ª vez hoje) com cache desatualizado
+  mesmo com o repositório remoto correto (`ImportError` de
+  `restaurar_versao_arquivo`, já existia certinho no commit anterior) —
+  Reboot manual resolve, ver lição atualizada em
+  `docs/04-licoes-aprendidas.md`, item 21.
+
 ## 4.0.0 — 2026-08-28
 
 Integração do pacote de melhorias v3.4.0 (trazido pelo usuário, cópia em

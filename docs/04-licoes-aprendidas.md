@@ -443,3 +443,11 @@ cuidado numa decisão anterior.
 **Correção**: **Reboot app** manual (Manage app → ⋮ → Reboot app) força um clone git limpo de verdade (mesmo "🐙 Cloning repository..." completo visto nos logs) — resolve sempre, mesmo quando o redeploy automático fica inconsistente.
 
 **Lição**: já é a segunda vez que o redeploy automático do Streamlit Cloud fica dessincronizado do repositório remoto (a primeira foi o `ModuleNotFoundError` que "sumiu" só depois de reboot manual). Antes de investigar bug no próprio código depois de um push, checar `git show origin/master:<arquivo>` pra confirmar que o remoto está correto — se estiver, é quase sempre "Reboot app" que resolve, não código.
+
+**Atualização 2026-08-28 (3ª ocorrência)**: aconteceu de novo com
+`restaurar_versao_arquivo` (`arquivo_bruto.py`) — mesmo padrão exato,
+confirmado remoto correto de novo. Já é recorrente o bastante pra virar
+procedimento padrão, não exceção: **depois de qualquer push que adiciona
+`import` novo em `app.py` ou em algo que ele importa, dar Reboot manual
+direto**, sem esperar o auto-redeploy tentar (e falhar) primeiro — economiza
+o ciclo de "vi o erro, confirmei que o remoto tá certo, pedi reboot".

@@ -72,7 +72,36 @@ def inject_shell_css() -> None:
         [data-testid="stSidebar"] {
             background: linear-gradient(175deg, var(--f360-sidebar-bg-2) 0%, var(--f360-sidebar-bg) 55%) !important;
         }
-        [data-testid="stSidebar"] * { color: var(--f360-sidebar-ink); }
+        /* Recolore só o que fica direto em cima do fundo navy (texto solto,
+        título, label de widget) — NUNCA o interior de um widget (caixa de
+        multiselect/selectbox, popover de dropdown, ícone de ajuda "?").
+        Achado em 2026-08-28: a regra genérica `[data-testid="stSidebar"] *
+        { color: claro }` também forçava o texto/ícone de DENTRO dos
+        widgets pra claro — e a caixa desses widgets é clara por padrão
+        (tema global, ver .streamlit/config.toml), então virava texto/seta/
+        interrogação claro em cima de fundo claro: sumia ou ficava
+        ilegível. Widget mantém a cor do tema global (escura sobre caixa
+        clara) — só o label/texto solto ao redor vira claro. */
+        [data-testid="stSidebar"] > div > div,
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span:not([data-baseweb] *),
+        [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"],
+        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {
+            color: var(--f360-sidebar-ink);
+        }
+        /* Mas nunca dentro de um controle com chrome próprio (caixa clara
+        do tema) — devolve pro padrão do tema (escuro), não herda o claro
+        acima. */
+        [data-testid="stSidebar"] [data-baseweb],
+        [data-testid="stSidebar"] [data-baseweb] *,
+        [data-testid="stSidebar"] [data-testid="stTooltipIcon"],
+        [data-testid="stSidebar"] [data-testid="stTooltipIcon"] * {
+            color: initial;
+        }
         [data-testid="stSidebar"] hr { border-color: var(--f360-sidebar-line) !important; }
         [data-testid="stSidebar"] [data-testid="stCaptionContainer"] { color: var(--f360-sidebar-ink-muted) !important; }
         [data-testid="stSidebar"] button {
