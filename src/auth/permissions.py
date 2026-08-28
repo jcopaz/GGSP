@@ -121,6 +121,35 @@ def require_justificativa_micro() -> None:
         st.stop()
 
 
+def _permissoes_pagina_cache(usuario_id: str) -> dict[str, bool]:
+    """Busca `app.permissao_pagina` inteira do usuário **1x por sessão**,
+    guardada em `st.session_state` — não 1x por página.
+
+    Achado em 2026-08-28 (causa provável de "trocar de página derruba
+    pra tela de login"): `can_acessar_pagina` é chamada pra CADA página
+    da navegação, EM TODO rerun do Streamlit (o menu inteiro é
+    reconstruído a cada clique) — sem cache, isso virava até ~15 conexões
+    novas ao Neon por interação (`conectar()` não usa pool, cada chamada
+    abre/fecha a própria conexão). Lento o bastante pra estourar timeout
+    de infraestrutura no meio do caminho, derrubando a sessão sem a
+    permissão em si ter sido negada.
+
+    Cache não invalida sozinho durante a sessão — se um admin mudar a
+    permissão de alguém que já está logado, só pega efeito no próximo
+    login dessa pessoa. Comportamento aceito de propósito (trade-off
+    padrão de cache de permissão), não bug."""
+    chave = "_permissoes_pagina_cache"
+    if chave not in st.session_state:
+        from src.auth.db import buscar_todos
+
+        linhas = buscar_todos(
+            "select pagina, permitido from app.permissao_pagina where usuario_id = %s",
+            (usuario_id,),
+        )
+        st.session_state[chave] = {l["pagina"]: bool(l["permitido"]) for l in linhas}
+    return st.session_state[chave]
+
+
 def can_acessar_pagina(pagina: str) -> bool:
     """Permissão por página (app.permissao_pagina) — adicionado em
     2026-08-28 (integração v3.4.0). Admin sempre acessa tudo. Usuário sem
@@ -150,13 +179,8 @@ def can_acessar_pagina(pagina: str) -> bool:
     if not u:
         return False
     try:
-        from src.auth.db import buscar_um
-
-        linha = buscar_um(
-            "select permitido from app.permissao_pagina where usuario_id = %s and pagina = %s",
-            (u["id"], pagina),
-        )
-        return True if linha is None else bool(linha["permitido"])
+        permissoes = _permissoes_pagina_cache(u["id"])
+        return permissoes.get(pagina, True)
     except Exception:
         return False
 

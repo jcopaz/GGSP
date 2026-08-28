@@ -4,6 +4,20 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 4.0.3 — 2026-08-28 (hotfix urgente)
+
+- **Corrige possível causa de "trocar de página derruba pra tela de
+  login"**: `can_acessar_pagina()` era chamada 1x por página da
+  navegação (~15 páginas) em **todo rerun** do Streamlit — sem cache,
+  cada clique podia abrir até ~15 conexões novas ao Neon em sequência
+  (`conectar()` não usa pool). Lento o bastante pra estourar timeout de
+  infraestrutura no meio do caminho. Agora `app.permissao_pagina` é
+  buscada 1x por sessão (`st.session_state`), não repetida a cada
+  página/clique. Admin não é afetado (já não tocava o banco pra isso).
+  Cache não invalida sozinho durante a sessão — permissão alterada por
+  um admin só pega efeito no próximo login da pessoa (trade-off
+  aceito, não bug).
+
 ## 4.0.2 — 2026-08-28
 
 - Ícone de ajuda ("?") escondido na sidebar — print do usuário mostrou
