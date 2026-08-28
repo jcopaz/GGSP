@@ -4,6 +4,33 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 3.4.0 — 2026-08-28
+
+- **Nova página "Projeção OPEX"** (Plano de Manutenção): 3 abas —
+  Despesas Gerais (PD), Despesas Pessoais (PP), Manutenção (PM). Mostra
+  Orçamento Anual, Fechamento Projetado e a diferença entre os dois.
+- **Nova curva "Projeção pelo ritmo realizado"** em `tendencia.py`
+  (`dados_tendencia`/`figura_tendencia`) — **diferente do Forecast
+  PMO**, que continua com a fórmula original intocada (redistribui o
+  saldo pra fechar exatamente no Orçado). A nova curva não força
+  convergência nenhuma: identifica o último mês com Realizado, calcula
+  a média mensal sobre os meses efetivamente considerados, e projeta
+  essa média pros meses restantes — pode fechar acima (vermelho) ou
+  abaixo (verde) do Orçado, cor semântica igual aos chips de status.
+  Sem nenhum mês com Realizado, a coluna fica vazia (nunca projeta em
+  cima de nada).
+- Encontrado durante a integração: um pacote de melhorias trazido pelo
+  usuário já tinha copiado `src/dashboard/projecao_opex.py` pro
+  repositório, mas dependia de uma coluna (`projecao_ritmo_acumulada`)
+  que nunca foi implementada em `tendencia.py` — a página quebraria com
+  `KeyError` assim que alguém a abrisse. Implementado agora.
+- Validado: testes de reconciliação existentes (Fase 4/5 — Delta Total,
+  fechamento do waterfall, Não Justificado) continuam batendo depois da
+  mudança; fórmula da nova curva conferida manualmente contra o dado
+  real das 3 famílias (PD/PP/PM). Fase 1/2/3 rodaram sem exceção
+  (divergências que aparecem ali contra baseline antigo são anteriores
+  a esta mudança, não relacionadas).
+
 ## 3.3.1 — 2026-08-28 (hotfix urgente, durante reunião)
 
 - **Corrige `NameError: name 'render_page_banner' is not defined`** na

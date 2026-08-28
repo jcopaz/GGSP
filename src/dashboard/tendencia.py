@@ -34,7 +34,7 @@ import plotly.graph_objects as go
 
 from src.dashboard.formatacao import fmt_reais_abrev
 from src.dashboard.grafico_interativo import com_alternancia_barra_linha
-from src.dashboard.paleta import COR_FORECAST, COR_ORCADO, COR_REALIZADO
+from src.dashboard.paleta import COR_ECONOMIA, COR_ESTOURO, COR_FORECAST, COR_ORCADO, COR_REALIZADO
 
 _NOMES_MES = {1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
               7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"}
@@ -154,6 +154,36 @@ def dados_tendencia(
             acumulado_forecast += (orcado_mes - ajuste_mensal)
             df.loc[df["mes"] == m, "tendencia_acumulada"] = acumulado_forecast
 
+    # Projeção pelo ritmo realizado — adicionada em 2026-08-28, pedido do
+    # usuário: curva DIFERENTE do Forecast PMO acima. O Forecast responde
+    # "quanto ainda posso gastar pra fechar exatamente no Orçado" (por
+    # construção, sempre converge em dezembro). Esta responde "se eu
+    # continuar gastando no ritmo médio de até agora, onde eu termino" —
+    # não força convergência nenhuma, pode fechar acima OU abaixo do
+    # Orçado, e é exatamente por isso que mostra estouro/economia que o
+    # Forecast, por desenho, nunca mostraria.
+    #
+    # Fórmula (especificada pelo usuário):
+    #   media_realizada = realizado_acumulado_ate_o_ultimo_mes / meses_considerados
+    #   fechamento_projetado = realizado_acumulado_ate_o_ultimo_mes + media_realizada * meses_restantes
+    #
+    # "meses_considerados" = quantidade de meses com `tem_realizado=True`
+    # (não o número do último mês em si — robusto a eventual lacuna, ex.:
+    # dado de Jan/Mar sem Fev). Sem nenhum mês com Realizado, a coluna
+    # fica toda `pd.NA` — nunca calcula projeção em cima de nada (pedido
+    # explícito do usuário: "se não houver nenhum mês realizado, não
+    # calcule uma projeção enganosa").
+    df["projecao_ritmo_acumulada"] = pd.NA
+    if not meses_com_dado.empty:
+        n_meses_considerados = len(meses_com_dado)
+        media_realizada = acumulado_ate_agora / n_meses_considerados
+
+        df.loc[df["mes"] == ultimo_mes, "projecao_ritmo_acumulada"] = acumulado_ate_agora
+        for m in meses_restantes:
+            df.loc[df["mes"] == m, "projecao_ritmo_acumulada"] = (
+                acumulado_ate_agora + media_realizada * (m - ultimo_mes)
+            )
+
     return df
 
 
@@ -192,6 +222,34 @@ def figura_tendencia(df: pd.DataFrame, titulo: str) -> go.Figure:
             "text": f"Forecast Dez: {fmt_reais_abrev(projecao_final)}",
             "showarrow": True, "arrowhead": 2, "ax": 30, "ay": -40,
             "font": {"color": COR_FORECAST, "size": 12}, "arrowcolor": COR_FORECAST,
+        })
+
+    # Projeção pelo ritmo realizado — traço próprio, cor semântica (não
+    # confundir com Forecast, que é sempre cinza pontilhado porque nunca
+    # diverge do Orçado por construção). Esta curva PODE divergir — vermelho
+    # se o ritmo atual projeta fechar acima do Orçado Anual, verde se
+    # abaixo. Adicionada 2026-08-28, pedido do usuário: "mostrar se o ritmo
+    # atual tende a terminar acima ou abaixo do orçamento" — nunca chamar
+    # de Forecast (são conceitos diferentes, ver docstring de
+    # `dados_tendencia`).
+    df_ritmo = df[df["projecao_ritmo_acumulada"].notna()]
+    if not df_ritmo.empty:
+        orcado_anual = float(df["orcado"].sum())
+        fechamento_projetado = float(df_ritmo["projecao_ritmo_acumulada"].iloc[-1])
+        cor_ritmo = COR_ESTOURO if fechamento_projetado > orcado_anual else COR_ECONOMIA
+        traces_extras.append(go.Scatter(
+            name="Projeção pelo ritmo realizado",
+            x=df_ritmo["mes_nome"], y=df_ritmo["projecao_ritmo_acumulada"],
+            mode="lines+markers", line={"color": cor_ritmo, "width": 2, "dash": "dash"},
+            text=[fmt_reais_abrev(v) for v in df_ritmo["projecao_ritmo_acumulada"]],
+            hovertemplate="Projeção pelo ritmo realizado: %{text}<extra></extra>",
+            visible=True,
+        ))
+        annotations.append({
+            "x": df_ritmo["mes_nome"].iloc[-1], "y": fechamento_projetado,
+            "text": f"Ritmo Dez: {fmt_reais_abrev(fechamento_projetado)}",
+            "showarrow": True, "arrowhead": 2, "ax": 30, "ay": 30,
+            "font": {"color": cor_ritmo, "size": 12}, "arrowcolor": cor_ritmo,
         })
 
     fig = com_alternancia_barra_linha(

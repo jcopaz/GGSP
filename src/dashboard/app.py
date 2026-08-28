@@ -93,6 +93,7 @@ from src.dashboard.nivel6_sap import render_nivel6_sap
 from src.dashboard.resumo_executivo import render_resumo_executivo
 from src.dashboard.visao_classificacao import render_visao_classificacao
 from src.dashboard.visao_manutencao import render_visao_manutencao
+from src.dashboard.projecao_opex import render_projecao_opex
 from src.dashboard.capex_resumo import render_resumo_executivo_capex
 from src.dashboard.capex_painel import render_painel_executivo_capex
 from src.dashboard.capex_contas import render_nivel4_contas_capex
@@ -559,6 +560,21 @@ def pagina_opex() -> None:
         con.close()
 
 
+def pagina_projecao_opex() -> None:
+    caminho_db = CFG["caminhos"]["warehouse_db"]
+    if not os.path.exists(caminho_db):
+        _aviso_base_nao_processada()
+        return
+    con = _conectar()
+    try:
+        if not _base_pronta(con):
+            _aviso_base_nao_processada()
+            return
+        render_projecao_opex(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
+    finally:
+        con.close()
+
+
 def pagina_manutencao() -> None:
     caminho_db = CFG["caminhos"]["warehouse_db"]
     if not os.path.exists(caminho_db):
@@ -851,6 +867,7 @@ pg = st.navigation({
         # ainda não tem arquivo carregado.
         st.Page(pagina_capex, title="CAPEX Manutenção — Malha", icon="🏗️"),
         st.Page(pagina_manutencao, title="Visão Manutenção (SP)", icon="🛠️"),
+        st.Page(pagina_projecao_opex, title="Projeção OPEX", icon="📈"),
         st.Page(pagina_contas, title="Nível 4 — Contas", icon="🧾"),
         st.Page(pagina_centro_custo, title="Nível 5 — Centro de Custo", icon="🏗️"),
         st.Page(pagina_sap, title="Nível 6 — Rastreabilidade SAP", icon="🔎"),
