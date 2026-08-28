@@ -7,6 +7,11 @@ Depende de `enableStaticServing = true` em `.streamlit/config.toml` e do
 arquivo em `src/dashboard/static/fin360.mp4` (Streamlit serve `static/` a
 partir da pasta do script principal, não da raiz do repo — e expõe sempre
 em `app/static/...`, independente de onde a pasta física está).
+
+Se o deploy no Streamlit Cloud der `ImportError: cannot import name
+'inject_shell_css'` mesmo depois de um Reboot, é cache do próprio
+Streamlit Cloud, não deste arquivo (conferido: repositório remoto sempre
+consistente) — ver docs/04-licoes-aprendidas.md, item 21.
 """
 from __future__ import annotations
 
