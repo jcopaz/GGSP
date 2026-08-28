@@ -4,6 +4,24 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 5.0.1 — 2026-08-28
+
+- **Logo do sidebar corrigido de verdade** (achado via DevTools real do
+  usuário, não mais tentativa às cegas): o seletor `[data-testid="stLogo"]`
+  usado nas duas tentativas anteriores (140px, 330px) nunca existiu —
+  o Streamlit expõe `data-testid="stSidebarLogo"` no wrapper e usa
+  `stLogo` como classe do `<img>`, não como data-testid. Corrigido pra
+  `[data-testid="stSidebarLogo"], img.stLogo` — mesmo tamanho pedido
+  (330px), agora realmente aplicado.
+- **Ícone do botão de abrir/fechar "Filtros" (sidebar) corrigido**: o
+  mesmo print mostrou um `<button>` com ícone `fill="currentColor"`
+  quase invisível — causado pela regra `[data-baseweb] * { color:
+  initial }` (2026-08-28, feita pra devolver contraste normal às caixas
+  de multiselect/selectbox) que também zerava a cor desse botão/ícone,
+  que fica dentro de um bloco `[data-baseweb]`. Reforça cor clara
+  especificamente pra `button`/`svg` nesse contexto, sem tocar no reset
+  das caixas de input.
+
 ## 5.0.0 — 2026-08-28 (correção de segurança)
 
 - **Remove senha padrão fixa (achado HIGH de revisão de segurança)**: a

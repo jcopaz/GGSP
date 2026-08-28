@@ -134,16 +134,41 @@ def inject_shell_css() -> None:
         [data-testid="stSidebar"] [data-testid="stCheckbox"] label span {
             border-color: var(--f360-sidebar-line) !important;
         }
+        /* Botão/ícone de abrir-fechar (ex.: seta do expander "Filtros")
+        dentro de um bloco com chrome próprio ([data-baseweb]) — achado
+        2026-08-28 via DevTools real (print do usuário): esse botão é
+        `fill="currentColor"`, e a regra de reset acima
+        (`[data-baseweb] * { color: initial }`, pensada pra caixa clara
+        de multiselect/selectbox) também zera a cor dele — herda preto
+        (valor inicial de `color`) sobre fundo quase transparente em
+        cima do navy da sidebar: some. Reforça claro só pra button/svg,
+        sem tocar no reset geral (que continua certo pras caixas de
+        input). */
+        [data-testid="stSidebar"] [data-baseweb] button,
+        [data-testid="stSidebar"] [data-baseweb] button svg {
+            color: var(--f360-sidebar-ink) !important;
+            fill: var(--f360-sidebar-ink) !important;
+        }
 
         /* Logo do st.logo() em 330px (pedido do usuário 2026-08-28: 3x o
-        tamanho-base de 110px) — Streamlit só oferece 3 tamanhos fixos
-        (small/medium/large) via parâmetro, nenhum grande o bastante;
-        força a largura real aqui. `max-width: 100%` evita rolagem
-        horizontal se a sidebar for redimensionada mais estreita que
-        330px; `height: auto` preserva a proporção 1:1 do asset. Seletor
-        não confirmado visualmente contra o app publicado (sem navegador
-        neste ambiente). */
-        [data-testid="stLogo"] { width: 330px !important; max-width: 100% !important; height: auto !important; }
+        tamanho-base de 110px) —
+        achado 2026-08-28 via DevTools real (print do usuário): o
+        seletor `[data-testid="stLogo"]` NUNCA existiu — o Streamlit
+        marca o elemento com `data-testid="stSidebarLogo"` e usa
+        "stLogo" só como CLASSE do <img>, não como valor de data-testid.
+        As duas tentativas anteriores (140px, 330px) não faziam nada
+        porque o seletor não batia em nenhum elemento da página — sem
+        relação com especificidade/!important, o CSS simplesmente não
+        era aplicado a nada. Miravam img sem tamanho renderizado real
+        (32×32, confirmado no print) por causa do CSS interno do
+        Streamlit (`st-emotion-cache-...`), daí target duplo (testid +
+        classe) e `!important` pra vencer aquele CSS interno de fato. */
+        [data-testid="stSidebarLogo"],
+        img.stLogo {
+            width: 330px !important;
+            max-width: 100% !important;
+            height: auto !important;
+        }
 
         /* Item de navegação ativo (st.navigation) — ver nota de
         fragilidade no docstring de inject_shell_css(). */
