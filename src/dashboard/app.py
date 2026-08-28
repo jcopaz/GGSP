@@ -350,27 +350,27 @@ def _zona_upload(tipo: str, info: dict) -> None:
 
 
 def pagina_upload() -> None:
-    st.header("Upload de Dados")
-    st.caption(
-        "Cada tipo de arquivo tem sua própria área de upload. O arquivo "
-        "enviado substitui o atual em data/raw/ (ou data/staging/ para "
-        "explicações de causa). **Rotina periódica**: formato padronizado "
-        "(Base Analítico SAP no formato de \"Base Analítico - GG.xlsx\", "
-        "CJI3, CJI4, Consulta de Contas — essa última é a única fonte de "
-        "OPEX Orçado/Comparativo 1, o Realizado dela continua sendo a "
-        "fonte de fact_realizado também) — sobe a cada nova rodada de "
-        "dado. **Sob demanda**: só quando o Orçamento Aprovado for "
-        "revisado ou a relação de contas mudar; sem eles, a tabela "
-        "correspondente só continua com o que já estava em data/raw/, não "
-        "trava o reprocessamento. A planilha de transferência do PCM "
-        "(Combustível Terceiros) saiu da rotina de upload — se precisar "
-        "ser atualizada, colocar direto em data/raw/ manualmente. Depois "
-        "de subir, clique em 'Reprocessar base' pra reconstruir o modelo: "
-        "as correções de Gerência (Malha SP/VP, Combustível Terceiros, "
-        "CGG050/GG direto — ver `docs/04-licoes-aprendidas.md`) rodam "
-        "automaticamente em cima do que estiver em data/raw/ nesse "
-        "momento, não precisa reaplicar nada na mão."
-    )
+    render_page_banner("📤", "Upload de Dados", "Cada arquivo tem sua própria área — o envio substitui o atual.")
+    with st.expander("Como funciona o upload"):
+        st.caption(
+            "**Rotina periódica**: formato padronizado (Base Analítico SAP "
+            "no formato de \"Base Analítico - GG.xlsx\", CJI3, CJI4, "
+            "Consulta de Contas — essa última é a única fonte de OPEX "
+            "Orçado/Comparativo 1, o Realizado dela continua sendo a fonte "
+            "de fact_realizado também) — sobe a cada nova rodada de dado. "
+            "**Sob demanda**: só quando o Orçamento Aprovado for revisado "
+            "ou a relação de contas mudar; sem eles, a tabela "
+            "correspondente só continua com o que já estava em data/raw/, "
+            "não trava o reprocessamento. A planilha de transferência do "
+            "PCM (Combustível Terceiros) saiu da rotina de upload — se "
+            "precisar ser atualizada, colocar direto em data/raw/ "
+            "manualmente. Depois de subir, clique em 'Reprocessar base' "
+            "pra reconstruir o modelo: as correções de Gerência (Malha "
+            "SP/VP, Combustível Terceiros, CGG050/GG direto — ver "
+            "`docs/04-licoes-aprendidas.md`) rodam automaticamente em cima "
+            "do que estiver em data/raw/ nesse momento, não precisa "
+            "reaplicar nada na mão."
+        )
 
     grupos: dict[str, list[tuple[str, dict]]] = {}
     for tipo, info in TIPOS_ARQUIVO.items():
@@ -711,21 +711,28 @@ def pagina_pce_especialista() -> None:
 
 
 def _renderizar_usuario_logado() -> None:
-    """Bloco de marca + conta. `st.logo()` (2026-08-28) substitui o vídeo
-    customizado pro topo da sidebar: é o mecanismo oficial do Streamlit
-    pra fixar uma marca acima do menu de `st.navigation()` — a tentativa
-    anterior via CSS (`with st.sidebar: render_logo_video()`) não
-    funcionava porque o menu de navegação fica numa posição própria,
-    independente da ordem de chamada no script. `st.logo()` só aceita
-    imagem estática, não vídeo — frame extraído do fin360.mp4, ver
-    `scripts/` (processo documentado no commit). Precisa ficar fora de
-    `with st.sidebar:` (não é sensível a container ambiente).
+    """Bloco de marca + conta. `st.logo()` (2026-08-28) é o mecanismo
+    oficial do Streamlit pra fixar uma marca acima do menu de
+    `st.navigation()` — a tentativa anterior via CSS (`with st.sidebar:
+    render_logo_video()`) não funcionava porque o menu de navegação fica
+    numa posição própria, independente da ordem de chamada no script.
 
-    Versão/assinatura ficam no rodapé (`_renderizar_rodape_sidebar`,
-    chamado depois de `pg.run()`), não repetidas aqui.
+    `st.logo()` só aceita imagem, não vídeo — mas aceita **GIF animado**,
+    que mantém o loop (pedido do usuário: "logo tem que ter movimento
+    igual ao do login"). `fin360_logo.gif` é gerado a partir do
+    `fin360.mp4` (75 frames, 110x110, paleta de 64 cores — ~600 KB, leve
+    o bastante pro primeiro carregamento da sidebar). `icon_image` (PNG
+    estático) é o que aparece só no estado colapsado da sidebar, onde
+    animação não faz diferença.
+
+    Precisa ficar fora de `with st.sidebar:` (não é sensível a container
+    ambiente). Versão/assinatura ficam no rodapé
+    (`_renderizar_rodape_sidebar`, chamado depois de `pg.run()`), não
+    repetidas aqui.
     """
-    caminho_logo = str(_RAIZ_PROJETO / "src" / "dashboard" / "static" / "fin360_logo.png")
-    st.logo(caminho_logo, size="large")
+    caminho_logo = str(_RAIZ_PROJETO / "src" / "dashboard" / "static" / "fin360_logo.gif")
+    caminho_icone = str(_RAIZ_PROJETO / "src" / "dashboard" / "static" / "fin360_logo.png")
+    st.logo(caminho_logo, icon_image=caminho_icone, size="large")
 
     with st.sidebar:
         st.caption(f"👤 {get_nome()} · {get_papel()}")

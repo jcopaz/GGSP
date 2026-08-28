@@ -22,6 +22,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.filtros import clausula_periodo
 from src.dashboard.formatacao import fmt_pct, fmt_reais_abrev, fmt_semaforo_chip
 from src.engine.semaforo import classificar_semaforo
@@ -208,21 +209,7 @@ def _render_card_gg(linha: pd.Series) -> None:
 
 
 def render_nivel1(con: duckdb.DuckDBPyConnection) -> None:
-    st.header("Nível 1 — Diretoria")
-    st.caption(
-        "Real Físico = Real Contabilizado (mesma fonte, confirmado pelo "
-        "usuário). Forecast segue como \"—\": fonte do PMO ainda não "
-        "recebida (ver docs/02-perguntas-em-aberto.md). Orçado CAPEX pode "
-        "aparecer \"—\" se o GG do card não tiver CAPEX atribuído (Base "
-        "Zero não tem coluna própria de GG — ver GAP em "
-        "_atribuir_gg_orcamento). Real/Delta/Aderência comparam só OPEX x "
-        "OPEX: CAPEX Realizado ainda não tem fonte carregada (aguardando "
-        "outro arquivo) — comparar contra o Orçado total inflaria o Delta "
-        "sem ser um estouro de verdade. Semáforo por Aderência: 🟢 95–105% "
-        "· 🟡 90–95%/105–110% · 🔴 fora dessa faixa · ⚪ sem dado (regra do "
-        "Capex Control Center). O waterfall por causa (Nível 2) aparece "
-        "logo abaixo."
-    )
+    render_page_banner("🧭", "Diretoria", "Real/Delta/Aderência comparam só OPEX x OPEX — waterfall por causa (Nível 2) logo abaixo.")
     resumo = resumo_nivel1(con)
     colunas = st.columns(len(resumo))
     for coluna, (_, linha) in zip(colunas, resumo.iterrows()):

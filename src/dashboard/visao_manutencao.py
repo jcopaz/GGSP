@@ -27,6 +27,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.filtros import clausula_periodo
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY, com_alternancia_barra_linha
@@ -224,13 +225,7 @@ def _render_card_manutencao(resumo: dict) -> None:
 
 
 def render_visao_manutencao(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
-    st.header("Visão Manutenção (SP)")
-    st.caption(
-        "Recorte da família de pacote PM (Manutenção Malha), réplica parcial "
-        "da página 'Visão Opex - Manutenção MALHA E GIV' do Power BI de "
-        "referência trazido em 2026-08-06. Só cobre SP porque é o único GG "
-        "com dado real carregado hoje."
-    )
+    render_page_banner("🛠️", "Manutenção (SP)", "Recorte da família de pacote PM (Manutenção Malha).")
 
     resumo = resumo_manutencao(con)
     nomes_pacote = mapa_nomes_pacote(con)

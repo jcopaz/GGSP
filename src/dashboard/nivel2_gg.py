@@ -12,6 +12,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.filtros import clausula_periodo, filtrar_periodo_df
 from src.dashboard.formatacao import fmt_pacote, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
@@ -165,16 +166,11 @@ def render_nivel2(
     daqui em 2026-08-10 (a pedido do usuário) — vira `render_tendencia_gg`,
     renderizada full-width abaixo da linha Nível 1/Nível 2, não espremida
     dentro da coluna estreita do waterfall."""
-    st.header("Nível 2 — Gerência Geral")
+    render_page_banner("📊", "Gerência Geral", "Waterfall do Delta por categoria de causa — Orçado x Real é só OPEX.")
     nome_gg = _nome_gg(con, gg_id)
     orcado, delta_total, df_categorias = dados_waterfall_gg(con, gg_id, caminho_explicacoes, categorias_validas)
     fig = figura_waterfall(nome_gg, orcado, delta_total, df_categorias)
     st.plotly_chart(fig, use_container_width=True, key=f"waterfall-{gg_id}", config=CONFIG_PLOTLY)
-    st.caption(
-        "Orçado x Real aqui é só OPEX — CAPEX Realizado ainda não tem "
-        "fonte carregada (aguardando outro arquivo). Ver CAPEX Orçado no "
-        "card do Nível 1."
-    )
 
     opcoes = [_SEM_SELECAO, *df_categorias["categoria"].tolist()]
     categoria_atual = st.session_state.get("categoria_selecionada")

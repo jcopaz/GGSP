@@ -16,6 +16,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.filtros import clausula_periodo, clausula_projeto_capex, combinar_clausulas
 from src.dashboard.formatacao import fmt_reais, fmt_reais_abrev
 from src.dashboard.capex_dados import tabelas_disponiveis
@@ -34,14 +35,7 @@ def _fmt_documento(valor) -> str:
 
 
 def render_nivel6_sap_capex(con: duckdb.DuckDBPyConnection) -> None:
-    st.header("Nível 6 — Rastreabilidade até Documento SAP (CAPEX)")
-    st.caption(
-        "CJI3 (Realizado de CAPEX de Projetos e Obras), no grão de "
-        "lançamento. Só Realizado — o CJI4 (Orçado) é planejamento, sem "
-        "documento/nota fiscal. Filtros de Pacote/Centro de Custo/"
-        "Coordenação/Gerência da barra lateral não se aplicam aqui (outro "
-        "vocabulário) — Período, Projeto/Elemento PEP e a busca abaixo, sim."
-    )
+    render_page_banner("🔎", "Rastreabilidade SAP", "CJI3, no grão de lançamento — só Realizado (CJI4/Orçado é planejamento, sem documento).")
 
     tem_orc, tem_real = tabelas_disponiveis(con)
     if not tem_real:

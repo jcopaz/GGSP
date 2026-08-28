@@ -38,6 +38,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.paleta import COR_CAPEX, COR_OPEX
@@ -147,17 +148,11 @@ def _render_card_classificacao(classificacao: str, resumo: dict) -> None:
 
 def render_visao_classificacao(con: duckdb.DuckDBPyConnection, classificacao: str) -> None:
     cor = _COR_CLASSIFICACAO[classificacao]
-    st.header(f"{_ICONE[classificacao]} {_TITULO[classificacao]}")
-    _badges_dominio()
-    st.caption(
-        "Só o Orçado é fatiado por Classificação Contábil — Realizado (SAP) "
-        "não carrega essa coluna por linha, e não dá pra herdar via Conta "
-        "sem o de/para (ver docs/02-perguntas-em-aberto.md, item 11). Por "
-        "isso Realizado aqui aparece só como referência de Malha (SP) "
-        "inteira, não fatiado — e por isso essa aba não tem gráfico de "
-        "Tendência (não daria pra mostrar Planejado x Realizado de "
-        "verdade); a evolução no tempo está no Painel Executivo."
+    render_page_banner(
+        _ICONE[classificacao], _TITULO[classificacao],
+        "Só o Orçado é fatiado por Classificação Contábil — Realizado aparece como referência de Malha (SP) inteira.",
     )
+    _badges_dominio()
 
     resumo = resumo_classificacao(con, classificacao)
     nomes_pacote = mapa_nomes_pacote(con)

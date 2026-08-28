@@ -4,6 +4,22 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 3.3.0 — 2026-08-28
+
+- **Card em gradiente em todas as páginas** (`render_page_banner`) — as
+  13 páginas que ainda tinham `st.header()` + parágrafo de legenda
+  longo passaram pro banner navy/dourado, subtítulo reduzido a 1 linha
+  essencial. Upload de Dados manteve o texto completo, mas movido pra
+  dentro de um expander ("Como funciona o upload") em vez de aberto.
+- **Logo animada de volta**: `st.logo()` agora usa um GIF (75 frames,
+  110×110, ~600 KB) gerado do próprio `fin360.mp4`, não mais PNG
+  estático — mantém o loop pedido, só troca vídeo por GIF (`st.logo()`
+  não aceita vídeo, mas aceita GIF animado). `icon_image` (PNG) cobre
+  só o estado colapsado da sidebar.
+- Logo maior via CSS (`width: 140px`) — não confirmado visualmente.
+- Testado via AppTest: as 12 páginas principais + a página default
+  rodaram sem exceção contra o warehouse local real antes de publicar.
+
 ## 3.2.0 — 2026-08-28
 
 - **Logo da sidebar via `st.logo()`** — substitui a tentativa de CSS

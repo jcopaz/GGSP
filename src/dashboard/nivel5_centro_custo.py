@@ -33,6 +33,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.arvore_html import CSS_ARVORE, NOME_FAMILIA, cabecalho_arvore, linha_resumo
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
@@ -238,11 +239,5 @@ def render_arvore_centro_custo(
 
 
 def render_nivel5_centro_custo(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
-    st.header("Nível 5 — Centro de Custo")
-    st.caption(
-        "Família de Pacote → Pacote → Centro de Custo, no mesmo estilo do "
-        "Nível 4. Diferente do Nível 4 (Conta), o código de Centro de "
-        "Custo é compartilhado entre Orçamento e Realizado, então aqui "
-        "fecha um Delta de verdade até a linha-folha."
-    )
+    render_page_banner("🏗️", "Centro de Custo", "Código compartilhado entre Orçamento e Realizado — fecha Delta de verdade até a linha-folha.")
     render_arvore_centro_custo(con, key_prefix="n5", ano_fiscal=ano_fiscal)

@@ -27,6 +27,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.arvore_html import (
     CSS_ARVORE,
     NOME_FAMILIA,
@@ -284,11 +285,5 @@ def render_arvore_contas(
 
 
 def render_nivel4_contas(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
-    st.header("Nível 4 — Contas")
-    st.caption(
-        "Família de Pacote → Pacote → Conta, Orçado x Real x Delta numa "
-        "linha só (unificado via Catálogo de Contas — antes abria em 2 "
-        "subárvores separadas). Conta sem nome catalogado mostra só o "
-        "código, nunca um nome inventado."
-    )
+    render_page_banner("🧾", "Contas", "Conta sem nome catalogado mostra só o código, nunca um nome inventado.")
     render_arvore_contas(con, key_prefix="n4", ano_fiscal=ano_fiscal)

@@ -22,6 +22,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.capex_dados import (
     dados_gerencia_obras,
     dados_projetos,
@@ -194,15 +195,7 @@ def render_mapa_calor_capex(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def render_painel_executivo_capex(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
-    st.header("Painel Executivo — CAPEX")
-    st.caption(
-        "CAPEX de Projetos e Obras — Orçado (CJI4) x Realizado (CJI3), "
-        "trazidos em 2026-08-11. Escopo de Gerência confirmado como GG "
-        "Infraestrutura (SP) (2026-08-12 — ver docs/02-perguntas-em-"
-        "aberto.md, item 21). Sem motor de causa: não há waterfall por "
-        "categoria (Físico/Efeito Preço/etc.) aqui — só Orçado x Real x "
-        "Delta."
-    )
+    render_page_banner("📊", "Painel Executivo", "Orçado (CJI4) x Realizado (CJI3) — sem waterfall por causa, só Orçado x Real x Delta.")
 
     tem_orc, tem_real = tabelas_disponiveis(con)
     if not tem_orc and not tem_real:

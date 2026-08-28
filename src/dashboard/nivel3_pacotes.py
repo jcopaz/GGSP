@@ -12,6 +12,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.filtros import clausula_periodo, combinar_clausulas, filtrar_periodo_df
 from src.dashboard.formatacao import fmt_pacote, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.nivel2_gg import _pacotes_do_gg
@@ -106,12 +107,11 @@ def render_nivel3(
     caminho_explicacoes: str,
     categorias_validas: list[str],
 ) -> None:
-    st.header("Nível 3 — Pacotes")
+    render_page_banner("📦", "Pacotes", f"Pacotes em '{categoria}' — maior para menor impacto.")
     df_ranking = dados_ranking_pacotes(con, gg_id, categoria, caminho_explicacoes, categorias_validas)
     if df_ranking.empty:
         st.info(f"Nenhum pacote com valor em '{categoria}' neste recorte.")
         return
-    st.caption(f"Pacotes em '{categoria}' — maior para menor impacto.")
     st.caption("🔴 vermelho = estouro (valor positivo) · 🟢 verde = economia (valor negativo).")
     st.dataframe(
         tabela_ranking(df_ranking, mapa_nomes_pacote(con)),

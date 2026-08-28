@@ -16,6 +16,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.filtros import clausula_periodo, clausula_where, combinar_clausulas
 from src.dashboard.formatacao import fmt_reais, fmt_reais_abrev
 
@@ -29,13 +30,12 @@ def _fmt_codigo(valor: float | None) -> str:
 
 
 def render_nivel6_sap(con: duckdb.DuckDBPyConnection) -> None:
-    st.header("Nível 6 — Rastreabilidade até Documento SAP")
+    render_page_banner("🔎", "Rastreabilidade SAP", "Só para Realizado — a Base Zero (Orçamento) não tem documento/nota fiscal.")
     st.caption(
-        "Só para Realizado — a Base Zero (Orçamento) é planejamento, não "
-        "tem documento/nota fiscal. 'Usuário' do lançamento não está no "
-        "export atual; o campo mais próximo é o responsável (ponta firme). "
-        "Pacote/Centro de Custo/Coordenação/Período usam os filtros da "
-        "barra lateral — a busca abaixo é só texto livre."
+        "'Usuário' do lançamento não está no export atual; o campo mais "
+        "próximo é o responsável (ponta firme). Pacote/Centro de Custo/"
+        "Coordenação/Período usam os filtros da barra lateral — a busca "
+        "abaixo é só texto livre."
     )
 
     busca = st.text_input("Buscar por fornecedor, documento ou NF", "")

@@ -44,6 +44,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.filtros import clausula_periodo, periodo_efetivo
 from src.dashboard.formatacao import (
     escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, fmt_semaforo, mapa_nomes_pacote,
@@ -416,12 +417,7 @@ def render_resumo_executivo(
     simulado: bool,
     ano_fiscal: int,
 ) -> None:
-    st.header("Visão Resumo Executivo — GGSP")
-    st.caption(
-        "Leitura rápida da GG Infraestrutura (SP): quanto é o desvio, "
-        "CAPEX x OPEX, quanto já está explicado e como o resultado se "
-        "distribui nas Gerências Locais."
-    )
+    render_page_banner("🧭", "Resumo Executivo", "Quanto é o desvio, CAPEX x OPEX, e como se distribui nas Gerências Locais.")
     if simulado:
         st.warning(
             "🎲 Modo simulação ativo — os valores de causa/justificativa "

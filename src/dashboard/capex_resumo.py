@@ -19,6 +19,7 @@ import duckdb
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.branding import render_page_banner
 from src.dashboard.capex_dados import (
     dados_gerencia_obras,
     dados_projetos,
@@ -72,19 +73,7 @@ def _grafico_gerencia_obras(df) -> go.Figure:
 
 
 def render_resumo_executivo_capex(con: duckdb.DuckDBPyConnection) -> None:
-    st.header("Resumo Executivo — CAPEX")
-    st.caption(
-        "CAPEX de Projetos e Obras (fora da Malha SP) — Orçado vem do CJI4, "
-        "Realizado do CJI3, ambos trazidos em 2026-08-11. Escopo de "
-        "Gerência confirmado como GG Infraestrutura (SP) em 2026-08-12 "
-        "(Expansão, Obras Ferroviárias, Baixada Santista, Mobilidade "
-        "Urbana, Corredor São Paulo) — esta aba fica separada do total "
-        "Orçamento (CAPEX+OPEX) "
-        "mostrado no Painel OPEX porque é outro universo (Projetos, não "
-        "Manutenção Corrente), não por dúvida de escopo. Sem motor de "
-        "causa ainda: não há captação de justificativa pra Projetos e "
-        "Obras."
-    )
+    render_page_banner("🧭", "Resumo Executivo", "CAPEX de Projetos e Obras — Orçado (CJI4) x Realizado (CJI3).")
 
     tem_orc, tem_real = tabelas_disponiveis(con)
     if not tem_orc and not tem_real:
