@@ -4,6 +4,29 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.2.2 — 2026-08-29
+
+- **Logo do sidebar: centralizada de verdade** — `stSidebarHeader` ficava
+  lado a lado com o botão de colapsar (irmãos no mesmo flex row) e só
+  ocupava a largura do próprio conteúdo (110px), início da linha. Agora
+  cresce (`flex:1; width:100%`) pra tomar o espaço que sobra, e
+  `justify-content:center` passa a centralizar em relação à sidebar
+  inteira, não só dentro da própria moldura.
+- **Filtros — removidas as regras de CSS que forçavam cor/fundo/borda/
+  formato nos ícones internos do multiselect (seta, x)**, depois de
+  comparar com o código-fonte do MRS Sentinel: mesmo `st.multiselect`,
+  mesma engine BaseWeb, **zero CSS mirando esses elementos** — funciona
+  liso lá porque o `primaryColor` de lá é azul-marinho escuro (alto
+  contraste natural com "×" branco). O Fin360 usa `primaryColor` dourado;
+  as regras removidas foram criadas quando a sidebar ainda era navy
+  escuro (precisava mesmo forçar ícone claro) e provavelmente estavam
+  brigando com o comportamento nativo do BaseWeb agora que a sidebar já
+  é clara (6.2.0). Se o contorno persistir depois disso, a causa real é
+  o dourado do tema, não CSS — decisão de trocar `primaryColor` fica pro
+  usuário.
+- Validado: `py_compile`, `AppTest` completo sem exceção. Confirmação
+  visual pendente (logo + filtros).
+
 ## 6.2.1 — 2026-08-29
 
 - **Logo da sidebar: mesmo loop da tela de login, finalmente**. Print do

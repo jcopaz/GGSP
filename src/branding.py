@@ -142,42 +142,25 @@ def inject_shell_css() -> None:
         [data-testid="stSidebar"] [data-testid="stCheckbox"] label span {
             border-color: var(--f360-sidebar-line) !important;
         }
-        /* Botão/ícone de abrir-fechar (ex.: seta do expander "Filtros")
-        dentro de um bloco com chrome próprio ([data-baseweb]) — achado
-        2026-08-28 via DevTools real (print do usuário): esse botão é
-        `fill="currentColor"`, e a regra de reset acima
-        (`[data-baseweb] * { color: initial }`, pensada pra caixa clara
-        de multiselect/selectbox) também zera a cor dele — herda preto
-        (valor inicial de `color`) sobre fundo quase transparente em
-        cima do navy da sidebar: some. Reforça claro só pra button/svg,
-        sem tocar no reset geral (que continua certo pras caixas de
-        input). */
-        [data-testid="stSidebar"] [data-baseweb] button,
-        [data-testid="stSidebar"] [data-baseweb] button svg,
-        [data-testid="stSidebar"] [data-baseweb] [role="button"],
-        [data-testid="stSidebar"] [data-baseweb] [role="button"] svg {
-            color: var(--f360-sidebar-ink) !important;
-            fill: var(--f360-sidebar-ink) !important;
-        }
-        /* "Contorno preto" feio na seta (abrir opções) e no "x" (remover
-        tag/limpar tudo) do multiselect — achado 2026-08-29 (print do
-        usuário), corrigido parcialmente numa rodada anterior só pra
-        <button>. Print seguinte mostrou que ainda sobra contorno + a
-        seta de abrir opções aparece QUADRADA — sinal de que o controle
-        real é um `[role="button"]` (div/span, comum no BaseWeb pra
-        ícones clicáveis dentro de Tag/Select), não um <button> puro, e
-        de que ele carrega um `border-radius` pequeno/fixo do próprio
-        componente em vez de circular. Alvo ampliado pra `[role="button"]`
-        também, e força `border-radius:50%` pra qualquer um desses virar
-        círculo — nunca quadrado — independente do valor que o BaseWeb
-        aplicar por padrão. */
-        [data-testid="stSidebar"] [data-baseweb] button,
-        [data-testid="stSidebar"] [data-baseweb] [role="button"] {
-            background: transparent !important;
-            border: none !important;
-            border-radius: 50% !important;
-            box-shadow: none !important;
-        }
+        /* Ícones internos do multiselect/select (seta de abrir opções,
+        "x" de remover tag/limpar tudo) — histórico de 3 rodadas de CSS
+        forçando cor/fundo/borda/formato nesses elementos (2026-08-28/29),
+        todas criadas quando a sidebar ainda era navy escuro (precisava
+        MESMO forçar ícone claro, senão sumia). Removidas em 2026-08-29
+        (rodada 7), depois de comparar com o MRS Sentinel: mesmo
+        `st.multiselect`, mesma engine BaseWeb, ZERO CSS mirando essas
+        classes lá — e funciona liso, porque o `primaryColor` de lá é
+        azul-marinho escuro (par de alto contraste natural com "×"
+        branco). O Fin360 usa `primaryColor` dourado; a "caixinha"/
+        contorno que aparecia nos prints provavelmente era o próprio
+        BaseWeb tentando compensar contraste — e as regras daqui,
+        pensadas pro navy antigo, provavelmente brigavam com esse
+        comportamento nativo em vez de simplesmente deixar ele acontecer,
+        agora que a sidebar já é clara (2026-08-29) e não tem mais o
+        conflito original de fundo escuro. Se ainda aparecer contorno
+        depois de tirar essas regras, o problema é o próprio dourado do
+        tema (`primaryColor` em .streamlit/config.toml) — troca de cor de
+        marca, decisão do usuário, não algo que CSS resolve por cima. */
 
         /* Logo do st.logo() na sidebar — histórico das rodadas 1-4
         (2026-08-28/29): seletor errado, depois corte nas bordas, depois
@@ -213,6 +196,20 @@ def inject_shell_css() -> None:
             margin-bottom: 1.1rem !important;
             padding-bottom: 0.6rem !important;
             border-bottom: 1px solid var(--f360-sidebar-line);
+            /* Achado 2026-08-29 (rodada 6): logo com tamanho/loop certos,
+            mas ainda encostada à esquerda — `stSidebarHeader` fica lado a
+            lado com `stSidebarCollapseButton` (irmãos dentro do mesmo
+            flex row de `stSidebarContent`) e, por padrão, só ocupa a
+            largura do próprio conteúdo (a moldura de 110px), início da
+            linha. `flex:1` + `width:100%` faz o header crescer e tomar
+            todo o espaço que sobra ao lado do botão de colapsar — só
+            assim o `justify-content:center` abaixo centraliza de verdade
+            em relação à sidebar inteira, não só dentro da própria
+            moldura. */
+            flex: 1 1 auto !important;
+            width: 100% !important;
+            display: flex !important;
+            justify-content: center !important;
         }
         /* Moldura: círculo de tamanho fixo, overflow:hidden recorta tudo
         que passar da borda — exatamente o papel do <div> externo de
