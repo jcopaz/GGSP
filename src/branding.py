@@ -153,46 +153,59 @@ def inject_shell_css() -> None:
         sem tocar no reset geral (que continua certo pras caixas de
         input). */
         [data-testid="stSidebar"] [data-baseweb] button,
-        [data-testid="stSidebar"] [data-baseweb] button svg {
+        [data-testid="stSidebar"] [data-baseweb] button svg,
+        [data-testid="stSidebar"] [data-baseweb] [role="button"],
+        [data-testid="stSidebar"] [data-baseweb] [role="button"] svg {
             color: var(--f360-sidebar-ink) !important;
             fill: var(--f360-sidebar-ink) !important;
         }
         /* "Contorno preto" feio na seta (abrir opções) e no "x" (remover
-        tag/limpar tudo) do multiselect — achado 2026-08-29, print do
-        usuário: a regra "Botão comum" (`button:not([kind="primary"])`
-        acima, pensada pra botão de verdade tipo "Sair"/"Aplicar
-        filtros") também pinta fundo + borda nesses ÍCONES internos do
-        BaseWeb, porque tecnicamente também são <button>. Vira uma
-        caixinha visível em volta de um "x"/seta que deveria ser só o
-        traço do ícone. Neutraliza fundo/borda especificamente dentro de
-        [data-baseweb] — a cor clara do ícone já vem da regra acima, não
-        muda aqui. */
-        [data-testid="stSidebar"] [data-baseweb] button {
+        tag/limpar tudo) do multiselect — achado 2026-08-29 (print do
+        usuário), corrigido parcialmente numa rodada anterior só pra
+        <button>. Print seguinte mostrou que ainda sobra contorno + a
+        seta de abrir opções aparece QUADRADA — sinal de que o controle
+        real é um `[role="button"]` (div/span, comum no BaseWeb pra
+        ícones clicáveis dentro de Tag/Select), não um <button> puro, e
+        de que ele carrega um `border-radius` pequeno/fixo do próprio
+        componente em vez de circular. Alvo ampliado pra `[role="button"]`
+        também, e força `border-radius:50%` pra qualquer um desses virar
+        círculo — nunca quadrado — independente do valor que o BaseWeb
+        aplicar por padrão. */
+        [data-testid="stSidebar"] [data-baseweb] button,
+        [data-testid="stSidebar"] [data-baseweb] [role="button"] {
             background: transparent !important;
             border: none !important;
+            border-radius: 50% !important;
+            box-shadow: none !important;
         }
 
-        /* Logo do st.logo() na sidebar — histórico das rodadas 1-3
-        (2026-08-28/29): seletor errado (`[data-testid="stLogo"]` nunca
-        existiu — o real é `data-testid="stSidebarLogo"`, "stLogo" é só
-        CLASSE do <img>), depois corte nas bordas (container pai com
-        altura fixa), depois logo QUADRADA e DESCENTRALIZADA — porque
-        cada ajuste ficava só no <img>, tentando fazer 1 elemento único
-        fazer o papel de "moldura circular" E "conteúdo com zoom" ao
-        mesmo tempo. `transform:scale` aplicado num elemento que JÁ tem
-        `border-radius`/tamanho fixo escala o RECORTE inteiro junto (não
-        dá pra "dar zoom no conteúdo mantendo a moldura fixa" com 1 nó
-        só) — por isso continuava quadrada/torta.
+        /* Logo do st.logo() na sidebar — histórico das rodadas 1-4
+        (2026-08-28/29): seletor errado, depois corte nas bordas, depois
+        quadrada/descentralizada (container vs. moldura). Rodada 4 corrigiu
+        a estrutura (moldura circular fixa no `<div>` que o `st.logo()` já
+        gera em volta do `<img>`, replicando `render_logo_video()`), mas
+        ainda aplicava `transform:scale(1.7)` no `<img>` — e o PRÓPRIO
+        `fin360_logo.gif` já vinha com esse mesmo recorte/zoom pré-aplicado
+        na geração do arquivo (mesma técnica usada aqui: crop central 1:1 +
+        zoom 1.7x, "congelados" em cada frame do GIF). Resultado: zoom
+        duplicado — a moldura circular acabava mostrando só o centro morto
+        de cada frame (círculo preto sólido, sem a marca), bem diferente
+        do vídeo da tela de login.
 
-        Rodada 4 (2026-08-29): replica a MESMA estrutura de 2 nós que já
-        funciona em `render_logo_video()` (tela de login) — lá é
-        <div moldura: tamanho fixo + border-radius:50% + overflow:hidden>
-        > <video conteúdo: 100% + transform:scale(1.7)>. Aqui o `st.logo()`
-        já entrega esse 2º nó de graça: o `<div>` sem atributo, direto
-        filho de `stSidebarHeader`, que embrulha o <img> (confirmado via
-        DevTools no achado do seletor, rodada 1) — vira a MOLDURA; o
-        <img> em si vira o CONTEÚDO. Mesmo fator de escala (1.7) do
-        vídeo, mesma marca/arquivo fonte. */
+        Rodada 5 (2026-08-29, achado por inspeção direta dos frames do GIF
+        e do vídeo fonte, não por tentativa): `fin360_logo.gif` foi
+        REGENERADO a partir do mesmo `fin360.mp4`, com o crop 1:1 + zoom
+        1.7x aplicado 1x só (na geração do arquivo — por isso o CSS abaixo
+        NÃO tem mais `transform:scale`, só `object-fit:cover` pra preencher
+        a moldura). De quebra, também corrigido o problema real de "loop
+        diferente": o GIF antigo tinha só 38 frames (amostrados a cada
+        ~11,8 frames dos 450 do vídeo) — como a animação passa por fases
+        bem distintas (marca oculta → aparecendo em cor → cor cheia →
+        cinza → dourado, ver docs/04-licoes-aprendidas.md), amostragem tão
+        esparsa pulava fases inteiras e parecia "outra animação". Novo GIF:
+        75 frames (a cada 6 frames = 200ms/frame, mesmo 1 loop de 15s do
+        vídeo), 2,6 MB (era 1,4 MB —137 KB a mais por frame extra, aceito
+        pelo usuário em troca de fluidez igual ao login). */
         [data-testid="stSidebarHeader"] {
             height: auto !important;
             min-height: 0 !important;
@@ -215,17 +228,16 @@ def inject_shell_css() -> None:
             justify-content: center !important;
             box-shadow: 0 6px 18px rgba(15, 23, 42, 0.28) !important;
         }
-        /* Conteúdo: preenche a moldura inteira e depois dá zoom — o zoom
-        empurra a margem escura do arquivo fonte pra fora da área visível
-        (a moldura acima corta o excesso), exatamente o papel do <video>
-        interno de render_logo_video(). */
+        /* Conteúdo: preenche a moldura inteira — SEM transform:scale
+        aqui (rodada 5, ver histórico acima): o zoom/recorte da margem
+        escura já vem pré-aplicado em cada frame do `fin360_logo.gif`
+        regenerado, replicar de novo via CSS duplicava o zoom. */
         [data-testid="stSidebarLogo"],
         img.stLogo {
             width: 100% !important;
             height: 100% !important;
             max-width: none !important;
             object-fit: cover !important;
-            transform: scale(1.7) !important;
         }
 
         /* Item de navegação ativo (st.navigation) — ver nota de

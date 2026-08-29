@@ -783,10 +783,18 @@ def _renderizar_usuario_logado() -> None:
     `st.logo()` só aceita imagem, não vídeo — mas aceita **GIF animado**,
     que mantém o loop (pedido do usuário: "logo tem que ter movimento
     igual ao do login"). `fin360_logo.gif` é gerado a partir do
-    `fin360.mp4` (38 frames, 280x280, paleta de 64 cores — ~1.4 MB;
-    reescalado em 2026-08-28 pra acompanhar o logo em 330px via CSS —
-    ver `inject_shell_css`). `icon_image` (PNG estático) é o que aparece
-    só no estado colapsado da sidebar, onde animação não faz diferença.
+    `fin360.mp4` — **regenerado em 2026-08-29** (75 frames, 280x280,
+    paleta de 64 cores, ~2,6 MB; era 38 frames/~1,4 MB) depois do usuário
+    reportar "loop diferente da tela de login": a amostragem antiga (a
+    cada ~11,8 dos 450 frames do vídeo) pulava fases inteiras da animação
+    (marca oculta → cor → cinza → dourado), parecendo outra animação. O
+    crop 1:1 + zoom 1,7x (mesmo tratamento do `<video>` da tela de login,
+    `render_logo_video()`) agora é aplicado 1x só, na geração do GIF —
+    não mais também via CSS (`inject_shell_css`), que causava zoom
+    duplicado (círculo preto sólido, sem a marca — ver histórico ali).
+    `icon_image` (PNG estático) é o que aparece só no estado colapsado da
+    sidebar, onde animação não faz diferença — já vinha bem enquadrado,
+    não precisou regenerar.
 
     **Conflito registrado** (pedido posterior pediu usar `fin360.mp4`
     direto, sem converter pra GIF): mantive o GIF de propósito — é a

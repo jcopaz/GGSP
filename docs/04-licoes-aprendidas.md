@@ -492,3 +492,43 @@ imediatamente (o campo continua funcionando, só pior), o que a torna fácil
 de carregar adiante por várias sessões sem ninguém perceber, até alguém
 (neste caso, o usuário) dar um exemplo concreto que não bate com a
 suposição.
+
+---
+
+## 23. Logo animada da sidebar "parecia outra animação" — causa era amostragem esparsa de frames, achada só inspecionando os frames de verdade (2026-08-29)
+
+**Causa raiz 1 (a mais importante)**: `fin360_logo.gif` (usado no
+`st.logo()` da sidebar) tinha só 38 frames, amostrados a cada ~11,8 dos
+450 frames do `fin360.mp4` fonte (mesmo vídeo da tela de login). Só
+depois de extrair e OLHAR frames reais do vídeo (não adivinhar) ficou
+claro que a animação passa por fases bem distintas ao longo do loop de
+15s — marca oculta → aparecendo em cor → cor cheia → cinza → dourado —,
+não é só "um anel girando com a marca sempre visível". Amostrar 1 a cada
+~12 frames pula fases inteiras, produzindo uma sequência com saltos
+bruscos entre estados muito diferentes: pareceu "outra animação" pro
+usuário porque, na prática, ERA uma versão bem mais pobre da mesma
+animação, não a mesma coisa em qualidade pior.
+
+**Causa raiz 2 (mascarava a 1ª)**: a correção anterior (CSS, ver
+`branding.py::inject_shell_css`) tinha acabado de resolver forma/posição
+do logo aplicando `transform:scale(1.7)` no `<img>` — mas o próprio
+`fin360_logo.gif` (regenerado antes, rodada anterior) já vinha com esse
+mesmo recorte/zoom pré-embutido em cada frame. O zoom duplicado fazia a
+moldura circular mostrar só o centro morto do frame (círculo preto
+sólido) na maior parte do tempo — o que por si só já parecia "quebrado",
+antes mesmo de chegar na causa raiz 1 (amostragem esparsa).
+
+**Correção**: GIF regenerado do zero a partir do `fin360.mp4` — crop 1:1
++ zoom 1,7x aplicado 1x só na geração do arquivo (não mais também via
+CSS), 75 frames (a cada 6 frames = 200ms/frame, mesmo loop de 15s do
+vídeo) em vez de 38. Custo: ~2,6 MB em vez de ~1,4 MB — aceito em troca
+de fluidez comparável ao vídeo.
+
+**Lição**: quando um asset gerado (GIF/imagem/export) "parece errado" de
+um jeito difícil de descrever em palavras, extrair e OLHAR frames/
+amostras reais do arquivo (via PIL/cv2, sem precisar de navegador) é mais
+rápido e mais confiável que ajustar CSS/parâmetro por tentativa — foi
+assim que a causa raiz 1 apareceu (looking at actual frames revelou as
+fases da animação, invisível só lendo o código ou os metadados do
+arquivo). Mesma disciplina de "conferir no dado real" já usada pra
+tabelas/planilhas, aplicada aqui a um asset de mídia.

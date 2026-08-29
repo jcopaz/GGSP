@@ -4,6 +4,32 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.2.1 — 2026-08-29
+
+- **Logo da sidebar: mesmo loop da tela de login, finalmente**. Print do
+  usuário mostrou que o tamanho/posição já estava certo (rodada 5.x), mas
+  o "loop" continuava diferente do login. Investigação com frames reais
+  (não tentativa): 2 causas raiz.
+  1. `fin360_logo.gif` tinha só 38 frames amostrados esparsamente (a cada
+     ~11,8 dos 450 frames do `fin360.mp4`) — a animação passa por fases
+     bem distintas (marca oculta → cor → cinza → dourado, não só um anel
+     girando), então a amostragem esparsa pulava fases inteiras.
+  2. O CSS ainda aplicava `transform:scale(1.7)` no `<img>`, mas o GIF já
+     tinha esse recorte pré-aplicado em cada frame — zoom duplicado,
+     mostrando o centro morto de cada frame (círculo preto sólido).
+  - Corrigido: `fin360_logo.gif` regenerado do zero a partir do
+    `fin360.mp4` (75 frames, crop+zoom aplicado 1x só na geração,
+    ~2,6 MB — era 1,4 MB); CSS não aplica mais `transform:scale`.
+  - Lição registrada em `docs/04-licoes-aprendidas.md` item 23.
+- **Filtros — seta quadrada + contorno restante**: a correção anterior
+  (6.1.4) só cobria `<button>`; ampliado pra também pegar
+  `[role="button"]` (comum no BaseWeb pra ícones clicáveis) e força
+  `border-radius:50%` em qualquer um dos dois — resolve tanto o
+  contorno quanto o formato quadrado da seta, independente do que o
+  BaseWeb aplicar por padrão.
+- Validado: `py_compile`, `AppTest` completo sem exceção. Confirmação
+  visual pendente.
+
 ## 6.2.0 — 2026-08-29
 
 - **Sidebar vira clara** (cinza-azulado, não mais navy sólido) —
