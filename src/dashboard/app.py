@@ -822,7 +822,7 @@ def _renderizar_rodape_sidebar() -> None:
         st.markdown(
             f"""
             <div style="text-align:center;margin-top:1rem;padding-top:0.8rem;
-                border-top:1px solid rgba(255,255,255,0.08);color:#8ea0bf;font-size:0.72rem;">
+                border-top:1px solid rgba(22,40,63,0.12);color:#5b6b85;font-size:0.72rem;">
                 v{APP_VERSION}<br>Desenvolvido por Julio Paz
             </div>
             """,

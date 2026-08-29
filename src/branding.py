@@ -21,13 +21,25 @@ LOGO_VIDEO_URL = "app/static/fin360.mp4"
 
 
 def inject_shell_css() -> None:
-    """Casca visual do painel inteiro (fundo, sidebar, tipografia) —
-    aprovada pelo usuário em 2026-08-27 (ver artefato de proposta). A
-    paleta de gráfico (`paleta.py`) não é tocada aqui, só o "entorno":
+    """Casca visual do painel inteiro (fundo, sidebar, tipografia).
 
-    - Sidebar vira navy sólido (identidade de marca), texto claro.
-    - Fundo do conteúdo principal em cinza-azulado (mesmo tom da tela de
-      login), cards continuam brancos.
+    Sidebar em navy sólido (identidade de marca) foi a versão aprovada em
+    2026-08-27 — **substituída em 2026-08-29** por pedido explícito do
+    usuário: os ícones internos do BaseWeb (seta de abrir opções, x de
+    remover tag/limpar tudo) continuavam com contraste ruim contra o
+    navy mesmo depois de 2 rodadas de correção cirúrgica (cor do ícone,
+    depois fundo/borda do botão) — o usuário decidiu trocar o fundo da
+    sidebar pra claro em vez de continuar caçando seletor exato do
+    BaseWeb. Variáveis `--f360-sidebar-*` viraram tons claros (mesma
+    função de cada uma, só valor invertido); `--f360-gold` não muda —
+    accent dourado funciona em qualquer fundo.
+
+    - Sidebar em cinza-azulado claro (mesmo tom de `secondaryBackgroundColor`
+      do tema), texto escuro — texto solto E caixa de widget (multiselect/
+      selectbox) ficam no mesmo mundo tonal agora, sem mais o choque
+      "caixa clara ilha no meio do navy" que gerava contorno feio.
+    - Fundo do conteúdo principal em branco (`.streamlit/config.toml
+      [theme] backgroundColor`), cards continuam brancos.
     - Fraunces nos títulos, IBM Plex Sans na interface, IBM Plex Mono em
       número (aplicado card a card, não globalmente ainda).
 
@@ -46,11 +58,11 @@ def inject_shell_css() -> None:
         """
         <style>
         :root {
-            --f360-sidebar-bg: #16283f;
-            --f360-sidebar-bg-2: #1c3250;
-            --f360-sidebar-ink: #e9edf5;
-            --f360-sidebar-ink-muted: #8ea0bf;
-            --f360-sidebar-line: #2a3e5c;
+            --f360-sidebar-bg: #eef1f6;
+            --f360-sidebar-bg-2: #f8f9fc;
+            --f360-sidebar-ink: #16283f;
+            --f360-sidebar-ink-muted: #5b6b85;
+            --f360-sidebar-line: #d8dfea;
             --f360-gold: #c9932f;
         }
 
@@ -68,20 +80,17 @@ def inject_shell_css() -> None:
         usuário em 2026-08-28 pra reverter do cinza-azulado testado antes.
         Não sobrescrever aqui de novo. */
 
-        /* ---- Sidebar: vira a marca ---- */
+        /* ---- Sidebar: cinza-azulado claro (2026-08-29, ver docstring) ---- */
         [data-testid="stSidebar"] {
             background: linear-gradient(175deg, var(--f360-sidebar-bg-2) 0%, var(--f360-sidebar-bg) 55%) !important;
         }
-        /* Recolore só o que fica direto em cima do fundo navy (texto solto,
-        título, label de widget) — NUNCA o interior de um widget (caixa de
-        multiselect/selectbox, popover de dropdown, ícone de ajuda "?").
-        Achado em 2026-08-28: a regra genérica `[data-testid="stSidebar"] *
-        { color: claro }` também forçava o texto/ícone de DENTRO dos
-        widgets pra claro — e a caixa desses widgets é clara por padrão
-        (tema global, ver .streamlit/config.toml), então virava texto/seta/
-        interrogação claro em cima de fundo claro: sumia ou ficava
-        ilegível. Widget mantém a cor do tema global (escura sobre caixa
-        clara) — só o label/texto solto ao redor vira claro. */
+        /* Recolore o que fica direto em cima do fundo da sidebar (texto
+        solto, título, label de widget). Antes (sidebar navy) essa regra
+        também precisava de um reset separado pro interior dos widgets —
+        agora que o fundo é claro dos dois lados (sidebar E caixa de
+        multiselect/selectbox), texto escuro funciona igual nos dois
+        contextos, então o reset abaixo virou rede de segurança
+        (redundante, não removido por precaução — não custa nada manter). */
         [data-testid="stSidebar"] > div > div,
         [data-testid="stSidebar"] p,
         [data-testid="stSidebar"] span:not([data-baseweb] *),
@@ -93,9 +102,6 @@ def inject_shell_css() -> None:
         [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {
             color: var(--f360-sidebar-ink);
         }
-        /* Mas nunca dentro de um controle com chrome próprio (caixa clara
-        do tema) — devolve pro padrão do tema (escuro), não herda o claro
-        acima. */
         [data-testid="stSidebar"] [data-baseweb],
         [data-testid="stSidebar"] [data-baseweb] * {
             color: initial;
@@ -112,15 +118,17 @@ def inject_shell_css() -> None:
         /* Botão comum (secundário, ex. "Sair"/"Limpar filtros") — sutil.
         `:not([kind="primary"])` é o que faltava: sem essa exclusão, esta
         regra também achatava o botão PRIMÁRIO (ex. "Aplicar filtros",
-        type="primary") pro mesmo estilo fantasma — ficava sem contraste
-        nenhum, quase invisível contra o navy (achado 2026-08-28). */
+        type="primary") pro mesmo estilo fantasma. Tinta escura (não mais
+        branca) em 2026-08-29 — um véu branco translúcido só aparece
+        contra fundo escuro; no fundo claro de agora, o véu precisa ser
+        escuro pra continuar visível como "botão sutil". */
         [data-testid="stSidebar"] button:not([kind="primary"]) {
-            background: rgba(255,255,255,0.06) !important;
+            background: rgba(22, 40, 63, 0.05) !important;
             border: 1px solid var(--f360-sidebar-line) !important;
             color: var(--f360-sidebar-ink) !important;
         }
         [data-testid="stSidebar"] button:not([kind="primary"]):hover {
-            background: rgba(255,255,255,0.12) !important;
+            background: rgba(22, 40, 63, 0.10) !important;
             border-color: var(--f360-gold) !important;
         }
         /* Botão primário (ex. "Aplicar filtros") — deixa o tema global

@@ -4,6 +4,28 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.2.0 — 2026-08-29
+
+- **Sidebar vira clara** (cinza-azulado, não mais navy sólido) —
+  decisão do usuário depois de 2 rodadas de correção cirúrgica sem
+  sucesso no contraste do ícone de seta/x do multiselect contra o navy.
+  Substitui a versão navy aprovada em 2026-08-27.
+  - `src/branding.py`: variáveis `--f360-sidebar-*` invertidas pra tons
+    claros (mesma função de cada uma, valor oposto); botão secundário
+    (Sair/Limpar filtros) troca véu branco translúcido por véu escuro
+    (só faz sentido contra fundo claro agora); ícone dourado/accent
+    (`--f360-gold`) sem mudança.
+  - `src/dashboard/app.py`: rodapé da sidebar (versão + assinatura) tinha
+    cor/borda fixas em hex, não em variável — atualizado manualmente pro
+    mesmo par de tons claros.
+  - Efeito colateral esperado (e desejado): ícone de seta/x do
+    multiselect, que já tinha cor clara reforçada numa versão anterior,
+    passa a ficar contra um fundo geral também claro — elimina o choque
+    "caixa clara ilha no meio do navy" que gerava o contorno feio
+    reportado, sem precisar achar o seletor exato do BaseWeb.
+- Validado: `py_compile`, `AppTest` completo sem exceção. Confirmação
+  visual ainda pendente (logo + filtros, junto com a 6.1.5).
+
 ## 6.1.5 — 2026-08-29
 
 - **Logo do sidebar: círculo elegante igual ao da tela de login**,
