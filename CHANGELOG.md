@@ -4,6 +4,17 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.1.2 — 2026-08-29
+
+- **Logo do sidebar reduzido pela metade** (330px → 165px) — ficou
+  grande demais colado na navegação, a pedido do usuário depois de ver
+  o resultado publicado.
+- **Quebra visual entre logo e menu de navegação**: `stSidebarHeader`
+  (container real do `st.logo()`, confirmado via DevTools) ganhou
+  margem/borda inferior — antes "Plano de Manutenção" ficava colado
+  embaixo do logo sem respiro.
+- Validado: `py_compile`, `AppTest` completo sem exceção.
+
 ## 6.1.1 — 2026-08-29
 
 - **Keep-awake ajustado**: conferido na API de execuções do GitHub

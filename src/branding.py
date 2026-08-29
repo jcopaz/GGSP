@@ -150,24 +150,39 @@ def inject_shell_css() -> None:
             fill: var(--f360-sidebar-ink) !important;
         }
 
-        /* Logo do st.logo() em 330px (pedido do usuário 2026-08-28: 3x o
-        tamanho-base de 110px) —
-        achado 2026-08-28 via DevTools real (print do usuário): o
-        seletor `[data-testid="stLogo"]` NUNCA existiu — o Streamlit
-        marca o elemento com `data-testid="stSidebarLogo"` e usa
-        "stLogo" só como CLASSE do <img>, não como valor de data-testid.
-        As duas tentativas anteriores (140px, 330px) não faziam nada
-        porque o seletor não batia em nenhum elemento da página — sem
-        relação com especificidade/!important, o CSS simplesmente não
-        era aplicado a nada. Miravam img sem tamanho renderizado real
-        (32×32, confirmado no print) por causa do CSS interno do
-        Streamlit (`st-emotion-cache-...`), daí target duplo (testid +
-        classe) e `!important` pra vencer aquele CSS interno de fato. */
+        /* Logo do st.logo() — reduzido pra 165px em 2026-08-29 (metade
+        do 330px anterior, a pedido do usuário depois de ver o resultado
+        publicado: ficou grande demais colado na navegação). Achado
+        2026-08-28 via DevTools real (print do usuário): o seletor
+        `[data-testid="stLogo"]` NUNCA existiu — o Streamlit marca o
+        elemento com `data-testid="stSidebarLogo"` e usa "stLogo" só
+        como CLASSE do <img>, não como valor de data-testid. As duas
+        tentativas antes dessa (140px, 330px) não faziam nada porque o
+        seletor não batia em nenhum elemento da página — sem relação com
+        especificidade/!important, o CSS simplesmente não era aplicado a
+        nada. Miravam img sem tamanho renderizado real (32×32, confirmado
+        no print) por causa do CSS interno do Streamlit
+        (`st-emotion-cache-...`), daí target duplo (testid + classe) e
+        `!important` pra vencer aquele CSS interno de fato. */
         [data-testid="stSidebarLogo"],
         img.stLogo {
-            width: 330px !important;
+            width: 165px !important;
             max-width: 100% !important;
             height: auto !important;
+        }
+        /* Quebra visual entre o logo e o menu de navegação — pedido do
+        usuário 2026-08-29 (print mostrando "Plano de Manutenção" colado
+        embaixo do logo, sem respiro). `stSidebarHeader` é o container
+        real do `st.logo()` (confirmado via DevTools, mesmo print do
+        achado do seletor acima) — o menu de navegação do
+        `st.navigation()` renderiza como próximo irmão dentro do mesmo
+        `stSidebarContent`, então margem embaixo do header empurra o
+        menu pra baixo, sem precisar mirar o menu diretamente (cujo
+        data-testid não foi confirmado ao vivo). */
+        [data-testid="stSidebarHeader"] {
+            margin-bottom: 1.1rem !important;
+            padding-bottom: 0.6rem !important;
+            border-bottom: 1px solid var(--f360-sidebar-line);
         }
 
         /* Item de navegação ativo (st.navigation) — ver nota de
