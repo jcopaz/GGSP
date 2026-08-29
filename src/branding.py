@@ -164,38 +164,27 @@ def inject_shell_css() -> None:
             border: none !important;
         }
 
-        /* Logo do st.logo() — reduzido pra 165px em 2026-08-29 (metade
-        do 330px anterior, a pedido do usuário depois de ver o resultado
-        publicado: ficou grande demais colado na navegação). Achado
-        2026-08-28 via DevTools real (print do usuário): o seletor
-        `[data-testid="stLogo"]` NUNCA existiu — o Streamlit marca o
-        elemento com `data-testid="stSidebarLogo"` e usa "stLogo" só
-        como CLASSE do <img>, não como valor de data-testid. As duas
-        tentativas antes dessa (140px, 330px) não faziam nada porque o
-        seletor não batia em nenhum elemento da página — sem relação com
-        especificidade/!important, o CSS simplesmente não era aplicado a
-        nada. Miravam img sem tamanho renderizado real (32×32, confirmado
-        no print) por causa do CSS interno do Streamlit
-        (`st-emotion-cache-...`), daí target duplo (testid + classe) e
-        `!important` pra vencer aquele CSS interno de fato. */
-        [data-testid="stSidebarLogo"],
-        img.stLogo {
-            width: 165px !important;
-            max-width: 100% !important;
-            height: auto !important;
-            object-fit: contain !important;
-        }
-        /* Achado 2026-08-29 (2ª rodada): com o seletor certo, a largura
-        aplicava, mas o print seguinte mostrou a logo MAIOR e CORTADA nas
-        bordas ("M"/"S" cortados) — assinatura clássica de um container
-        pai com altura fixa + overflow escondendo o excesso. `st.logo()`
-        foi pensado pra um ícone pequeno (Streamlit reserva um cabeçalho
-        de altura fixa pra ele); aumentar só a largura do <img> sem
-        liberar a altura/overflow do que envolve ele faz a imagem crescer
-        proporcionalmente só pra ser cortada pela moldura que não
-        acompanhou. `stSidebarHeader` é o container confirmado via
-        DevTools; o `<div>` sem atributo entre ele e o <img> (mesmo print)
-        é o alvo do `> div` abaixo. */
+        /* Logo do st.logo() na sidebar — histórico das rodadas 1-3
+        (2026-08-28/29): seletor errado (`[data-testid="stLogo"]` nunca
+        existiu — o real é `data-testid="stSidebarLogo"`, "stLogo" é só
+        CLASSE do <img>), depois corte nas bordas (container pai com
+        altura fixa), depois logo QUADRADA e DESCENTRALIZADA — porque
+        cada ajuste ficava só no <img>, tentando fazer 1 elemento único
+        fazer o papel de "moldura circular" E "conteúdo com zoom" ao
+        mesmo tempo. `transform:scale` aplicado num elemento que JÁ tem
+        `border-radius`/tamanho fixo escala o RECORTE inteiro junto (não
+        dá pra "dar zoom no conteúdo mantendo a moldura fixa" com 1 nó
+        só) — por isso continuava quadrada/torta.
+
+        Rodada 4 (2026-08-29): replica a MESMA estrutura de 2 nós que já
+        funciona em `render_logo_video()` (tela de login) — lá é
+        <div moldura: tamanho fixo + border-radius:50% + overflow:hidden>
+        > <video conteúdo: 100% + transform:scale(1.7)>. Aqui o `st.logo()`
+        já entrega esse 2º nó de graça: o `<div>` sem atributo, direto
+        filho de `stSidebarHeader`, que embrulha o <img> (confirmado via
+        DevTools no achado do seletor, rodada 1) — vira a MOLDURA; o
+        <img> em si vira o CONTEÚDO. Mesmo fator de escala (1.7) do
+        vídeo, mesma marca/arquivo fonte. */
         [data-testid="stSidebarHeader"] {
             height: auto !important;
             min-height: 0 !important;
@@ -204,11 +193,31 @@ def inject_shell_css() -> None:
             padding-bottom: 0.6rem !important;
             border-bottom: 1px solid var(--f360-sidebar-line);
         }
+        /* Moldura: círculo de tamanho fixo, overflow:hidden recorta tudo
+        que passar da borda — exatamente o papel do <div> externo de
+        render_logo_video(). */
         [data-testid="stSidebarHeader"] > div {
-            height: auto !important;
-            overflow: visible !important;
+            width: 110px !important;
+            height: 110px !important;
+            margin: 0 auto !important;
+            border-radius: 50% !important;
+            overflow: hidden !important;
             display: flex !important;
+            align-items: center !important;
             justify-content: center !important;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.28) !important;
+        }
+        /* Conteúdo: preenche a moldura inteira e depois dá zoom — o zoom
+        empurra a margem escura do arquivo fonte pra fora da área visível
+        (a moldura acima corta o excesso), exatamente o papel do <video>
+        interno de render_logo_video(). */
+        [data-testid="stSidebarLogo"],
+        img.stLogo {
+            width: 100% !important;
+            height: 100% !important;
+            max-width: none !important;
+            object-fit: cover !important;
+            transform: scale(1.7) !important;
         }
 
         /* Item de navegação ativo (st.navigation) — ver nota de

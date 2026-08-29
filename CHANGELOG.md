@@ -4,6 +4,26 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.1.5 — 2026-08-29
+
+- **Logo do sidebar: círculo elegante igual ao da tela de login**,
+  finalmente. Print do usuário mostrou o logo quadrado e descentralizado
+  depois do ajuste anterior — causa raiz: as 2 tentativas anteriores
+  tentavam fazer o `<img>` sozinho ser "moldura" (tamanho/corte) E
+  "conteúdo com zoom" (`transform:scale`) ao mesmo tempo, o que não
+  funciona (transform escala o recorte inteiro junto). Reestruturado
+  pra replicar a mesma técnica de 2 nós que já funciona em
+  `render_logo_video()` (tela de login): o `<div>` que o próprio
+  `st.logo()` já gera em volta do `<img>` vira a MOLDURA (110px,
+  círculo, `overflow:hidden`); o `<img>` em si vira o CONTEÚDO (100% da
+  moldura + `transform:scale(1.7)`, mesmo fator do vídeo do login).
+- Validado: `py_compile`, `AppTest` completo sem exceção. Confirmação
+  visual ainda pendente.
+- **Filtros (seta/x do multiselect) — ainda não resolvido**: o ajuste da
+  6.1.4 não mudou nada visualmente, segundo o usuário. Investigação
+  segue separada (não é a mesma causa da logo) — ver conversa/próximo
+  commit.
+
 ## 6.1.4 — 2026-08-29
 
 - **"Contorno preto" feio na seta/x do multiselect, corrigido**: a regra
