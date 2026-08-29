@@ -4,6 +4,17 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.1.1 — 2026-08-29
+
+- **Keep-awake ajustado**: conferido na API de execuções do GitHub
+  (`workflows/keep-awake.yml/runs`) que o intervalo REAL entre execuções
+  estava em 3h–7h, não os 30 min configurados — `schedule` do GitHub
+  Actions é "melhor esforço" e atrasa mais em horário de pico, que é
+  justamente `:00`/`:30` (o minuto que o cron usava). Deslocado pra
+  `:07`/`:37`, mitigação oficialmente recomendada pelo GitHub pra esse
+  atraso. Sem mudança de custo (mesma contagem de execuções/mês).
+- Validado: sintaxe YAML.
+
 ## 6.1.0 — 2026-08-29
 
 - **Filtros de Organização cascateiam** (Gerência → Coordenação → Centro

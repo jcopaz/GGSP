@@ -7,11 +7,23 @@
 # cobrada em minuto cheio (mínimo 1 min mesmo pra um curl de 2 segundos)
 # — a cada 30 min = ~1.440 min/mês, com folga segura sob o limite. Um
 # intervalo menor (ex. 5 min) estouraria a cota sozinho.
+#
+# Achado 2026-08-29 (conferido na API de execuções do GitHub, não só
+# suposição): o `schedule` do GitHub Actions é "melhor esforço" — a
+# doc oficial avisa que atrasa mais em horário de pico, e o pico é
+# justamente no início de cada hora/meia hora. Rodando com
+# "*/30 * * * *" (dispara exatamente em :00/:30, o pior minuto possível),
+# o intervalo REAL entre execuções ficou de 3h a 7h, não 30 min — longe
+# do previsto. Deslocado pra `:07`/`:37` (minuto de menos disputa),
+# mitigação oficialmente recomendada pra esse atraso. Ainda é
+# best-effort — se o app dormir mesmo assim, considerar um pinger
+# externo (ex. UptimeRobot/cron-job.org), que não sofre esse atraso por
+# rodar fora da fila do GitHub Actions.
 name: Keep Fin360 awake
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "7,37 * * * *"
   workflow_dispatch: {}
 
 jobs:
