@@ -66,6 +66,20 @@ efeito de "Todos" antes — o sentinel `TODOS` foi removido, não faz mais
 sentido com multiselect). `clausula_where` monta `IN (...)` quando há 1+
 valor selecionado, em vez de `= ?`. Período (Ano/Trimestre/Mês) já era
 multiselect desde 2026-08-07, sem mudança.
+
+**Cascata em Gerência → Coordenação → Centro de Custo (2026-08-29)**, a
+pedido do usuário ("Centro de Custo é igual a Coordenação/Gerência?") —
+conferido no dado real que é uma hierarquia estrita (0 exceção em
+`fact_realizado`: nenhum Centro de Custo pertence a mais de 1
+Coordenação/Gerência, nenhuma Coordenação pertence a mais de 1
+Gerência). Diferente do Período (que teve a cascata REMOVIDA em
+2026-08-07 pra permitir combinar valores não relacionados, ex. 2 anos):
+aqui cada caixa continua multiseleção livre, só a LISTA DE SUGESTÕES
+estreita (ver `_opcoes_filtradas`) — não é uma árvore de 1 valor por
+vez. Não fica genuinamente "redundante" na prática porque a camada do
+meio (Coordenação) só existe pra parte das Gerências (o resto tem
+Centro de Custo direto, sem sub-agrupamento nomeado) — ver
+`docs/04-licoes-aprendidas.md`.
 """
 from __future__ import annotations
 
@@ -113,6 +127,35 @@ def _opcoes(con: duckdb.DuckDBPyConnection, tabelas_colunas: list[tuple[str, str
         ).df()
         valores.update(df[coluna].tolist())
     return sorted(valores)
+
+
+def _opcoes_filtradas(
+    con: duckdb.DuckDBPyConnection, tabela: str, coluna: str, filtros_pai: dict[str, list[str]],
+) -> list[str]:
+    """Cascata de Organização (2026-08-29, a pedido do usuário — conferido
+    no dado real: Gerência ⊃ Coordenação ⊃ Centro de Custo é hierarquia
+    estrita em `fact_realizado`, 0 exceção). Devolve só os valores de
+    `coluna` que aparecem junto de pelo menos 1 valor de cada filtro pai
+    já escolhido acima na sidebar (`filtros_pai`, ex.:
+    `{"gerencia_nome": ["GER MALHA (SP)"]}`) — estreita a lista de
+    sugestões da caixa de baixo em vez de deixá-la solta com o universo
+    inteiro. `filtros_pai` só com listas vazias (nada escolhido ainda)
+    devolve `[]` — quem chama decide o fallback (universo completo)."""
+    condicoes, params = [], []
+    for col_pai, valores in filtros_pai.items():
+        if valores:
+            marcadores = ", ".join(["?"] * len(valores))
+            condicoes.append(f"{col_pai} IN ({marcadores})")
+            params.extend(valores)
+    if not condicoes:
+        return []
+    where_extra = " AND " + " AND ".join(condicoes)
+    df = con.execute(
+        f"SELECT DISTINCT {coluna} FROM {tabela} "
+        f"WHERE {coluna} IS NOT NULL AND {coluna} != ''{where_extra}",
+        params,
+    ).df()
+    return sorted(df[coluna].tolist())
 
 
 def _tabela_existe(con: duckdb.DuckDBPyConnection, nome: str) -> bool:
@@ -185,8 +228,8 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
     st.sidebar.caption("Filtros — ajuste e clique em Aplicar filtros")
 
     gerencias = _opcoes(con, [("fact_realizado", "gerencia_nome")])
-    coordenacoes = _opcoes(con, [("fact_realizado", "coordenacao")])
-    centros_custo = _opcoes(con, [("fact_orcamento", "centro_custo_id"), ("fact_realizado", "centro_custo_id")])
+    coordenacoes_todas = _opcoes(con, [("fact_realizado", "coordenacao")])
+    centros_custo_todos = _opcoes(con, [("fact_orcamento", "centro_custo_id"), ("fact_realizado", "centro_custo_id")])
     peps = _opcoes(con, [("fact_orcamento", "pep_id")])
     classificacoes = _opcoes(con, [("fact_orcamento", "classificacao_contabil")])
     pacotes = _opcoes(con, [("fact_orcamento", "pacote_id"), ("fact_realizado", "pacote_id")])
@@ -196,11 +239,48 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
         "Gerência", gerencias, key="w_filtro_gerencia",
         help="Só Realizado, na nomenclatura da hierarquia SAP.",
     )
+
+    # Cascata Gerência → Coordenação → Centro de Custo (2026-08-29, a
+    # pedido do usuário — conferido no dado real: 0 exceção na hierarquia
+    # Gerência ⊃ Coordenação ⊃ Centro de Custo). Cada caixa só estreita a
+    # LISTA DE SUGESTÕES a partir do que já foi escolhido acima; nunca
+    # remove algo que a pessoa já tinha selecionado (união com o valor
+    # atual da própria caixa) — evita a caixa quebrar com "valor fora da
+    # lista" se a Gerência mudar depois de já ter Coordenação/Centro de
+    # Custo escolhido, e deixa a pessoa perceber e ajustar manualmente em
+    # vez de perder a seleção sem aviso.
+    if gerencia_sel:
+        coordenacoes = sorted(set(
+            _opcoes_filtradas(con, "fact_realizado", "coordenacao", {"gerencia_nome": gerencia_sel})
+        ) | set(st.session_state.get("w_filtro_coordenacao", [])))
+    else:
+        coordenacoes = coordenacoes_todas
     coordenacao_sel = st.sidebar.multiselect(
         "Coordenação", coordenacoes, key="w_filtro_coordenacao",
-        help="Só Realizado — extraído do nome do Centro de Custo. Base Zero não tem essa informação.",
+        help="Só Realizado — extraído do nome do Centro de Custo. Base Zero não tem essa informação. Lista estreita conforme a Gerência escolhida acima.",
     )
-    centro_custo_sel = st.sidebar.multiselect("Centro de Custo", centros_custo, key="w_filtro_centro_custo")
+
+    filtros_cc_pai = {}
+    if gerencia_sel:
+        filtros_cc_pai["gerencia_nome"] = gerencia_sel
+    if coordenacao_sel:
+        filtros_cc_pai["coordenacao"] = coordenacao_sel
+    if filtros_cc_pai:
+        # Só fact_realizado carrega gerencia_nome/coordenacao (fact_orcamento
+        # não tem essas colunas nesse vocabulário — ver docstring do
+        # módulo) — 1 código de Centro de Custo (CGE053, confirmado no
+        # dado real) existe só em fact_orcamento e por isso nunca aparece
+        # aqui quando a cascata está ativa; continua selecionável
+        # normalmente sem nenhum filtro de Gerência/Coordenação escolhido.
+        centros_custo = sorted(set(
+            _opcoes_filtradas(con, "fact_realizado", "centro_custo_id", filtros_cc_pai)
+        ) | set(st.session_state.get("w_filtro_centro_custo", [])))
+    else:
+        centros_custo = centros_custo_todos
+    centro_custo_sel = st.sidebar.multiselect(
+        "Centro de Custo", centros_custo, key="w_filtro_centro_custo",
+        help="Lista estreita conforme Gerência/Coordenação escolhidas acima.",
+    )
     pep_sel = st.sidebar.multiselect(
         "PEP", peps, key="w_filtro_pep",
         help=(

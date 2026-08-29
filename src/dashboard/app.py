@@ -551,7 +551,20 @@ def pagina_painel() -> None:
         con.close()
 
 
-def pagina_capex() -> None:
+def pagina_opex_capex_manutencao() -> None:
+    """Unifica as antigas telas "Visão OPEX" e "CAPEX Manutenção — Malha"
+    (2026-08-29, a pedido do usuário, depois de eu confirmar em código
+    que as duas eram literalmente a mesma função —
+    `render_visao_classificacao` — só trocando o parâmetro
+    `classificacao`). Um `st.segmented_control` decide qual dos dois lados
+    renderizar, no lugar de 2 itens de menu quase idênticos.
+
+    Nota de RBAC: as chaves de permissão antigas ("visao_opex",
+    "capex_manutencao") viram uma só ("opex_capex_manutencao") — qualquer
+    restrição fina que já existisse pra só um dos dois lados (ex.: alguém
+    liberado pra ver OPEX mas não CAPEX) deixa de ser possível depois
+    dessa fusão; quem tem acesso à tela escolhe o lado livremente no
+    toggle. Ver CHANGELOG."""
     caminho_db = CFG["caminhos"]["warehouse_db"]
     if not os.path.exists(caminho_db):
         _aviso_base_nao_processada()
@@ -562,23 +575,11 @@ def pagina_capex() -> None:
             _aviso_base_nao_processada()
             return
         renderizar_badge_filtros_ativos()
-        render_visao_classificacao(con, "CAPEX")
-    finally:
-        con.close()
-
-
-def pagina_opex() -> None:
-    caminho_db = CFG["caminhos"]["warehouse_db"]
-    if not os.path.exists(caminho_db):
-        _aviso_base_nao_processada()
-        return
-    con = _conectar()
-    try:
-        if not _base_pronta(con):
-            _aviso_base_nao_processada()
-            return
-        renderizar_badge_filtros_ativos()
-        render_visao_classificacao(con, "OPEX")
+        escolha = st.segmented_control(
+            "Classificação Contábil", ["OPEX", "CAPEX"],
+            default="OPEX", key="w_toggle_opex_capex_manutencao",
+        )
+        render_visao_classificacao(con, escolha or "OPEX")
     finally:
         con.close()
 
@@ -939,11 +940,14 @@ pg = st.navigation({
     "Plano de Manutenção": _somente_paginas([
         _pagina_se_permitida("resumo_executivo", pagina_resumo_executivo, "Visão Resumo Executivo — GGSP", "🧭", default=True),
         _pagina_se_permitida("painel_executivo", pagina_painel, "Painel Executivo", "📊"),
-        _pagina_se_permitida("visao_opex", pagina_opex, "Visão OPEX", "🛠️"),
+        # Unificado em 2026-08-29 (a pedido do usuário) — "Visão OPEX" e
+        # "CAPEX Manutenção — Malha" eram a mesma função
+        # (render_visao_classificacao), só trocando o parâmetro; viram 1
+        # item de menu com toggle interno (ver pagina_opex_capex_manutencao).
         # Base Zero (área "Malha Capex", R$43MM) — só a fatia Malha por
         # enquanto. Infra (Drenagem/Saneamento Vegetal/pequenas obras)
         # ainda não tem arquivo carregado.
-        _pagina_se_permitida("capex_manutencao", pagina_capex, "CAPEX Manutenção — Malha", "🏗️"),
+        _pagina_se_permitida("opex_capex_manutencao", pagina_opex_capex_manutencao, "OPEX / CAPEX — Manutenção Malha", "🛠️"),
         _pagina_se_permitida("visao_manutencao", pagina_manutencao, "Visão Manutenção (SP)", "🛠️"),
         _pagina_se_permitida("projecao_opex", pagina_projecao_opex, "Projeção OPEX", "📈"),
         _pagina_se_permitida("contas", pagina_contas, "Nível 4 — Contas", "🧾"),

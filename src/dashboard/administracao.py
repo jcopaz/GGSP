@@ -18,7 +18,11 @@ from src.config import carregar_config
 from src.ingestion.arquivo_bruto import restaurar_versao_arquivo
 from src.model.build_star_schema import build_star_schema
 
-PAGINAS = ["resumo_executivo","painel_executivo","visao_opex","capex_manutencao","visao_manutencao","projecao_opex","contas","centro_custo","rastreabilidade_sap","capex_resumo","capex_painel","capex_contas","capex_rastreabilidade","pce_especialista","upload","administracao"]
+# "visao_opex"/"capex_manutencao" viraram 1 chave só ("opex_capex_manutencao")
+# em 2026-08-29 — ver app.py::pagina_opex_capex_manutencao. Qualquer linha
+# antiga em app.permissao_pagina com essas 2 chaves fica órfã (inofensiva,
+# só não é mais lida por can_acessar_pagina) — não precisa migração.
+PAGINAS = ["resumo_executivo","painel_executivo","opex_capex_manutencao","visao_manutencao","projecao_opex","contas","centro_custo","rastreabilidade_sap","capex_resumo","capex_painel","capex_contas","capex_rastreabilidade","pce_especialista","upload","administracao"]
 
 # Tipos de escopo com uma dimensão real no warehouse pra virar dropdown.
 # Revisado 2026-08-29 a pedido do usuário:

@@ -4,6 +4,33 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.1.0 — 2026-08-29
+
+- **Filtros de Organização cascateiam** (Gerência → Coordenação → Centro
+  de Custo): conferido no dado real que é hierarquia estrita (0 Centro de
+  Custo em mais de 1 Coordenação/Gerência, 0 Coordenação em mais de 1
+  Gerência). Cada caixa continua multiseleção livre, só a lista de
+  sugestões estreita a partir do que já foi escolhido acima
+  (`src/dashboard/filtros.py::_opcoes_filtradas`) — nunca remove um valor
+  já selecionado, pra nunca quebrar o widget se a Gerência mudar depois.
+- **"Visão OPEX" e "CAPEX Manutenção — Malha" viram 1 tela só**
+  (`pagina_opex_capex_manutencao`, `src/dashboard/app.py`): as duas eram
+  literalmente a mesma função (`render_visao_classificacao`), só
+  trocando o parâmetro `classificacao` — confirmado em código antes de
+  unificar. Toggle `st.segmented_control` (OPEX/CAPEX, padrão OPEX) no
+  lugar de 2 itens de menu. **Consequência de RBAC**: as chaves de
+  permissão antigas ("visao_opex"/"capex_manutencao") viram uma só
+  ("opex_capex_manutencao") — não é mais possível liberar só um dos dois
+  lados por permissão granular; quem acessa a tela escolhe livremente no
+  toggle. Sem migração de banco (linha antiga em `app.permissao_pagina`
+  fica órfã, inofensiva).
+- Validado: `py_compile`; `AppTest` completo sem exceção; `AppTest`
+  isolado da tela unificada nos 3 estados do toggle (OPEX/CAPEX/
+  deselecionado); cascata de filtros testada direto contra o warehouse
+  real (Gerência="GER MALHA (SP)" → 3 Coordenações → 4 Centro de Custo,
+  batendo com o esperado); reconciliação Fase 4/5 inalterada (mudança é
+  só UI/navegação, não toca cálculo).
+
 ## 6.0.0 — 2026-08-29
 
 - **Escopos de dados do CAPEX Obras (PEP/PEP Filho) viram catálogo real**:
