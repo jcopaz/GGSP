@@ -4,6 +4,30 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.3.0 — 2026-08-29
+
+- **`primaryColor` trocado de dourado (#c9932f) pra azul-marinho
+  (#1e3a5f)** — a pedido do usuário, depois que remover o CSS
+  especulativo (6.2.2) NÃO resolveu o contorno do multiselect. Confirma a
+  hipótese: BaseWeb usa `primaryColor` pra colorir a tag do multiselect,
+  e dourado não tinha contraste natural suficiente pro "×"/seta que o
+  próprio BaseWeb desenha por cima — o "contorno" era o BaseWeb tentando
+  compensar. Valor idêntico ao do MRS Sentinel, por pedido explícito
+  ("deixei os filtros iguais ao do Sentinel").
+  - `.streamlit/config.toml`: `primaryColor = "#1e3a5f"`.
+  - `src/branding.py`: `--f360-gold` renomeado pra `--f360-accent` (mesmo
+    valor de `primaryColor`) — usado no indicador do item ativo de
+    navegação e no hover do botão secundário. Texto do botão primário
+    (ex. "Aplicar filtros") vira branco (não mais `#16283f` escuro) —
+    dark-on-dark ficaria ilegível agora que o fundo do botão é navy, não
+    mais dourado.
+  - Dourado continua existindo só na imagem estática do logo (marca) —
+    não mais como cor de widget "selecionado/ativo". Paleta de gráfico
+    (`paleta.py`, `#ffc000`) não é tocada — sistema visual separado,
+    decisão de 2026-08-13, sem relação com este problema.
+- Validado: `py_compile`, sintaxe TOML, `AppTest` completo sem exceção.
+  Confirmação visual pendente.
+
 ## 6.2.2 — 2026-08-29
 
 - **Logo do sidebar: centralizada de verdade** — `stSidebarHeader` ficava

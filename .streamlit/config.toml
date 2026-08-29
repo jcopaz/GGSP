@@ -8,7 +8,18 @@ enableStaticServing = true
 # botão type="primary", ícone de fechar/seta) usa o vermelho de fábrica
 # (#FF4B4B) — ilegível/deslocado contra a sidebar navy nova (2026-08-28).
 # Define aqui em vez de remendar cada widget por CSS solto.
-primaryColor = "#c9932f"
+#
+# primaryColor trocado de dourado (#c9932f) pra azul-marinho em
+# 2026-08-29, a pedido do usuário — 3 rodadas de CSS não resolveram o
+# "contorno" feio no ícone de seta/x do multiselect contra o dourado;
+# comparado com o MRS Sentinel (mesmo Streamlit/BaseWeb, primaryColor
+# #1e3a5f, zero CSS na tag/ícone e funciona liso) confirmou que o
+# problema era a cor em si, não CSS por cima dela. Mesmo valor do
+# Sentinel, por pedido explícito ("deixei os filtros iguais ao do
+# Sentinel"). Dourado continua na imagem estática do logo (marca) e no
+# `--f360-gold`/renomeado `--f360-accent` só como sombra/realce pontual —
+# não mais como cor "ativa/selecionada" de widget.
+primaryColor = "#1e3a5f"
 backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f5f7fb"
 textColor = "#16213a"

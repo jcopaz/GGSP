@@ -532,3 +532,38 @@ assim que a causa raiz 1 apareceu (looking at actual frames revelou as
 fases da animação, invisível só lendo o código ou os metadados do
 arquivo). Mesma disciplina de "conferir no dado real" já usada pra
 tabelas/planilhas, aplicada aqui a um asset de mídia.
+
+---
+
+## 24. "Contorno" feio no ícone do multiselect não era CSS — era a cor de marca (2026-08-29)
+
+**Causa raiz**: 3 rodadas de CSS tentando forçar cor/fundo/borda/formato
+nos ícones internos do multiselect (seta de abrir opções, "×" de remover
+tag) não resolveram um contorno visual reportado pelo usuário. Só ficou
+claro depois de ler o código-fonte real do MRS Sentinel (mesmo
+Streamlit, mesma engine BaseWeb) e achar **zero linhas de CSS** mirando
+esses elementos lá — e mesmo assim funciona liso. A diferença não era
+código: o Sentinel usa `primaryColor = "#1e3a5f"` (azul-marinho escuro)
+no `.streamlit/config.toml`; o Fin360 usava `#c9932f` (dourado).
+`primaryColor` é o que o BaseWeb usa pra colorir a tag do multiselect —
+dourado não dá contraste natural suficiente pro "×"/seta que o próprio
+BaseWeb desenha por cima da tag, então o componente tenta compensar de
+um jeito que aparece como "contorno". Nenhuma quantidade de CSS por
+cima resolve isso de verdade porque a raiz é a cor do tema, não a
+ausência de uma regra.
+
+**Correção**: `primaryColor` trocado pra `#1e3a5f` (mesmo valor do
+Sentinel, confirmado funcionar) — `--f360-gold` renomeado pra
+`--f360-accent` em `branding.py`, texto do botão primário vira branco.
+Dourado sai de circulação como cor de widget "ativo/selecionado";
+continua só na imagem estática do logo (marca).
+
+**Lição**: quando uma correção de CSS não resolve depois de 2-3
+tentativas cirúrgicas em cima do MESMO elemento, considerar que o
+problema pode estar 1 nível acima — não no seletor/regra, mas na
+variável de tema (`primaryColor`/`backgroundColor`/etc.) que o
+componente nativo usa pra se auto-colorir. Comparar com uma referência
+real que "já funciona" (aqui, o MRS Sentinel) e olhar o que ELA usa de
+diferente é mais rápido que testar seletor por seletor às cegas —
+achar "eles não têm CSS nenhum aqui" é, em si, uma pista forte de que o
+problema não é ausência de CSS.

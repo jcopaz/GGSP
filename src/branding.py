@@ -31,8 +31,21 @@ def inject_shell_css() -> None:
     depois fundo/borda do botão) — o usuário decidiu trocar o fundo da
     sidebar pra claro em vez de continuar caçando seletor exato do
     BaseWeb. Variáveis `--f360-sidebar-*` viraram tons claros (mesma
-    função de cada uma, só valor invertido); `--f360-gold` não muda —
-    accent dourado funciona em qualquer fundo.
+    função de cada uma, só valor invertido).
+
+    **`primaryColor` trocado de dourado pra azul-marinho, mesmo dia**:
+    sidebar clara sozinha não bastou — o "contorno" no ícone do
+    multiselect continuava mesmo depois de remover todo CSS especulativo
+    em cima dele (rodada 7). Comparado com o MRS Sentinel (mesmo
+    Streamlit/BaseWeb, primaryColor `#1e3a5f`, zero CSS na tag/ícone,
+    funciona liso) confirmou que o problema era a cor dourada em si —
+    BaseWeb usa `primaryColor` pra colorir a tag do multiselect
+    (`.streamlit/config.toml`), e dourado não dá contraste natural
+    suficiente pro "×"/seta que o próprio BaseWeb desenha por cima. Valor
+    idêntico ao do Sentinel, por pedido explícito do usuário. `--f360-gold`
+    virou `--f360-accent` (mesmo valor de `primaryColor`) — dourado
+    continua só na imagem estática do logo (marca), não mais como cor de
+    widget "selecionado/ativo".
 
     - Sidebar em cinza-azulado claro (mesmo tom de `secondaryBackgroundColor`
       do tema), texto escuro — texto solto E caixa de widget (multiselect/
@@ -49,10 +62,10 @@ def inject_shell_css() -> None:
     Nota de fragilidade: o seletor do item ativo da navegação
     (`a[aria-current="page"]`) segue o padrão de acessibilidade mais comum
     pra "link da página atual", mas o Streamlit não documenta esse
-    contrato — se uma versão futura mudar o marcador, o indicador dourado
-    do item ativo para de aparecer (cosmético, não quebra navegação).
-    Confirmar visualmente depois de qualquer upgrade de versão do
-    Streamlit.
+    contrato — se uma versão futura mudar o marcador, o indicador (barra +
+    fundo, cor `--f360-accent`) do item ativo para de aparecer (cosmético,
+    não quebra navegação). Confirmar visualmente depois de qualquer
+    upgrade de versão do Streamlit.
     """
     st.markdown(
         """
@@ -63,7 +76,7 @@ def inject_shell_css() -> None:
             --f360-sidebar-ink: #16283f;
             --f360-sidebar-ink-muted: #5b6b85;
             --f360-sidebar-line: #d8dfea;
-            --f360-gold: #c9932f;
+            --f360-accent: #1e3a5f;
         }
 
         html, body, [class*="css"] {
@@ -129,14 +142,16 @@ def inject_shell_css() -> None:
         }
         [data-testid="stSidebar"] button:not([kind="primary"]):hover {
             background: rgba(22, 40, 63, 0.10) !important;
-            border-color: var(--f360-gold) !important;
+            border-color: var(--f360-accent) !important;
         }
         /* Botão primário (ex. "Aplicar filtros") — deixa o tema global
-        cuidar (primaryColor dourado, já em .streamlit/config.toml),
+        cuidar (primaryColor azul-marinho, já em .streamlit/config.toml),
         só reforça contraste do texto pra garantir legibilidade em cima
-        do dourado. */
+        dele. Texto branco (não mais #16283f escuro) desde a troca de
+        primaryColor de dourado pra navy em 2026-08-29 — dark-on-dark
+        ficaria ilegível. */
         [data-testid="stSidebar"] button[kind="primary"] {
-            color: #16283f !important;
+            color: #ffffff !important;
             font-weight: 600 !important;
         }
         [data-testid="stSidebar"] [data-testid="stCheckbox"] label span {
@@ -240,7 +255,7 @@ def inject_shell_css() -> None:
         /* Item de navegação ativo (st.navigation) — ver nota de
         fragilidade no docstring de inject_shell_css(). */
         [data-testid="stSidebar"] a[aria-current="page"] {
-            background: rgba(201, 147, 47, 0.14) !important;
+            background: rgba(30, 58, 95, 0.12) !important;
             border-radius: 8px;
             font-weight: 600 !important;
         }
@@ -248,7 +263,7 @@ def inject_shell_css() -> None:
             content: "";
             position: absolute;
             left: -0.4rem; top: 15%; bottom: 15%; width: 3px;
-            background: var(--f360-gold);
+            background: var(--f360-accent);
             border-radius: 0 3px 3px 0;
         }
         [data-testid="stSidebar"] a { position: relative; }
