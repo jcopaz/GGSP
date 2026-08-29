@@ -4,6 +4,32 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.0.0 — 2026-08-29
+
+- **Escopos de dados do CAPEX Obras (PEP/PEP Filho) viram catálogo real**:
+  `dim_catalogo_capex_obras` (nova, `build_star_schema.py`) materializa o
+  Catálogo CAPEX Obras com granularidade completa (95 Elemento PEP, 2795
+  PEP Filho) — antes só existia deduplicado 1 linha/projeto, transiente,
+  nunca virava tabela. Corrige suposição errada de 2026-08-28 ("pep_filho
+  não é campo que a fonte tem"), ver docs/04-licoes-aprendidas.md item 22.
+- **Novo tipo de escopo `gerencia_obras`**, separado de `gerencia`:
+  conferido no dado real que são duas taxonomias sem código em comum
+  (Gerência SAP de Manutenção/OPEX × recorte regional do CAPEX Obras —
+  Baixada Santista, Corredor São Paulo, Expansão, Mobilidade Urbana,
+  Obras Ferroviárias). Migração de CHECK em `app.escopo_acesso.tipo`
+  (**precisa rodar `config/schema_postgres.sql` de novo no Neon**).
+- **`coordenacao` sai da lista selecionável** (Centro de Custo já cobre a
+  mesma granularidade) — continua aceito no banco, só não aparece mais
+  na tela.
+- Rótulos amigáveis no seletor "Tipo" (ex. "PEP (Elemento PEP)" em vez de
+  `elemento_pep` cru).
+- Validado: `py_compile`, reprocessamento real da base (confirma 95/2795/5
+  valores esperados por tipo, batendo com o exemplo dado pelo usuário —
+  `DM/21973 — Pátio Regulador Jurubatuba`, `DM/21973C-04 — Projeto
+  básico`), reconciliação Fase 4/5 inalterada (mudança é aditiva, não
+  toca `fact_orcamento`/`fact_realizado`/`fact_pce_realizado`).
+- Bump MAJOR: mudança de schema (Postgres + nova dimensão no warehouse).
+
 ## 5.0.1 — 2026-08-28
 
 - **Logo do sidebar corrigido de verdade** (achado via DevTools real do

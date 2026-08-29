@@ -451,3 +451,44 @@ procedimento padrão, não exceção: **depois de qualquer push que adiciona
 `import` novo em `app.py` ou em algo que ele importa, dar Reboot manual
 direto**, sem esperar o auto-redeploy tentar (e falhar) primeiro — economiza
 o ciclo de "vi o erro, confirmei que o remoto tá certo, pedi reboot".
+
+---
+
+## 22. Duas suposições erradas sobre o Catálogo CAPEX Obras, corrigidas só quando o usuário deu o exemplo real (2026-08-29)
+
+**Causa raiz 1 — "pep_filho não é campo que a fonte tem hoje"**: essa frase
+foi escrita como justificativa pra deixar "PEP Filho" como texto livre no
+cadastro de Escopos de dados (2026-08-28). Era uma suposição, não uma
+conferência — na real, a coluna "Título" do "Catalago CAPEX Obras.xlsx"
+(aba Auxiliar) já é exatamente isso: 2795 linhas, 95 Elemento PEP, "Título"
+nunca nulo e nunca repetido entre Elemento PEP diferentes (conferido no
+dado real em 2026-08-29 antes de aceitar a suposição antiga). O dado
+também nunca tinha sido materializado como tabela própria no warehouse —
+só existia como DataFrame transiente dentro de `build_star_schema.py`,
+sempre deduplicado 1 linha por projeto (perdendo a granularidade de
+Título) antes de virar `dim_catalogo_capex_obras`.
+
+**Causa raiz 2 — tratar "Gerência" como um catálogo único**: o pedido do
+usuário citava "Tipo: Gerência → Baixada Santista" como se fosse a mesma
+lista de Gerência já usada no cadastro de usuário (`dim_gerencia`, órgão
+SAP de Manutenção/OPEX, ex. "GER ENGENHARIA EMPREEND (SP)"). Conferido no
+dado real: são duas taxonomias sem nenhum código em comum — a Gerência do
+Catálogo CAPEX Obras tem só 5 valores regionais (Baixada Santista,
+Corredor São Paulo, Expansão, Mobilidade Urbana, Obras Ferroviárias), sem
+ID próprio, nada a ver com os códigos `GGE_0xxx` da outra lista.
+
+**Correção**: `dim_catalogo_capex_obras` passou a ser materializada de
+verdade (sem perder a granularidade de Título/Descrição); "PEP"/"PEP
+Filho" viraram tipos selecionáveis reais; "Gerência" do CAPEX Obras virou
+um tipo próprio (`gerencia_obras`), separado do `gerencia` de Manutenção/
+OPEX — ver `src/dashboard/administracao.py` e `config/schema_postgres.sql`
+(migração do CHECK de `app.escopo_acesso.tipo`).
+
+**Lição**: antes de escrever "não existe"/"é a mesma lista"/"não tem
+catálogo fechado" sobre um campo de dado, abrir o arquivo real e conferir
+— principalmente se a frase for usada pra justificar deixar algo como
+texto livre. Uma suposição errada nesse ponto não quebra nada
+imediatamente (o campo continua funcionando, só pior), o que a torna fácil
+de carregar adiante por várias sessões sem ninguém perceber, até alguém
+(neste caso, o usuário) dar um exemplo concreto que não bate com a
+suposição.

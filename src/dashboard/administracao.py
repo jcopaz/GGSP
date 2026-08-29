@@ -20,12 +20,50 @@ from src.model.build_star_schema import build_star_schema
 
 PAGINAS = ["resumo_executivo","painel_executivo","visao_opex","capex_manutencao","visao_manutencao","projecao_opex","contas","centro_custo","rastreabilidade_sap","capex_resumo","capex_painel","capex_contas","capex_rastreabilidade","pce_especialista","upload","administracao"]
 
-# Tipos de escopo com uma dimensão real no warehouse pra virar dropdown —
-# os demais (projeto/elemento_pep/pep_filho) continuam texto livre porque
-# não existe uma lista fechada confiável pra eles ainda (pep_filho nem é
-# um campo que a fonte de dado tem hoje — não inventar).
-_TIPOS_ESCOPO_SELECIONAVEL = {"gerencia", "pacote", "centro_custo", "coordenacao"}
-TIPOS_ESCOPO = ["projeto", "elemento_pep", "pep_filho", "gerencia", "coordenacao", "centro_custo", "pacote"]
+# Tipos de escopo com uma dimensão real no warehouse pra virar dropdown.
+# Revisado 2026-08-29 a pedido do usuário:
+# - "coordenacao" removido da lista — Centro de Custo já cobre a mesma
+#   granularidade (cada Gerência/Coordenação tem um Centro de Custo),
+#   então mantinhamos duas listas pro mesmo recorte de negócio sem
+#   necessidade.
+# - "elemento_pep"/"pep_filho" (universo CAPEX Obras) deixam de ser texto
+#   livre: a suposição anterior ("pep_filho nem é campo que a fonte tem
+#   hoje") estava ERRADA — existe sim, é a coluna "Título" do "Catalago
+#   CAPEX Obras.xlsx" (aba Auxiliar), confirmado no dado real (2795
+#   linhas, 95 Elemento PEP, "Título" nunca nulo e nunca repetido entre
+#   Elemento PEP diferentes). Ver `dim_catalogo_capex_obras`
+#   (build_star_schema.py) e docs/04-licoes-aprendidas.md.
+# - "projeto" continua texto livre — não faz parte do universo CAPEX
+#   Obras descrito pelo usuário, sem catálogo fechado identificado.
+# - NOVO tipo "gerencia_obras", separado de "gerencia": conferido no dado
+#   real (2026-08-29) que são DUAS taxonomias diferentes, sem ID em
+#   comum — "gerencia" é o órgão SAP de Manutenção/OPEX (`dim_gerencia`,
+#   ex. "GER ENGENHARIA EMPREEND (SP)"); "gerencia_obras" é o recorte
+#   regional do Catálogo CAPEX Obras (só 5 valores: Baixada Santista,
+#   Corredor São Paulo, Expansão, Mobilidade Urbana, Obras Ferroviárias
+#   — sem código próprio, só o nome). O exemplo do usuário
+#   ("Tipo: Gerência → Baixada Santista") é este segundo tipo, não o
+#   primeiro — misturar os dois num "gerencia" só ia esconder que são
+#   catálogos diferentes.
+#
+# Semântica de negócio do CAPEX Obras (cascata, confirmada pelo usuário
+# 2026-08-29 — só o CADASTRO do escopo está pronto aqui; a APLICAÇÃO
+# desse filtro nas telas do painel ainda não existe, ver nota em
+# render_administracao):
+#   Gerência (Obras) ⊃ todos os Elemento PEP e PEP Filho daquela região
+#   Elemento PEP     ⊃ todos os PEP Filho (etapas) daquele projeto
+#   PEP Filho        = só aquela etapa/subconta específica
+_TIPOS_ESCOPO_SELECIONAVEL = {"gerencia", "gerencia_obras", "pacote", "centro_custo", "elemento_pep", "pep_filho"}
+TIPOS_ESCOPO = ["gerencia", "gerencia_obras", "elemento_pep", "pep_filho", "centro_custo", "pacote", "projeto"]
+_ROTULO_TIPO_ESCOPO = {
+    "gerencia": "Gerência (Manutenção/OPEX)",
+    "gerencia_obras": "Gerência (CAPEX Obras)",
+    "elemento_pep": "PEP (Elemento PEP)",
+    "pep_filho": "PEP Filho",
+    "centro_custo": "Centro de Custo",
+    "pacote": "Pacote",
+    "projeto": "Projeto",
+}
 
 _FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
@@ -90,15 +128,58 @@ def _listar_centros_custo(con: duckdb.DuckDBPyConnection | None) -> list[tuple[s
         return []
 
 
-def _listar_coordenacoes(con: duckdb.DuckDBPyConnection | None) -> list[tuple[str, str]]:
+def _listar_gerencias_obras(con: duckdb.DuckDBPyConnection | None) -> list[tuple[str, str]]:
+    """Gerência do universo CAPEX Obras (recorte regional, ex. "Baixada
+    Santista") — catálogo próprio, sem código, só nome. NÃO é a mesma
+    lista de `_listar_gerencias` (órgão SAP de Manutenção/OPEX)."""
     if con is None:
         return []
     try:
         df = con.execute(
-            "SELECT DISTINCT coordenacao FROM fact_realizado "
-            "WHERE coordenacao IS NOT NULL ORDER BY coordenacao"
+            "SELECT DISTINCT gerencia_obras FROM dim_catalogo_capex_obras "
+            "WHERE gerencia_obras IS NOT NULL ORDER BY gerencia_obras"
         ).df()
-        return [(v, v) for v in df["coordenacao"]]
+        return [(v, v) for v in df["gerencia_obras"]]
+    except Exception:
+        return []
+
+
+def _listar_elemento_pep(con: duckdb.DuckDBPyConnection | None) -> list[tuple[str, str]]:
+    """"PEP" no vocabulário do usuário — 1 linha por Elemento PEP (projeto),
+    ex.: `("DM/21973", "Pátio Regulador Jurubatuba")`. Escopo nesse tipo
+    abrange (em cascata, quando a aplicação do filtro existir — ver nota
+    em render_administracao) todos os PEP Filho daquele projeto."""
+    if con is None:
+        return []
+    try:
+        df = con.execute(
+            "SELECT DISTINCT e_pep_projeto, nome_empreendimento "
+            "FROM dim_catalogo_capex_obras "
+            "WHERE e_pep_projeto IS NOT NULL ORDER BY e_pep_projeto"
+        ).df()
+        return list(zip(df["e_pep_projeto"], df["nome_empreendimento"].fillna("")))
+    except Exception:
+        return []
+
+
+def _listar_pep_filho(con: duckdb.DuckDBPyConnection | None) -> list[tuple[str, str]]:
+    """"PEP Filho" — a etapa/subconta específica do cronograma, ex.:
+    `("DM/21973C-04", "Projeto básico")`. Confirmado no dado real
+    (2026-08-29): "Título" nunca se repete entre Elemento PEP diferentes,
+    então o código sozinho já identifica a etapa sem ambiguidade."""
+    if con is None:
+        return []
+    try:
+        df = con.execute(
+            "SELECT DISTINCT titulo_etapa, descricao_etapa "
+            "FROM dim_catalogo_capex_obras "
+            "WHERE titulo_etapa IS NOT NULL ORDER BY titulo_etapa"
+        ).df()
+        # `descricao_etapa` vem da fonte com espaço fixo à direita
+        # (largura de coluna do Excel original) — sem strip, o rótulo do
+        # multiselect ("DM/21973C-04 — Projeto básico          ") fica
+        # com um rastro em branco estranho antes da próxima opção.
+        return list(zip(df["titulo_etapa"], df["descricao_etapa"].fillna("").str.strip()))
     except Exception:
         return []
 
@@ -106,22 +187,34 @@ def _listar_coordenacoes(con: duckdb.DuckDBPyConnection | None) -> list[tuple[st
 def _opcoes_escopo(tipo: str, con: duckdb.DuckDBPyConnection | None) -> list[tuple[str, str]]:
     return {
         "gerencia": _listar_gerencias,
+        "gerencia_obras": _listar_gerencias_obras,
         "pacote": _listar_pacotes,
         "centro_custo": _listar_centros_custo,
-        "coordenacao": _listar_coordenacoes,
+        "elemento_pep": _listar_elemento_pep,
+        "pep_filho": _listar_pep_filho,
     }.get(tipo, lambda _c: [])(con)
 
 
 def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
     """`con`: conexão de leitura do warehouse DuckDB LOCAL (não o Neon) —
-    só usada pra popular os dropdowns de Gerência/Pacote/Centro de Custo/
-    Coordenação com valor real, em vez de texto livre digitado (pedido do
-    usuário em 2026-08-28). `None` (ex.: base ainda não processada) cai
-    de volta pra texto livre nesses campos, sem quebrar a página."""
+    só usada pra popular os dropdowns de Gerência/Gerência de Obras/PEP/
+    PEP Filho/Centro de Custo/Pacote com valor real, em vez de texto
+    livre digitado (pedido do usuário em 2026-08-28, ampliado em
+    2026-08-29 com o universo CAPEX Obras). `None` (ex.: base ainda não
+    processada) cai de volta pra texto livre nesses campos, sem quebrar
+    a página.
+
+    IMPORTANTE — o que este cadastro NÃO faz (2026-08-29): salvar um
+    escopo aqui (ex. Gerência de Obras = "Baixada Santista") só GRAVA a
+    intenção em `app.escopo_acesso` — nenhuma página do painel hoje lê
+    esse registro pra filtrar dado nenhum. A cascata de negócio (Gerência
+    de Obras ⊃ Elemento PEP ⊃ PEP Filho) é a regra que VAI ser aplicada
+    quando essa parte for construída, não o comportamento atual. Ver
+    aviso equivalente já dado sobre Gerência/Pacote em 2026-08-28."""
     require_admin()
     render_page_banner("🛡️", "Administração", "Usuários, acessos, escopos e rastreabilidade em um só lugar.")
     if con is None:
-        st.caption("⚠️ Base local ainda não processada — Gerência/Pacote/Centro de Custo/Coordenação aparecem como texto livre até reprocessar (Dados → Upload de Dados).")
+        st.caption("⚠️ Base local ainda não processada — Gerência/PEP/PEP Filho/Centro de Custo/Pacote aparecem como texto livre até reprocessar (Dados → Upload de Dados).")
     t1, t2, t3, t4 = st.tabs(["Usuários", "Permissões e escopos", "Auditoria", "Uploads e exportações"])
 
     with t1:
@@ -186,7 +279,10 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
                 st.success("Permissões salvas.")
 
             st.markdown("**Escopos de dados**")
-            tipo = st.selectbox("Tipo", TIPOS_ESCOPO, key="admin-escopo-tipo")
+            tipo = st.selectbox(
+                "Tipo", TIPOS_ESCOPO, key="admin-escopo-tipo",
+                format_func=lambda t: _ROTULO_TIPO_ESCOPO.get(t, t),
+            )
             opcoes = _opcoes_escopo(tipo, con)
             if tipo in _TIPOS_ESCOPO_SELECIONAVEL and opcoes:
                 rotulos = {f"{cod} — {nome}" if nome else cod: (cod, nome) for cod, nome in opcoes}

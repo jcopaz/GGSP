@@ -833,6 +833,23 @@ def build_star_schema() -> str:
         con.execute("CREATE OR REPLACE TABLE dim_pacote AS SELECT * FROM df_dim_pacote")
         con.execute("CREATE OR REPLACE TABLE dim_gg AS SELECT * FROM df_dim_gg")
         con.execute("CREATE OR REPLACE TABLE dim_gerencia AS SELECT * FROM df_dim_gerencia")
+        if df_catalogo_capex_obras is not None:
+            # Materializa o Catálogo CAPEX Obras como dimensão própria —
+            # até 2026-08-29 só existia como DataFrame transiente, usado
+            # pra enriquecer fact_cji4/fact_cji3_capex_obras/fact_pce_realizado
+            # (e ali sempre deduplicado 1 linha por projeto, perdendo a
+            # granularidade Título/Descrição do cronograma — ver
+            # `_reshape_cji4_capex_obras`). Pedido do usuário 2026-08-29:
+            # precisa da granularidade completa (Elemento PEP E Título/PEP
+            # Filho) pra virar lista selecionável de Escopos de dados na
+            # Administração (`administracao.py::_listar_elemento_pep`/
+            # `_listar_pep_filho`) — nenhuma coluna nova/inventada, é o
+            # mesmo DataFrame de `load_catalogo_capex_obras` sem perder
+            # linha nenhuma.
+            con.execute(
+                "CREATE OR REPLACE TABLE dim_catalogo_capex_obras AS "
+                "SELECT * FROM df_catalogo_capex_obras"
+            )
         con.execute("CREATE OR REPLACE TABLE fact_orcamento AS SELECT * FROM df_fact_orcamento")
         con.execute("CREATE OR REPLACE TABLE fact_realizado AS SELECT * FROM df_fact_realizado")
         con.execute(

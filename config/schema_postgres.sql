@@ -214,8 +214,9 @@ comment on table app.permissao_pagina is
 -- ---------------------------------------------------------------------------
 -- app.escopo_acesso
 -- Recorte de dado que um usuário pode ver (Projeto/Elemento PEP/PEP
--- Filho/Gerência/Coordenação/Centro de Custo/Pacote) — infraestrutura de
--- cadastro/consulta só; NENHUMA página aplica isso em filtro de consulta
+-- Filho/Gerência/Gerência de Obras/Centro de Custo/Pacote) —
+-- infraestrutura de cadastro/consulta só; NENHUMA página aplica isso em
+-- filtro de consulta
 -- ainda (decisão deliberada, ver docs/06-administracao-auditoria-e-
 -- projecao.md — aplicar automaticamente sem validar contra o schema real
 -- de cada página arrisca alterar total/reconciliação). Admin não usa
@@ -225,7 +226,7 @@ create table if not exists app.escopo_acesso (
     id uuid primary key default gen_random_uuid(),
     usuario_id uuid not null references app.usuario (id) on delete cascade,
     tipo text not null check (tipo in (
-        'projeto', 'elemento_pep', 'pep_filho', 'gerencia', 'coordenacao', 'centro_custo', 'pacote'
+        'projeto', 'elemento_pep', 'pep_filho', 'gerencia', 'gerencia_obras', 'coordenacao', 'centro_custo', 'pacote'
     )),
     valor text not null,
     descricao text,
@@ -236,6 +237,19 @@ create table if not exists app.escopo_acesso (
 
 comment on table app.escopo_acesso is
     'Cadastro de escopo de dado por usuário. Só cadastro/consulta por enquanto — nenhuma query de dashboard aplica isso ainda, ver docs/06.';
+
+-- Migração 2026-08-29: adiciona 'gerencia_obras' à lista de tipos aceitos
+-- (o CHECK acima só vale pra CRIAÇÃO da tabela — precisa rodar de novo
+-- no Neon já existente). Nome padrão do Postgres pra CHECK inline sem
+-- nome próprio é "<tabela>_<coluna>_check"; "if exists" torna seguro
+-- rodar mesmo se o nome de fato divergir. 'coordenacao' continua
+-- aceito no banco (não removido do CHECK) mesmo saindo da lista
+-- selecionável da tela — evita quebrar qualquer linha já cadastrada
+-- com esse tipo, sem precisar conferir se existe alguma.
+alter table app.escopo_acesso drop constraint if exists escopo_acesso_tipo_check;
+alter table app.escopo_acesso add constraint escopo_acesso_tipo_check check (tipo in (
+    'projeto', 'elemento_pep', 'pep_filho', 'gerencia', 'gerencia_obras', 'coordenacao', 'centro_custo', 'pacote'
+));
 
 -- ---------------------------------------------------------------------------
 -- app.artefato_exportado

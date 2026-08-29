@@ -141,18 +141,65 @@ trocadas, e o literal fica visível pra qualquer um com acesso ao
 repositório). Substituída por senha temporária única por usuário no mesmo
 dia, antes de qualquer deploy com a versão fixa.
 
-## Campos selecionáveis (Gerência/Escopos) (2026-08-28)
+## Campos selecionáveis (Gerência/Escopos) (2026-08-28, ampliado 2026-08-29)
 
-O formulário de criar usuário e a aba de Escopos de dados agora buscam
-valor real do **warehouse DuckDB local** (não o Neon) pra virar dropdown/
-multiseleção, em vez de texto livre: Gerência (`dim_gerencia`), Pacote
-(`dim_pacote`), Centro de Custo e Coordenação (`fact_realizado`). Escopos
-desses 4 tipos usam `st.multiselect` — dá pra adicionar um, vários ou
-todos de uma vez, 1 linha em `app.escopo_acesso` por valor selecionado.
+O formulário de criar usuário e a aba de Escopos de dados buscam valor
+real do **warehouse DuckDB local** (não o Neon) pra virar dropdown/
+multiseleção, em vez de texto livre. Escopos selecionáveis usam
+`st.multiselect` — dá pra adicionar um, vários ou todos de uma vez, 1
+linha em `app.escopo_acesso` por valor selecionado.
 
-`projeto`/`elemento_pep`/`pep_filho` continuam texto livre — não existe
-uma lista fechada confiável pra eles na fonte de dado ainda (`pep_filho`
-nem é campo que a fonte tem hoje — não inventado).
+Tipos de escopo hoje (`src/dashboard/administracao.py::TIPOS_ESCOPO`):
+
+| Tipo (interno) | Rótulo na tela | Fonte real | Exemplo |
+|---|---|---|---|
+| `gerencia` | Gerência (Manutenção/OPEX) | `dim_gerencia` | `GGE_0161 — GER ENGENHARIA EMPREEND (SP)` |
+| `gerencia_obras` | Gerência (CAPEX Obras) | `dim_catalogo_capex_obras.gerencia_obras` | `Baixada Santista` |
+| `elemento_pep` | PEP (Elemento PEP) | `dim_catalogo_capex_obras.e_pep_projeto` | `DM/21973 — Pátio Regulador Jurubatuba` |
+| `pep_filho` | PEP Filho | `dim_catalogo_capex_obras.titulo_etapa` | `DM/21973C-04 — Projeto básico` |
+| `centro_custo` | Centro de Custo | `fact_realizado` | `código — nome da área` |
+| `pacote` | Pacote | `dim_pacote` | `código — nome do pacote` |
+| `projeto` | Projeto | — (texto livre) | sem catálogo fechado identificado |
+
+**`gerencia` × `gerencia_obras` são duas taxonomias diferentes, sem código
+em comum** — achado 2026-08-29, ver `docs/04-licoes-aprendidas.md` item
+22. Não confundir ao ler `app.escopo_acesso`: um usuário pode ter escopo
+nas duas ao mesmo tempo, cada um restringindo um universo de dado
+diferente (Manutenção/OPEX vs. CAPEX Obras).
+
+**Cascata de negócio do CAPEX Obras** (confirmada pelo usuário
+2026-08-29): Gerência (Obras) ⊃ todos os Elemento PEP e PEP Filho daquela
+região; Elemento PEP ⊃ todos os PEP Filho (etapas) daquele projeto; PEP
+Filho é a etapa/subconta específica. **Essa cascata ainda não é
+aplicada em nenhuma tela** — só o cadastro do escopo está pronto (mesmo
+status de "infraestrutura pronta, sem consumidor ainda" das seções
+acima). Quando a aplicação for construída, ela precisa resolver essa
+cascata (um escopo de `gerencia_obras="Baixada Santista"` implica acesso
+a todo `elemento_pep`/`pep_filho` daquela Gerência, sem precisar cadastrar
+cada um), não tratar os 3 tipos como listas soltas e independentes.
+
+`coordenacao` foi removido da lista de tipos selecionáveis em 2026-08-29
+(Centro de Custo já cobre a mesma granularidade — cada Gerência/
+Coordenação tem um Centro de Custo) — o valor continua aceito pelo CHECK
+do Postgres (`config/schema_postgres.sql`), só não aparece mais como
+opção na tela, pra não quebrar nenhuma linha eventualmente já cadastrada
+com esse tipo.
+
+`projeto` continua texto livre — não existe uma lista fechada confiável
+pra ele na fonte de dado ainda.
+
+`dim_catalogo_capex_obras` (nova, `build_star_schema.py`) materializa o
+"Catalago CAPEX Obras.xlsx" (aba Auxiliar) com granularidade completa —
+até 2026-08-29 ele só existia como DataFrame transiente, sempre
+deduplicado 1 linha por projeto antes de virar `fact_cji3_capex_obras`/
+`fact_cji4_capex_obras`/`fact_pce_realizado` (essas 3 tabelas continuam
+sem alteração, mesma dedução de antes — a nova dimensão é aditiva, não
+substitui nada). Requer reprocessar a base (Upload → Reprocessar) pra
+existir num ambiente que ainda não tem essa tabela.
+
+**Requer rodar `config/schema_postgres.sql` de novo no Neon** — o CHECK
+de `app.escopo_acesso.tipo` precisa aceitar `'gerencia_obras'` (migração
+via `alter table ... drop constraint / add constraint`, idempotente).
 
 `render_administracao()` agora recebe a conexão DuckDB como parâmetro
 opcional (`pagina_administracao()` em `app.py` abre se a base estiver
