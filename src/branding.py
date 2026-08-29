@@ -169,20 +169,32 @@ def inject_shell_css() -> None:
             width: 165px !important;
             max-width: 100% !important;
             height: auto !important;
+            object-fit: contain !important;
         }
-        /* Quebra visual entre o logo e o menu de navegação — pedido do
-        usuário 2026-08-29 (print mostrando "Plano de Manutenção" colado
-        embaixo do logo, sem respiro). `stSidebarHeader` é o container
-        real do `st.logo()` (confirmado via DevTools, mesmo print do
-        achado do seletor acima) — o menu de navegação do
-        `st.navigation()` renderiza como próximo irmão dentro do mesmo
-        `stSidebarContent`, então margem embaixo do header empurra o
-        menu pra baixo, sem precisar mirar o menu diretamente (cujo
-        data-testid não foi confirmado ao vivo). */
+        /* Achado 2026-08-29 (2ª rodada): com o seletor certo, a largura
+        aplicava, mas o print seguinte mostrou a logo MAIOR e CORTADA nas
+        bordas ("M"/"S" cortados) — assinatura clássica de um container
+        pai com altura fixa + overflow escondendo o excesso. `st.logo()`
+        foi pensado pra um ícone pequeno (Streamlit reserva um cabeçalho
+        de altura fixa pra ele); aumentar só a largura do <img> sem
+        liberar a altura/overflow do que envolve ele faz a imagem crescer
+        proporcionalmente só pra ser cortada pela moldura que não
+        acompanhou. `stSidebarHeader` é o container confirmado via
+        DevTools; o `<div>` sem atributo entre ele e o <img> (mesmo print)
+        é o alvo do `> div` abaixo. */
         [data-testid="stSidebarHeader"] {
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
             margin-bottom: 1.1rem !important;
             padding-bottom: 0.6rem !important;
             border-bottom: 1px solid var(--f360-sidebar-line);
+        }
+        [data-testid="stSidebarHeader"] > div {
+            height: auto !important;
+            overflow: visible !important;
+            display: flex !important;
+            justify-content: center !important;
         }
 
         /* Item de navegação ativo (st.navigation) — ver nota de

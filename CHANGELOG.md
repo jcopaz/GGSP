@@ -4,6 +4,19 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.1.3 — 2026-08-29
+
+- **Logo do sidebar aparecendo cortado nas bordas, corrigido**: print do
+  usuário mostrou o logo maior porém cortado ("M"/"S" cortados nas
+  pontas) depois do ajuste pra 165px — diagnóstico: `stSidebarHeader` e o
+  `<div>` que envolve o `<img>` mantinham altura fixa/`overflow` do
+  tamanho pequeno original, cortando a imagem maior. Liberado
+  `height: auto` + `overflow: visible` nos dois containers, e
+  `object-fit: contain` no próprio `<img>`.
+- Validado: `py_compile`, `AppTest` completo sem exceção. **Ainda não
+  confirmado visualmente** (sem navegador neste ambiente) — pendente
+  print do usuário depois do reboot.
+
 ## 6.1.2 — 2026-08-29
 
 - **Logo do sidebar reduzido pela metade** (330px → 165px) — ficou
