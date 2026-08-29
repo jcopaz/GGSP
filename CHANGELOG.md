@@ -4,6 +4,19 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.1.4 — 2026-08-29
+
+- **"Contorno preto" feio na seta/x do multiselect, corrigido**: a regra
+  "Botão comum" (`button:not([kind="primary"])`, pensada pra botões
+  inteiros tipo "Sair"/"Aplicar filtros") também pintava fundo + borda
+  nos ícones internos de multiselect/selectbox (seta de abrir opções, x
+  de remover tag/limpar tudo) — tecnicamente também são `<button>`,
+  então herdavam a mesma caixinha visível. Neutralizado fundo/borda
+  especificamente dentro de `[data-baseweb]`; a cor clara do ícone (já
+  corrigida em versão anterior) não muda.
+- Validado: `py_compile`, `AppTest` completo sem exceção. Ainda pendente
+  confirmação visual do usuário (junto com o logo do item 6.1.3).
+
 ## 6.1.3 — 2026-08-29
 
 - **Logo do sidebar aparecendo cortado nas bordas, corrigido**: print do

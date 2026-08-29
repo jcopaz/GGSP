@@ -7,4 +7,4 @@ Regra (qualquer app, não só este): bump a cada commit relevante.
 
 Ver CHANGELOG.md (raiz do projeto) para o histórico de cada bump.
 """
-APP_VERSION = "6.1.3"
+APP_VERSION = "6.1.4"

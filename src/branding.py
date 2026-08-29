@@ -149,6 +149,20 @@ def inject_shell_css() -> None:
             color: var(--f360-sidebar-ink) !important;
             fill: var(--f360-sidebar-ink) !important;
         }
+        /* "Contorno preto" feio na seta (abrir opções) e no "x" (remover
+        tag/limpar tudo) do multiselect — achado 2026-08-29, print do
+        usuário: a regra "Botão comum" (`button:not([kind="primary"])`
+        acima, pensada pra botão de verdade tipo "Sair"/"Aplicar
+        filtros") também pinta fundo + borda nesses ÍCONES internos do
+        BaseWeb, porque tecnicamente também são <button>. Vira uma
+        caixinha visível em volta de um "x"/seta que deveria ser só o
+        traço do ícone. Neutraliza fundo/borda especificamente dentro de
+        [data-baseweb] — a cor clara do ícone já vem da regra acima, não
+        muda aqui. */
+        [data-testid="stSidebar"] [data-baseweb] button {
+            background: transparent !important;
+            border: none !important;
+        }
 
         /* Logo do st.logo() — reduzido pra 165px em 2026-08-29 (metade
         do 330px anterior, a pedido do usuário depois de ver o resultado
