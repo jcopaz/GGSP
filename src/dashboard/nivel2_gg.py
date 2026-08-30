@@ -16,6 +16,7 @@ from src.branding import render_page_banner
 from src.dashboard.filtros import clausula_periodo, filtrar_periodo_df
 from src.dashboard.formatacao import fmt_pacote, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
+from src.dashboard.layout import nota_forecast
 from src.dashboard.nivel1_diretoria import GG_TOTAL
 from src.dashboard.paleta import COR_ECONOMIA, COR_ESTOURO, COR_NEUTRO, COR_ORCADO
 from src.dashboard.tendencia import dados_tendencia, figura_tendencia
@@ -361,13 +362,11 @@ def render_gerencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str) -> None:
         return
     with st.expander("📊 Ver por Gerência (dentro desta GG)", expanded=False):
         st.caption(
-            "Orçado x Real x Delta por Gerência dentro do organograma "
-            "desta GG. Ainda sem quebra por categoria de causa (Físico/"
-            "Efeito Preço/etc.) — a causa hoje só é rastreada por Pacote, "
-            "que pode pertencer a várias Gerências ao mesmo tempo. "
-            "\"Não atribuído\": OPEX sem Gerência na Consulta de Contas ou "
-            "linha do Realizado sem Gerência na hierarquia SAP. CAPEX "
-            "(Base Zero) já é atribuído por região SP/VP desde 2026-08-17."
+            "Orçado x Real x Delta por Gerência dentro desta GG. Sem quebra "
+            "por categoria de causa: a causa só é rastreada por Pacote, que "
+            "pode pertencer a várias Gerências. \"Não atribuído\" = sem "
+            "Gerência na Consulta de Contas ou na hierarquia SAP; CAPEX "
+            "(Base Zero) já é atribuído por região SP/VP."
         )
         st.caption("🔴 vermelho = estouro (Delta positivo) · 🟢 verde = economia (Delta negativo).")
         st.plotly_chart(
@@ -407,9 +406,5 @@ def render_tendencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str, ano_fiscal: 
         figura_tendencia(df_tend, f"Tendência do ano — {nome_gg}"),
         use_container_width=True, key=f"tendencia-{gg_id}", config=CONFIG_PLOTLY,
     )
-    st.caption(
-        "Orçado x Real aqui é só OPEX (CAPEX Realizado ainda sem fonte "
-        "carregada). Linha pontilhada = Forecast (saldo do desvio até o "
-        "mês de referência, redistribuído nos meses restantes — fecha "
-        "exatamente no Orçado Anual em dezembro)."
-    )
+    st.caption("Orçado x Real aqui é só OPEX — CAPEX Realizado ainda sem fonte carregada.")
+    nota_forecast()

@@ -115,6 +115,15 @@ _NOMES_MES = {1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
               7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"}
 
 
+def _grupo_filtro(texto: str, primeiro: bool = False) -> None:
+    """Cabeçalho de grupo de filtro na sidebar — caixa-alta, hairline em
+    cima, pros 3 grupos se lerem como grupos (classe `.f360-filtro-grupo`
+    definida em branding.inject_shell_css, 6.4.0). Substitui o
+    `st.sidebar.markdown("**Título**")` solto."""
+    classe = "f360-filtro-grupo is-first" if primeiro else "f360-filtro-grupo"
+    st.sidebar.markdown(f'<div class="{classe}">{texto}</div>', unsafe_allow_html=True)
+
+
 def _opcoes(con: duckdb.DuckDBPyConnection, tabelas_colunas: list[tuple[str, str]]) -> list[str]:
     """União de valores distintos de uma coluna em 1+ tabelas — o mesmo
     filtro pode precisar casar com tabelas diferentes (ex.: pacote_id
@@ -188,7 +197,7 @@ def _renderizar_filtro_capex_obras(con: duckdb.DuckDBPyConnection) -> tuple[list
     projetos = _opcoes(con, [(t, "e_pep_projeto") for t in tabelas])
     elementos_pep = _opcoes(con, [(t, "elemento_pep") for t in tabelas])
 
-    st.sidebar.markdown("**🏗️ CAPEX Obras (Projeto/PEP)**")
+    _grupo_filtro("🏗️ CAPEX Obras (Projeto/PEP)")
     projeto_sel = st.sidebar.multiselect(
         "Projeto", projetos, key="w_filtro_projeto_capex",
         help="Só CAPEX de Projetos e Obras (CJI4/CJI3) — não filtra as páginas de OPEX.",
@@ -225,7 +234,7 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
        expander desde 2026-08-28, a pedido do usuário).
     """
     st.sidebar.divider()
-    st.sidebar.caption("Filtros — ajuste e clique em Aplicar filtros")
+    st.sidebar.caption("Ajuste os filtros e clique em **Aplicar filtros** no fim.")
 
     gerencias = _opcoes(con, [("fact_realizado", "gerencia_nome")])
     coordenacoes_todas = _opcoes(con, [("fact_realizado", "coordenacao")])
@@ -234,7 +243,7 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
     classificacoes = _opcoes(con, [("fact_orcamento", "classificacao_contabil")])
     pacotes = _opcoes(con, [("fact_orcamento", "pacote_id"), ("fact_realizado", "pacote_id")])
 
-    st.sidebar.markdown("**🏢 Organização**")
+    _grupo_filtro("🏢 Organização", primeiro=True)
     gerencia_sel = st.sidebar.multiselect(
         "Gerência", gerencias, key="w_filtro_gerencia",
         help="Só Realizado, na nomenclatura da hierarquia SAP.",
@@ -291,7 +300,7 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
         ),
     )
 
-    st.sidebar.markdown("**📦 Projeto / Classificação**")
+    _grupo_filtro("📦 Projeto / Classificação")
     classificacao_sel = st.sidebar.multiselect(
         "Classificação (CAPEX/OPEX)", classificacoes, key="w_filtro_classificacao",
         help="Só Orçamento — Realizado (SAP) não carrega Classificação Contábil por linha.",
@@ -300,7 +309,7 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
 
     projeto_capex_sel, elemento_pep_capex_sel = _renderizar_filtro_capex_obras(con)
 
-    st.sidebar.markdown("**📅 Tempo**")
+    _grupo_filtro("📅 Tempo")
     anos_sel, trimestres_sel, meses_sel = _renderizar_filtro_periodo(con)
 
     col_aplicar, col_limpar = st.sidebar.columns(2)
@@ -574,4 +583,10 @@ def renderizar_badge_filtros_ativos() -> None:
     `resumo_filtros_ativos`)."""
     resumo = resumo_filtros_ativos()
     if resumo:
-        st.info(f"🔎 Filtros ativos — {resumo}")
+        # Chip discreto (6.4.0) no lugar do st.info full-width, que
+        # gritava em toda página — classe `.f360-badge-filtros` em
+        # branding.inject_shell_css.
+        st.markdown(
+            f'<div class="f360-badge-filtros">🔎 Filtros ativos &nbsp;·&nbsp; {resumo}</div>',
+            unsafe_allow_html=True,
+        )

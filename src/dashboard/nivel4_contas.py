@@ -37,6 +37,7 @@ from src.dashboard.arvore_html import (
 from src.dashboard.filtros import clausula_familia, clausula_periodo, clausula_where, combinar_clausulas
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
+from src.dashboard.layout import bloco_resumo_visual, nota_forecast
 from src.dashboard.paleta import COR_ECONOMIA, COR_ESTOURO
 from src.dashboard.tendencia import dados_tendencia, figura_tendencia
 from src.engine.delta_calculator import calcular_delta
@@ -237,22 +238,19 @@ def render_arvore_contas(
         return
 
     if mostrar_resumo:
-        col_card, col_linha, col_graf = st.columns([1, 0.04, 3], gap="medium")
-        with col_card:
-            _render_card_nivel4(df_familia, df_pacote, df_conta)
-        with col_linha:
-            st.markdown(
-                "<div style='border-left: 1px solid #ccc; height: 100%; "
-                "min-height: 420px; margin: 0 auto;'></div>",
-                unsafe_allow_html=True,
-            )
-        with col_graf:
+        def _visual_top_contas() -> None:
             fig = _grafico_top_contas(df_conta, nomes_pacote)
             if fig:
                 st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}-top-contas", config=CONFIG_PLOTLY)
                 st.caption("🔴 vermelho = estouro (Delta positivo) · 🟢 verde = economia (Delta negativo).")
             else:
                 st.info("Nenhuma conta com desvio no recorte selecionado.")
+
+        bloco_resumo_visual(
+            lambda: _render_card_nivel4(df_familia, df_pacote, df_conta),
+            _visual_top_contas,
+            key=f"{key_prefix}-resumo",
+        )
 
         if ano_fiscal is not None:
             st.divider()
@@ -264,13 +262,7 @@ def render_arvore_contas(
                 figura_tendencia(df_tend, "Tendência do ano — recorte filtrado"),
                 use_container_width=True, key=f"{key_prefix}-tendencia", config=CONFIG_PLOTLY,
             )
-            st.caption(
-                "Linha pontilhada = Forecast (saldo do desvio até o mês de "
-                "referência, redistribuído nos meses restantes — fecha "
-                "exatamente no Orçado Anual em dezembro). Segue o mesmo "
-                "recorte de filtros aplicado acima (Pacote/Centro de "
-                "Custo/PEP/Classificação/Coordenação/Gerência/Período)."
-            )
+            nota_forecast(com_recorte=True)
     else:
         fig = _grafico_top_contas(df_conta, nomes_pacote)
         if fig:

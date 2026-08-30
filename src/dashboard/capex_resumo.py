@@ -29,6 +29,7 @@ from src.dashboard.capex_dados import (
 )
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pct, fmt_reais_abrev, fmt_semaforo
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
+from src.dashboard.layout import bloco_resumo_visual
 from src.dashboard.paleta import COR_ORCADO, COR_REALIZADO
 from src.engine.semaforo import classificar_semaforo
 
@@ -88,21 +89,15 @@ def render_resumo_executivo_capex(con: duckdb.DuckDBPyConnection) -> None:
 
     df_gerencia = dados_gerencia_obras(con)
 
-    col_card, col_linha, col_graf = st.columns([1, 0.04, 3], gap="medium")
-    with col_card:
+    def _resumo() -> None:
         _render_card_resumo(resumo, status_semaforo)
         if not tem_orc:
             st.caption("⚠️ CJI4 (Orçado) não carregado — Orçado fica zerado.")
         if not tem_real:
             st.caption("⚠️ CJI3 (Realizado) não carregado — Realizado fica zerado.")
         st.caption("🟢 95–105% · 🟡 90–95%/105–110% · 🔴 fora da faixa · ⚪ sem dado.")
-    with col_linha:
-        st.markdown(
-            "<div style='border-left: 1px solid #ccc; height: 100%; "
-            "min-height: 320px; margin: 0 auto;'></div>",
-            unsafe_allow_html=True,
-        )
-    with col_graf:
+
+    def _visual() -> None:
         if df_gerencia.empty:
             st.info("Nenhum dado por Gerência de Obras no recorte selecionado.")
         else:
@@ -110,6 +105,8 @@ def render_resumo_executivo_capex(con: duckdb.DuckDBPyConnection) -> None:
                 _grafico_gerencia_obras(df_gerencia), use_container_width=True,
                 key="capex-resumo-gerencia", config=CONFIG_PLOTLY,
             )
+
+    bloco_resumo_visual(_resumo, _visual, key="capex-resumo")
 
     st.divider()
     st.subheader("Projetos com Maior Desvio")

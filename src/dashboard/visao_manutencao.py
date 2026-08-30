@@ -31,6 +31,7 @@ from src.branding import render_page_banner
 from src.dashboard.filtros import clausula_periodo
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY, com_alternancia_barra_linha
+from src.dashboard.layout import bloco_resumo_visual, nota_forecast
 from src.dashboard.nivel4_contas import render_arvore_contas
 from src.dashboard.nivel5_centro_custo import render_arvore_centro_custo
 from src.dashboard.paleta import COR_ORCADO, COR_REALIZADO
@@ -230,22 +231,16 @@ def render_visao_manutencao(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> 
     resumo = resumo_manutencao(con)
     nomes_pacote = mapa_nomes_pacote(con)
 
-    # Card-resumo | divisor | gráfico por Pacote — mesmo padrão das demais
-    # abas, replicado em 2026-08-10.
-    col_card, col_linha, col_graf = st.columns([1, 0.04, 3], gap="medium")
-    with col_card:
-        _render_card_manutencao(resumo)
-    with col_linha:
-        st.markdown(
-            "<div style='border-left: 1px solid #ccc; height: 100%; "
-            "min-height: 420px; margin: 0 auto;'></div>",
-            unsafe_allow_html=True,
-        )
-    with col_graf:
-        st.plotly_chart(
+    # Card-resumo | divisória | gráfico por Pacote — mesmo padrão das demais
+    # abas. Layout compartilhado desde 6.4.0 (ver src/dashboard/layout.py).
+    bloco_resumo_visual(
+        lambda: _render_card_manutencao(resumo),
+        lambda: st.plotly_chart(
             _grafico_por_pacote(_dados_por_pacote(con), nomes_pacote),
             use_container_width=True, key="manut-por-pacote", config=CONFIG_PLOTLY,
-        )
+        ),
+        key="manut",
+    )
 
     st.divider()
     df_tend = dados_tendencia(con, ano_fiscal, familia=FAMILIA_MANUTENCAO)
@@ -253,11 +248,7 @@ def render_visao_manutencao(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> 
         figura_tendencia(df_tend, "Tendência do ano — Manutenção (SP)"),
         use_container_width=True, key="manut-tendencia", config=CONFIG_PLOTLY,
     )
-    st.caption(
-        "Linha pontilhada = Forecast (saldo do desvio até o mês de "
-        "referência, redistribuído nos meses restantes — fecha "
-        "exatamente no Orçado Anual em dezembro)."
-    )
+    nota_forecast()
 
     st.plotly_chart(_grafico_mensal(_dados_mensal(con)), use_container_width=True, key="manut-mensal", config=CONFIG_PLOTLY)
 

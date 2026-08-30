@@ -26,14 +26,19 @@ NOME_FAMILIA = {
 
 CSS_ARVORE = """
 <style>
-.pnl-arvore { font-family: -apple-system, sans-serif; font-size: 13px; }
+/* `overflow-x: auto` + `min-width` nas linhas (6.4.0): em tela estreita
+a árvore rola dentro de si mesma em vez de esticar a página inteira ou
+esmagar as colunas de valor (mesma ideia do `.pnl-heatmap-wrap` do mapa
+de calor). Sem altura fixa aqui, então nunca vira scroll vertical — a
+árvore continua crescendo pra baixo naturalmente. */
+.pnl-arvore { font-family: -apple-system, sans-serif; font-size: 13px; overflow-x: auto; }
 .pnl-arvore details { margin-bottom: 2px; }
 .pnl-arvore summary { cursor: pointer; list-style: none; padding: 6px 8px; border-radius: 4px; }
 .pnl-arvore summary::-webkit-details-marker { display: none; }
 .pnl-arvore summary::before { content: "▶ "; font-size: 10px; }
 .pnl-arvore details[open] > summary::before { content: "▼ "; }
-.pnl-linha { display: grid; grid-template-columns: 1fr 130px 130px 130px 90px; gap: 4px; align-items: center; }
-.pnl-linha-simples { display: grid; grid-template-columns: 1fr 140px; gap: 4px; align-items: center; padding: 3px 8px 3px 28px; }
+.pnl-linha { display: grid; grid-template-columns: 1fr 130px 130px 130px 90px; gap: 4px; align-items: center; min-width: 560px; }
+.pnl-linha-simples { display: grid; grid-template-columns: 1fr 140px; gap: 4px; align-items: center; padding: 3px 8px 3px 28px; min-width: 420px; }
 .pnl-linha-simples:nth-child(odd) { background: rgba(127,127,127,0.05); }
 .pnl-folha { padding: 3px 8px 3px 28px; }
 .pnl-folha:nth-child(odd) { background: rgba(127,127,127,0.05); }
@@ -42,7 +47,7 @@ CSS_ARVORE = """
 .pnl-nivel2 > summary { background: rgba(31,56,100,0.10); font-weight: 600; }
 .pnl-nivel3 > summary { background: transparent; font-weight: 500; font-size: 12px; color: #555; padding-left: 20px; }
 .pnl-num { text-align: right; font-variant-numeric: tabular-nums; }
-.pnl-hdr { display: grid; grid-template-columns: 1fr 130px 130px 130px 90px; gap: 4px; font-weight: 600; font-size: 11px; color: #666; padding: 4px 8px; border-bottom: 1px solid #ddd; }
+.pnl-hdr { display: grid; grid-template-columns: 1fr 130px 130px 130px 90px; gap: 4px; font-weight: 600; font-size: 11px; color: #666; padding: 4px 8px; border-bottom: 1px solid #ddd; min-width: 560px; }
 </style>
 """
 

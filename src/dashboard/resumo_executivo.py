@@ -50,6 +50,7 @@ from src.dashboard.formatacao import (
     escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, fmt_semaforo, mapa_nomes_pacote,
 )
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
+from src.dashboard.layout import bloco_resumo_visual, legenda_semaforo, nota_forecast
 from src.dashboard.nivel1_diretoria import GG_TOTAL
 from src.dashboard.nivel2_gg import dados_gerencia_gg, dados_waterfall_gg, figura_waterfall
 from src.dashboard.nivel3_pacotes import dados_ranking_pacotes
@@ -442,34 +443,23 @@ def render_resumo_executivo(
 
     # ===== Painel "Financeiro" (card-resumo + Visão Anual) =====
     st.subheader("📊 Financeiro")
-    col_card, col_linha, col_tend = st.columns([1, 0.04, 3], gap="medium")
-    with col_card:
+
+    def _resumo_financeiro() -> None:
         _render_card_resumo(
             resumo, orcado_capex, orcado_opex, orcado_fora_plano,
             pct_explicado, delta_nao_justificado, status_semaforo,
         )
-        st.caption(
-            "🟢 95–105% · 🟡 90–95%/105–110% · 🔴 fora da faixa · ⚪ sem "
-            "dado · 🟣 delta relevante sem justificativa (sobrepõe a faixa "
-            "de aderência)."
-        )
-    with col_linha:
-        st.markdown(
-            "<div style='border-left: 1px solid #ccc; height: 100%; "
-            "min-height: 420px; margin: 0 auto;'></div>",
-            unsafe_allow_html=True,
-        )
-    with col_tend:
+        legenda_semaforo()
+
+    def _visual_financeiro() -> None:
         st.plotly_chart(
             figura_tendencia(dados_tendencia(con, ano_fiscal), "Visão Anual — Orçado x Real x Forecast (OPEX)"),
             use_container_width=True, key="resumo-tendencia", config=CONFIG_PLOTLY,
         )
-        st.caption(
-            "Orçado x Real aqui é só OPEX (CAPEX Realizado ainda sem fonte "
-            "carregada). Forecast (linha pontilhada) = saldo do desvio até "
-            "o mês de referência, redistribuído nos meses restantes — "
-            "fecha exatamente no Orçado Anual em dezembro (fórmula do PMO)."
-        )
+        st.caption("Orçado x Real aqui é só OPEX — CAPEX Realizado ainda sem fonte carregada.")
+        nota_forecast()
+
+    bloco_resumo_visual(_resumo_financeiro, _visual_financeiro, key="resumo-financeiro")
 
     st.divider()
 
@@ -524,15 +514,18 @@ def render_resumo_executivo(
                 key="resumo-opex-tabela",
             )
         st.caption(
-            "\"Opex Infra (Drenagem)\" sempre 0 — sem arquivo carregado "
-            "ainda. Orçado x Real x Delta x Aderência por Gerência Local "
-            "dentro do organograma da GG Infraestrutura (SP), gráfico e "
-            "tabela. \"Não atribuído\" (fora do gráfico, ver aviso acima e "
-            "tabela completa): linha sem Gerência na hierarquia SAP/"
-            "Consulta de Contas (ex.: CGG050, Centro de Custo da própria "
-            "GG — ver Nível 5 pra esse detalhe, confirmação formal ainda "
-            "pendente com a Laís Machado)."
+            "Orçado x Real x Delta x Aderência por Gerência Local dentro do "
+            "organograma da GG Infraestrutura (SP), gráfico e tabela."
         )
+        with st.expander("Notas"):
+            st.caption(
+                "\"Opex Infra (Drenagem)\" sempre 0 — sem arquivo carregado "
+                "ainda. \"Não atribuído\" (fora do gráfico, ver aviso acima e "
+                "tabela completa): linha sem Gerência na hierarquia SAP/"
+                "Consulta de Contas (ex.: CGG050, Centro de Custo da própria "
+                "GG — ver Nível 5 pra esse detalhe, confirmação formal ainda "
+                "pendente com a Laís Machado)."
+            )
 
     # ===== Painel "Financeiro OPEX" (waterfall) =====
     with st.container(border=True):
@@ -540,14 +533,15 @@ def render_resumo_executivo(
         st.caption(f"_{_subtitulo_periodo_acumulado()}_")
         fig_wf = figura_waterfall("GER. GERAL DE INFRAESTRUTURA (SP)", orcado_rdg, delta_total, df_categorias)
         st.plotly_chart(fig_wf, use_container_width=True, key="resumo-waterfall", config=CONFIG_PLOTLY)
-        st.caption(
-            "Waterfall e Delta/Aderência do card acima comparam só OPEX x "
-            "OPEX — CAPEX Realizado ainda não tem fonte carregada. Quebra "
-            "por Gerência Local de cada categoria (Físico/Efeito Preço/etc, "
-            "como no painel de referência do PMO) não está aqui: causa "
-            "hoje só é rastreada por Pacote inteiro, quebrar por Gerência Local "
-            "exigiria inventar rateio."
-        )
+        st.caption("Waterfall e Delta/Aderência do card acima comparam só OPEX x OPEX.")
+        with st.expander("Notas"):
+            st.caption(
+                "CAPEX Realizado ainda não tem fonte carregada. Quebra por "
+                "Gerência Local de cada categoria (Físico/Efeito Preço/etc, "
+                "como no painel de referência do PMO) não está aqui: causa "
+                "hoje só é rastreada por Pacote inteiro, quebrar por Gerência "
+                "Local exigiria inventar rateio."
+            )
 
     # ===== Painel "CAPEX" (composição Via/EE + Visão GG SP/VP) =====
     with st.container(border=True):
@@ -567,13 +561,14 @@ def render_resumo_executivo(
                 )
             else:
                 st.info("Nenhum CAPEX no recorte selecionado.")
-        st.caption(
-            "Só Orçado — CAPEX Realizado ainda não tem fonte carregada, "
-            "sem isso não dá pra calcular Aderência nem Delta aqui. \"SP "
-            "x VP\" é o único corte de região que a Base Zero (fonte do "
-            "CAPEX) tem — não são as 8 Gerências reais do organograma "
-            "(essas só existem no lado OPEX)."
-        )
+        st.caption("Só Orçado — CAPEX Realizado ainda não tem fonte carregada.")
+        with st.expander("Notas"):
+            st.caption(
+                "Sem Realizado não dá pra calcular Aderência nem Delta aqui. "
+                "\"SP x VP\" é o único corte de região que a Base Zero (fonte "
+                "do CAPEX) tem — não são as 8 Gerências reais do organograma "
+                "(essas só existem no lado OPEX)."
+            )
 
     # ===== Painel "Financeiro CAPEX" — indisponível, visível de propósito =====
     with st.container(border=True):

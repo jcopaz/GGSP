@@ -4,6 +4,66 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.4.0 — 2026-08-30
+
+Passada de design UI/UX: filtro da sidebar + consistência de layout entre
+telas e monitores. Nenhuma mudança de dado/schema/segurança — só casca
+visual. Paleta de gráfico (`paleta.py`), tipos de gráfico e logomarca
+(sidebar + login) **não foram tocados**, por pedido do usuário.
+
+### Filtro da sidebar (`src/branding.py`)
+
+CSS refinado a partir de uma segunda opinião de design (Gemini), sobre a
+base do 6.4.0 — a lógica de `filtros.py` não mudou (mesmos widgets, mesma
+cascata).
+
+- **Chip ("tag") do multiselect em navy SUAVE** (`--f360-accent-soft`,
+  navy translúcido ~8%) no lugar do navy sólido chapado que o
+  `primaryColor` do BaseWeb pintava — o bloco escuro brigava com a
+  sidebar clara ("as cores não conversam"). `primaryColor` continua navy
+  (serve o resto do app). Chip ganha **borda sutil** + texto `#16283f`.
+- **Contorno quadrado do "×"/seta resolvido na raiz**: a regra de botão
+  da sidebar deixou de mirar `button` genérico (vazava nos botõezinhos
+  internos do BaseWeb) e passou a mirar só `.stButton`/`stFormSubmitButton`.
+  Removido o reset `[data-baseweb] * { color: initial }`. Somado a isso,
+  um **reset explícito de fundo/borda/sombra** nos `[role="button"]`/
+  `button`/`svg` internos do multiselect (× da tag, seta, limpar-tudo) —
+  escopado só ao multiselect, `svg` a 12px muted, hover suave.
+- Caixa do select ganha `:focus-within` (anel navy) e `::placeholder`
+  estilizado; botão primário ("Aplicar filtros") com fill navy explícito.
+- Grupos de filtro (Organização / Projeto / Tempo) viram cabeçalhos de
+  seção de verdade (`.f360-filtro-grupo`) + caption curta no lugar do
+  tooltip "?" escondido.
+
+### Consistência entre telas/monitores
+
+- **`max-width: 1500px` centralizado** no `.block-container` — sem isso
+  cada monitor renderizava outra proporção (quadros-resumo e gráficos
+  "distorcidos a depender do monitor").
+- **Colunas com `flex-wrap` + `min-width`** — quando o espaço aperta
+  (tela menor, sidebar aberto num notebook) empilham limpo em vez de
+  esmagar/sobrepor.
+- **`src/dashboard/layout.py` (novo)**: `bloco_resumo_visual()` — uma
+  implementação só do "card-resumo | divisória | visual principal",
+  substituindo o padrão `st.columns([1, 0.04, 3])` + `<div>` de altura
+  fixa (a coluna-fantasma 0.04 virava um traço vertical solto no meio da
+  tela quando as colunas quebravam). Aplicado em 8 páginas.
+- Árvore colapsável (Nível 4/5, `arvore_html.py`) ganha wrapper de
+  scroll horizontal — não força mais a página inteira a rolar em tela
+  estreita.
+
+### Labels / textos
+
+- Títulos dos banners de página normalizados numa voz só.
+- Legendas (`st.caption`) de 4–6 linhas enxutas pra 1–2 linhas + expander
+  "Notas" com o restante (nenhum conteúdo removido).
+- Badge "🔎 Filtros ativos" vira chip discreto (`.f360-badge-filtros`) no
+  lugar do `st.info` full-width.
+
+- Validado: `py_compile` em todos os módulos, AppTest por página sem
+  exceção. Confirmação visual (sidebar aberto/fechado, notebook + monitor
+  externo) pendente com o usuário.
+
 ## 6.3.0 — 2026-08-29
 
 - **`primaryColor` trocado de dourado (#c9932f) pra azul-marinho

@@ -211,7 +211,16 @@ def _render_card_gg(linha: pd.Series) -> None:
 def render_nivel1(con: duckdb.DuckDBPyConnection) -> None:
     render_page_banner("🧭", "Diretoria", "Real/Delta/Aderência comparam só OPEX x OPEX — waterfall por causa (Nível 2) logo abaixo.")
     resumo = resumo_nivel1(con)
-    colunas = st.columns(len(resumo))
-    for coluna, (_, linha) in zip(colunas, resumo.iterrows()):
-        with coluna:
-            _render_card_gg(linha)
+    if resumo.empty:
+        st.info("Nenhuma Gerência Geral com dado no recorte selecionado.")
+        return
+    # No máx. 3 cards por linha — acima disso os cards ficam estreitos
+    # demais e o número grande encavala (as colunas do Streamlit já
+    # quebram sozinhas com o CSS de 6.4.0, mas limitar aqui deixa a grade
+    # previsível). Hoje o escopo tem 1 GG, então quase sempre é 1 card.
+    linhas = list(resumo.iterrows())
+    for inicio in range(0, len(linhas), 3):
+        bloco = linhas[inicio:inicio + 3]
+        for coluna, (_, linha) in zip(st.columns(len(bloco)), bloco):
+            with coluna:
+                _render_card_gg(linha)

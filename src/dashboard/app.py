@@ -88,6 +88,7 @@ from src.ingestion.arquivo_bruto import (
 )
 from src.auth.audit import registrar_atividade, registrar_visualizacao_pagina
 from src.dashboard.filtros import renderizar_badge_filtros_ativos, renderizar_filtros_sidebar
+from src.dashboard.layout import bloco_resumo_visual
 from src.dashboard.nivel1_diretoria import gg_padrao, render_nivel1
 from src.dashboard.mapa_calor_gerencia_pacote import render_mapa_calor_gerencia_pacote
 from src.dashboard.nivel2_gg import render_gerencia_gg, render_nivel2, render_tendencia_gg
@@ -517,20 +518,15 @@ def pagina_painel() -> None:
         # vertical separando os dois — pedido do usuário em 2026-08-10
         # ("colocaria o gráfico do lado desse resumo"), no lugar do
         # empilhado vertical (Nível 1 em cima, divider, Nível 2 embaixo).
-        col_n1, col_linha, col_n2 = st.columns([1, 0.04, 3], gap="medium")
-        with col_n1:
-            render_nivel1(con)
-        with col_linha:
-            st.markdown(
-                "<div style='border-left: 1px solid #ccc; height: 100%; "
-                "min-height: 560px; margin: 0 auto;'></div>",
-                unsafe_allow_html=True,
-            )
-        with col_n2:
-            render_nivel2(
+        # Layout compartilhado desde 6.4.0 (ver src/dashboard/layout.py).
+        bloco_resumo_visual(
+            lambda: render_nivel1(con),
+            lambda: render_nivel2(
                 con, st.session_state["gg_selecionado"], caminho_explicacoes,
                 CFG["categorias_causa"], ano_fiscal=CFG["ano_fiscal_orcamento"],
-            )
+            ),
+            key="painel",
+        )
 
         st.divider()
         render_tendencia_gg(con, st.session_state["gg_selecionado"], ano_fiscal=CFG["ano_fiscal_orcamento"])

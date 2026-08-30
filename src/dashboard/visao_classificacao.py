@@ -41,6 +41,7 @@ import streamlit as st
 from src.branding import render_page_banner
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
+from src.dashboard.layout import bloco_resumo_visual
 from src.dashboard.paleta import COR_CAPEX, COR_OPEX
 
 _COR_CLASSIFICACAO = {"CAPEX": COR_CAPEX, "OPEX": COR_OPEX}
@@ -157,21 +158,19 @@ def render_visao_classificacao(con: duckdb.DuckDBPyConnection, classificacao: st
     resumo = resumo_classificacao(con, classificacao)
     nomes_pacote = mapa_nomes_pacote(con)
 
-    # Card-resumo | divisor | gráfico por Pacote — mesmo padrão do Painel
+    # Card-resumo | divisória | gráfico por Pacote — mesmo padrão do Painel
     # Executivo (Nível 1 | Nível 2), pedido do usuário em 2026-08-10.
-    col_card, col_linha, col_graf = st.columns([1, 0.04, 3], gap="medium")
-    with col_card:
-        _render_card_classificacao(classificacao, resumo)
-    with col_linha:
-        st.markdown(
-            "<div style='border-left: 1px solid #ccc; height: 100%; "
-            "min-height: 420px; margin: 0 auto;'></div>",
-            unsafe_allow_html=True,
-        )
-    with col_graf:
+    # Layout compartilhado desde 6.4.0 (ver src/dashboard/layout.py).
+    def _visual_pacote() -> None:
         fig_pacote = _grafico_por_pacote(_dados_por_pacote(con, classificacao), cor, nomes_pacote)
         if fig_pacote:
             st.plotly_chart(fig_pacote, use_container_width=True, key=f"vc-{classificacao}-pacote", config=CONFIG_PLOTLY)
+
+    bloco_resumo_visual(
+        lambda: _render_card_classificacao(classificacao, resumo),
+        _visual_pacote,
+        key=f"vc-{classificacao}",
+    )
 
     st.divider()
     fig_conta = _grafico_por_conta(_dados_por_conta(con, classificacao), cor, top_n=10)

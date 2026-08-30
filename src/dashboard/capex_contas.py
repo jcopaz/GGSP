@@ -14,6 +14,7 @@ from src.dashboard.arvore_html import CSS_ARVORE, cabecalho_arvore, linha_resumo
 from src.dashboard.capex_dados import dados_contas, dados_gerencia_obras, rotulo_projeto, tabelas_disponiveis
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_reais_abrev
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
+from src.dashboard.layout import bloco_resumo_visual
 from src.dashboard.paleta import COR_ECONOMIA, COR_ESTOURO
 
 
@@ -136,22 +137,19 @@ def render_nivel4_contas_capex(con: duckdb.DuckDBPyConnection) -> None:
         st.info("Nenhum dado para os filtros selecionados.")
         return
 
-    col_card, col_linha, col_graf = st.columns([1, 0.04, 3], gap="medium")
-    with col_card:
-        _render_card_nivel4(df_gerencia, df_conta)
-    with col_linha:
-        st.markdown(
-            "<div style='border-left: 1px solid #ccc; height: 100%; "
-            "min-height: 420px; margin: 0 auto;'></div>",
-            unsafe_allow_html=True,
-        )
-    with col_graf:
+    def _visual_top_contas() -> None:
         fig = _grafico_top_contas(df_conta)
         if fig:
             st.plotly_chart(fig, use_container_width=True, key="capex-n4-top-contas", config=CONFIG_PLOTLY)
             st.caption("🔴 vermelho = estouro (Delta positivo) · 🟢 verde = economia (Delta negativo).")
         else:
             st.info("Nenhuma conta com desvio no recorte selecionado.")
+
+    bloco_resumo_visual(
+        lambda: _render_card_nivel4(df_gerencia, df_conta),
+        _visual_top_contas,
+        key="capex-n4",
+    )
 
     st.divider()
     arvore_html = _montar_arvore(df_conta)
