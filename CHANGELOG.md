@@ -4,6 +4,31 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.5.0 — 2026-08-30
+
+Passada minuciosa na sidebar (`src/branding.py`). Só CSS — nenhuma
+mudança de dado/lógica. Paleta de gráfico, tipos de gráfico e
+`primaryColor` (`.streamlit/config.toml`, ainda navy) intocados; o
+dourado é 100% CSS escopado em `[data-testid="stSidebar"]`.
+
+- **Acento DOURADO de volta** (`--f360-gold: #c9932f`, o mesmo da
+  6.2.0–6.2.2) — item de nav ativo (tint + barra dourada), anel de foco
+  do multiselect, borda de hover dos botões, tag/chip. Voltou sem
+  reabrir o problema do contorno da tag porque desde a 6.4.0 a tag e os
+  ícones internos do BaseWeb são estilizados explicitamente.
+- **Logo da sidebar quadrada — corrigido na raiz.** O `st.logo()` do
+  Streamlit 1.57 embrulha o `<img>` num `<div>` só na página default e
+  num `<button data-testid="stLogoLink">` nas demais — o seletor antigo
+  (`stSidebarHeader > div`) só pegava o `<div>`, então a moldura circular
+  sumia ao navegar pra fora da home. Agora div/a/button recebem a moldura
+  e o `stSidebarCollapseButton` é excluído. Círculo com medida e sombra
+  iguais aos da tela de login (112px, `rgba(15,23,42,.18)`).
+- Botão "Aplicar filtros" com o mesmo gradiente navy do "Entrar" do login.
+- Colunas da sidebar não quebram mais (Aplicar | Limpar lado a lado — a
+  regra global de reflow da 6.4.0 agora é só do conteúdo principal);
+  scrollbar fina; ritmo dos grupos de filtro revisto; hover no select.
+- `--f360-accent*` viraram alias de `--f360-gold*` (compat).
+
 ## 6.4.0 — 2026-08-30
 
 Passada de design UI/UX: filtro da sidebar + consistência de layout entre

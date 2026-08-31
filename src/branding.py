@@ -28,43 +28,37 @@ def inject_shell_css() -> None:
     CSS próprio (`_inject_login_css` em src/auth/login.py) e nunca coexiste
     com este.
 
-    Histórico do fundo da sidebar: navy sólido (aprovado 2026-08-27) →
-    cinza-azulado claro (2026-08-29), depois que os ícones internos do
-    BaseWeb (seta/×) não deram contraste contra o navy mesmo após várias
-    rodadas de CSS. `primaryColor` foi de dourado pra navy `#1e3a5f` no
-    mesmo dia (igual ao MRS Sentinel), pra dar contraste natural ao "×"
-    branco que o BaseWeb desenha por cima da tag.
+    **Sidebar clara + acento DOURADO** (`--f360-gold: #c9932f`). Foi a
+    versão de 6.2.0–6.2.2; o 6.3.0 trocou o acento pra navy junto com o
+    `primaryColor` só pra resolver o contorno da tag do multiselect — mas
+    o 6.4.0/6.5.0 passaram a estilizar a tag e os ícones internos do
+    BaseWeb explicitamente (fundo/borda/`×` controlados), então o dourado
+    voltou sem reabrir aquele problema. `primaryColor` fica navy no
+    `.streamlit/config.toml` (serve o resto do app — checkbox, slider,
+    tabs); o dourado é 100% CSS escopado em `[data-testid="stSidebar"]`.
 
-    **6.4.0 — design do filtro + consistência entre telas/monitores:**
+    **6.5.0 — passada minuciosa na sidebar:**
 
-    - **Chip ("tag") do multiselect em navy SUAVE** (`--f360-accent-soft`,
-      translúcido) no lugar do navy sólido que o `primaryColor` do BaseWeb
-      pinta por padrão — o bloco escuro brigava com a sidebar clara.
-      `primaryColor` fica igual (navy) porque ainda serve o resto do app.
-      Refinado a partir de sugestão externa (Gemini): chip ganha borda
-      sutil + texto `#16283f`; reset explícito de fundo/borda/sombra nos
-      botõezinhos internos do BaseWeb (× da tag, seta, limpar-tudo), mas
-      ESCOPADO só ao multiselect — não é mais a regra global de `button`
-      que vazava e desenhava o contorno quadrado (essa virou
-      `.stButton`/`stFormSubmitButton`). Removido o reset
-      `[data-baseweb] * { color: initial }`.
-    - **`max-width: 1500px` centralizado** no `.block-container` — sem
-      isso cada monitor renderizava outra proporção.
-    - **Colunas com `flex-wrap` + `min-width`** — quando o espaço aperta
-      (tela menor, sidebar aberto num notebook) elas empilham limpo em
-      vez de esmagar/sobrepor. Substitui a coluna-fantasma de proporção
-      0.04 usada como divisória vertical (ver `src/dashboard/layout.py`).
-    - Classes utilitárias: `.f360-filtro-grupo` (cabeçalho de grupo de
-      filtro), `.f360-badge-filtros` (chip de filtros ativos), e o alvo
-      `[class*="st-key-f360-visualcol-"]` (divisória do bloco resumo|visual).
-    - Banner de página (`render_page_banner`) tokenizado — mesmo visual.
+    - Acento dourado de volta: item de nav ativo, anel de foco do
+      multiselect, borda de hover dos botões, tag/chip.
+    - **Logo circular robusta**: o `st.logo()` do Streamlit 1.57 embrulha
+      o `<img>` num `<div>` na página default e num
+      `<button data-testid="stLogoLink">` nas demais — o seletor antigo
+      (`stSidebarHeader > div`) só pegava o `<div>`, então a logo
+      "voltava a ficar quadrada" ao navegar pra fora da home. Agora os 3
+      invólucros (div/a/button) recebem a moldura circular, e o
+      `stSidebarCollapseButton` é excluído. Mesma medida/sombra do
+      círculo da tela de login (`render_logo_video`, 112px). SEM
+      `transform:scale` — o crop 1:1 + zoom 1.7x já vem gravado em cada
+      frame do `fin360_logo.gif` (75 frames, ver docs/04-licoes).
+    - Botão "Aplicar filtros" com o mesmo gradiente navy do botão
+      "Entrar" da tela de login.
+    - Colunas da sidebar não quebram mais (Aplicar | Limpar lado a lado);
+      scrollbar fina; ritmo dos grupos de filtro revisto.
 
-    Nota de fragilidade: o seletor do item ativo da navegação
-    (`a[aria-current="page"]`) segue o padrão de acessibilidade mais comum
-    pra "link da página atual", mas o Streamlit não documenta esse
-    contrato — se uma versão futura mudar o marcador, o indicador (barra +
-    fundo) do item ativo para de aparecer (cosmético). Confirmar
-    visualmente depois de qualquer upgrade de Streamlit.
+    Nota de fragilidade: `a[aria-current="page"]` (item de nav ativo) e os
+    `data-testid` do `st.logo()` não são contrato público do Streamlit —
+    revalidar visualmente depois de todo upgrade de versão.
     """
     st.markdown(
         """
@@ -75,10 +69,19 @@ def inject_shell_css() -> None:
             --f360-sidebar-ink: #16283f;
             --f360-sidebar-ink-muted: #5b6b85;
             --f360-sidebar-line: #d8dfea;
-            --f360-accent: #1e3a5f;
-            /* Navy translúcido refinado */
-            --f360-accent-soft: rgba(30, 58, 95, 0.08);
-            --f360-accent-soft-hover: rgba(30, 58, 95, 0.15);
+            /* Acento da marca — dourado. Usado só como realce
+            (nav ativo / foco / hover / tag), nunca como fundo grande. */
+            --f360-gold: #c9932f;
+            --f360-gold-soft: rgba(201, 147, 47, 0.13);
+            --f360-gold-soft-hover: rgba(201, 147, 47, 0.22);
+            --f360-gold-line: rgba(201, 147, 47, 0.42);
+            /* Navy da tela de login — botão primário da sidebar reusa. */
+            --f360-navy-a: #0f2f52;
+            --f360-navy-b: #1d5488;
+            /* Compat: alguns pontos ainda referenciam --f360-accent. */
+            --f360-accent: var(--f360-gold);
+            --f360-accent-soft: var(--f360-gold-soft);
+            --f360-accent-soft-hover: var(--f360-gold-soft-hover);
             --f360-banner-from: #1c3250;
             --f360-banner-to: #16283f;
             --f360-banner-title: #e0ac52;
@@ -95,7 +98,7 @@ def inject_shell_css() -> None:
             letter-spacing: -0.01em;
         }
 
-        /* ---- Layout e Reflow do Conteúdo ---- */
+        /* ===== Layout e reflow do conteúdo (6.4.0) ===== */
         [data-testid="stMainBlockContainer"] {
             max-width: var(--f360-content-max);
             margin-inline: auto;
@@ -115,7 +118,7 @@ def inject_shell_css() -> None:
         [data-testid="stMainBlockContainer"] img { max-width: 100%; height: auto; }
         [data-testid="stMainBlockContainer"] table { max-width: 100%; }
 
-        /* Divisória do bloco resumo | visual */
+        /* Divisória do bloco "card-resumo | visual" (src/dashboard/layout.py). */
         [class*="st-key-f360-visualcol-"] {
             border-left: 1px solid var(--f360-sidebar-line);
             padding-left: 1.2rem;
@@ -124,24 +127,24 @@ def inject_shell_css() -> None:
             [class*="st-key-f360-visualcol-"] { border-left: none; padding-left: 0; }
         }
 
-        /* Cabeçalho de grupo de filtro na sidebar */
+        /* Cabeçalho de grupo de filtro na sidebar. */
         .f360-filtro-grupo {
-            font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em;
+            font-size: 0.7rem; font-weight: 700; letter-spacing: 0.09em;
             text-transform: uppercase; color: var(--f360-sidebar-ink-muted);
-            margin: 1.1rem 0 0.2rem; padding-top: 0.75rem;
+            margin: 1.35rem 0 0.4rem; padding-top: 0.6rem;
             border-top: 1px solid var(--f360-sidebar-line);
         }
-        .f360-filtro-grupo.is-first { border-top: none; padding-top: 0; margin-top: 0.3rem; }
+        .f360-filtro-grupo.is-first { border-top: none; padding-top: 0; margin-top: 0.5rem; }
 
-        /* Badge de filtros ativos no topo das páginas */
+        /* Chip de "filtros ativos" no topo das páginas (conteúdo, não sidebar). */
         .f360-badge-filtros {
             display: inline-block; font-size: 0.78rem; line-height: 1.5;
-            color: var(--f360-sidebar-ink);
-            background: var(--f360-accent-soft); border: 1px solid var(--f360-sidebar-line);
-            border-radius: 999px; padding: 0.15rem 0.75rem; margin-bottom: 0.9rem;
+            color: var(--f360-sidebar-ink-muted);
+            background: #f5f7fb; border: 1px solid #e3e8f0;
+            border-radius: 999px; padding: 0.15rem 0.8rem; margin-bottom: 0.9rem;
         }
 
-        /* ---- Sidebar Fundo e Textos ---- */
+        /* ===== Sidebar: fundo, texto, scrollbar ===== */
         [data-testid="stSidebar"] {
             background: linear-gradient(175deg, var(--f360-sidebar-bg-2) 0%, var(--f360-sidebar-bg) 55%) !important;
         }
@@ -157,159 +160,200 @@ def inject_shell_css() -> None:
             color: var(--f360-sidebar-ink);
         }
         [data-testid="stSidebar"] [data-testid="stTooltipIcon"] { display: none !important; }
-        [data-testid="stSidebar"] hr { border-color: var(--f360-sidebar-line) !important; }
+        [data-testid="stSidebar"] hr {
+            border-color: var(--f360-sidebar-line) !important;
+            margin: 0.9rem 0 !important;
+        }
         [data-testid="stSidebar"] [data-testid="stCaptionContainer"] { color: var(--f360-sidebar-ink-muted) !important; }
+        /* Scrollbar fina e discreta. */
+        [data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+            scrollbar-width: thin;
+            scrollbar-color: var(--f360-sidebar-line) transparent;
+        }
+        [data-testid="stSidebar"] ::-webkit-scrollbar { width: 8px; }
+        [data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
+            background: var(--f360-sidebar-line); border-radius: 8px;
+        }
+        [data-testid="stSidebar"] ::-webkit-scrollbar-track { background: transparent; }
+        /* Colunas dentro da sidebar (linha "Aplicar | Limpar") não quebram —
+        a regra global de reflow acima é só pro conteúdo principal. */
+        [data-testid="stSidebar"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap; gap: 0.5rem; }
+        [data-testid="stSidebar"] [data-testid="stColumn"] { min-width: 0 !important; }
 
-        /* ---- Botões REAIS da Sidebar (Isolados) ---- */
+        /* ===== Botões da sidebar (só os st.button/form reais) ===== */
         [data-testid="stSidebar"] .stButton > button,
         [data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button {
-            background: var(--f360-accent-soft) !important;
+            background: rgba(22, 40, 63, 0.04) !important;
             border: 1px solid var(--f360-sidebar-line) !important;
-            border-radius: 8px !important;
+            border-radius: 9px !important;
             color: var(--f360-sidebar-ink) !important;
             font-weight: 500 !important;
+            transition: border-color 120ms ease, background 120ms ease;
         }
         [data-testid="stSidebar"] .stButton > button:hover,
         [data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button:hover {
-            background: var(--f360-accent-soft-hover) !important;
-            border-color: var(--f360-accent) !important;
+            background: var(--f360-gold-soft) !important;
+            border-color: var(--f360-gold) !important;
+            color: var(--f360-sidebar-ink) !important;
         }
+        /* "Aplicar filtros" — mesmo gradiente navy do "Entrar" do login. */
         [data-testid="stSidebar"] .stButton > button[kind="primary"],
         [data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button[kind="primary"] {
-            background: var(--f360-accent) !important;
+            background: linear-gradient(135deg, var(--f360-navy-a) 0%, var(--f360-navy-b) 100%) !important;
             color: #ffffff !important;
             font-weight: 600 !important;
-            border-color: var(--f360-accent) !important;
+            border: none !important;
+            border-radius: 10px !important;
+        }
+        [data-testid="stSidebar"] .stButton > button[kind="primary"]:hover,
+        [data-testid="stSidebar"] [data-testid="stFormSubmitButton"] > button[kind="primary"]:hover {
+            filter: brightness(1.08);
         }
         [data-testid="stSidebar"] [data-testid="stCheckbox"] label span {
             border-color: var(--f360-sidebar-line) !important;
         }
 
-        /* ---- Caixa Externa do Multiselect / Selectbox ---- */
+        /* ===== Multiselect / selectbox da sidebar ===== */
         [data-testid="stSidebar"] [data-baseweb="select"] > div {
             background-color: #ffffff !important;
             border: 1px solid var(--f360-sidebar-line) !important;
-            border-radius: 8px !important;
+            border-radius: 9px !important;
             box-shadow: none !important;
+            transition: border-color 120ms ease, box-shadow 120ms ease;
+        }
+        [data-testid="stSidebar"] [data-baseweb="select"] > div:hover {
+            border-color: var(--f360-gold-line) !important;
         }
         [data-testid="stSidebar"] [data-baseweb="select"] > div:focus-within {
-            border-color: var(--f360-accent) !important;
-            box-shadow: 0 0 0 1px var(--f360-accent) !important;
+            border-color: var(--f360-gold) !important;
+            box-shadow: 0 0 0 3px var(--f360-gold-soft) !important;
         }
-        [data-testid="stSidebar"] [data-baseweb="select"] input {
-            color: var(--f360-sidebar-ink) !important;
-        }
+        [data-testid="stSidebar"] [data-baseweb="select"] input { color: var(--f360-sidebar-ink) !important; }
         [data-testid="stSidebar"] [data-baseweb="select"] input::placeholder {
             color: var(--f360-sidebar-ink-muted) !important;
             font-size: 0.82rem !important;
         }
 
-        /* ---- Chips / Tags Selecionadas (Leves e Nítidas) ---- */
-        [data-testid="stSidebar"] [data-baseweb="tag"],
-        [data-testid="stSidebar"] div[data-baseweb="tag"],
-        [data-testid="stSidebar"] span[data-baseweb="tag"] {
-            background-color: var(--f360-accent-soft) !important;
-            background: var(--f360-accent-soft) !important;
-            border: 1px solid rgba(30, 58, 95, 0.18) !important;
-            border-radius: 6px !important;
-            color: #16283f !important;
+        /* Tag / chip: dourado suave, texto e "×" escuros. */
+        [data-testid="stSidebar"] [data-baseweb="tag"] {
+            background: var(--f360-gold-soft) !important;
+            border: 1px solid var(--f360-gold-line) !important;
+            border-radius: 7px !important;
+            color: var(--f360-sidebar-ink) !important;
             font-size: 0.78rem !important;
             font-weight: 500 !important;
             margin: 2px !important;
-            padding: 1px 6px !important;
+            padding: 1px 4px 1px 7px !important;
             box-shadow: none !important;
         }
-        [data-testid="stSidebar"] [data-baseweb="tag"] span {
-            color: #16283f !important;
-        }
+        [data-testid="stSidebar"] [data-baseweb="tag"] span { color: var(--f360-sidebar-ink) !important; }
 
-        /* ---- Reset Total de Contornos e Caixas nos Ícones do BaseWeb ---- */
+        /* Reset dos botõezinhos internos do BaseWeb (× da tag, limpar-tudo,
+        seta) — sem fundo/borda/caixa; deixa o BaseWeb só desenhar o ícone.
+        Escopado ao multiselect: NÃO é a regra global de `button` que
+        vazava e criava o contorno quadrado (essa é a `.stButton` acima). */
         [data-testid="stSidebar"] [data-baseweb="tag"] [role="button"],
         [data-testid="stSidebar"] [data-baseweb="tag"] button,
         [data-testid="stSidebar"] [data-baseweb="select"] [role="button"],
-        [data-testid="stSidebar"] [data-baseweb="select"] button,
-        [data-testid="stSidebar"] [data-baseweb="select"] div[aria-hidden="true"] {
+        [data-testid="stSidebar"] [data-baseweb="select"] button {
             background: transparent !important;
-            background-color: transparent !important;
             border: none !important;
             box-shadow: none !important;
             outline: none !important;
-            padding: 0 2px !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            cursor: pointer !important;
         }
-
-        /* Hover sutil exclusivo no '×' do chip */
         [data-testid="stSidebar"] [data-baseweb="tag"] [role="button"]:hover,
         [data-testid="stSidebar"] [data-baseweb="tag"] button:hover {
-            background: rgba(30, 58, 95, 0.14) !important;
-            background-color: rgba(30, 58, 95, 0.14) !important;
+            background: var(--f360-gold-soft-hover) !important;
             border-radius: 4px !important;
         }
-
-        /* Ícones Vetoriais Limpos */
-        [data-testid="stSidebar"] [data-baseweb="tag"] svg,
-        [data-testid="stSidebar"] [data-baseweb="select"] svg {
+        /* "×" da tag: compacto e discreto. */
+        [data-testid="stSidebar"] [data-baseweb="tag"] svg {
             fill: var(--f360-sidebar-ink-muted) !important;
             color: var(--f360-sidebar-ink-muted) !important;
-            stroke: currentColor !important;
-            width: 12px !important;
-            height: 12px !important;
+            width: 13px !important; height: 13px !important;
         }
         [data-testid="stSidebar"] [data-baseweb="tag"]:hover svg {
             fill: var(--f360-sidebar-ink) !important;
             color: var(--f360-sidebar-ink) !important;
         }
+        /* Seta ⌄ / limpar-tudo do select: legível (não miniatura). */
+        [data-testid="stSidebar"] [data-baseweb="select"] > div > div:last-child svg {
+            fill: var(--f360-sidebar-ink-muted) !important;
+            color: var(--f360-sidebar-ink-muted) !important;
+        }
 
-        /* ---- Logo animada na sidebar (st.logo) — 🔒 NÃO MEXER ----
-        Custou ~8 rodadas acertar tamanho + loop + centralização. Regras
-        abaixo replicam a técnica de 2 nós de `render_logo_video()`:
-        `stSidebarHeader` cresce (`flex:1; width:100%`) pra ocupar o
-        espaço ao lado do botão de colapsar, só assim o
-        `justify-content:center` centraliza em relação à sidebar inteira;
-        o `<div>` interno é a MOLDURA (círculo 110px, `overflow:hidden`);
-        o `<img>` é o CONTEÚDO. */
+        /* ===== Logo animada na sidebar (st.logo) — círculo igual ao login =====
+        🔒 Delicado: custou ~8 rodadas. O `st.logo()` do Streamlit 1.57
+        embrulha o <img.stLogo> em:
+          - <div>                              na página default
+          - <button data-testid="stLogoLink">  nas outras (app multipágina)
+          - <a data-testid="stLogoLink">       se houvesse link (não é o caso)
+        Os 3 recebem a moldura; `stSidebarCollapseButton` (irmão) fica de
+        fora. Medida/sombra iguais ao círculo de `render_logo_video()`
+        (login, 112px). SEM transform:scale — o zoom já vem no gif. */
         [data-testid="stSidebarHeader"] {
+            position: relative !important;
             height: auto !important;
             min-height: 0 !important;
             overflow: visible !important;
-            margin-bottom: 1.1rem !important;
-            padding-bottom: 0.6rem !important;
+            margin-bottom: 1.15rem !important;
+            padding-bottom: 0.7rem !important;
             border-bottom: 1px solid var(--f360-sidebar-line);
             flex: 1 1 auto !important;
             width: 100% !important;
             display: flex !important;
+            align-items: center !important;
             justify-content: center !important;
         }
-        [data-testid="stSidebarHeader"] > div {
-            width: 110px !important;
-            height: 110px !important;
+        [data-testid="stSidebarHeader"] > div:not([data-testid="stSidebarCollapseButton"]),
+        [data-testid="stSidebarHeader"] > a[data-testid="stLogoLink"],
+        [data-testid="stSidebarHeader"] > button[data-testid="stLogoLink"] {
+            width: 112px !important;
+            height: 112px !important;
+            min-width: 112px !important;
+            flex: 0 0 112px !important;
             margin: 0 auto !important;
+            padding: 0 !important;
+            border: none !important;
+            outline: none !important;
             border-radius: 50% !important;
             overflow: hidden !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
-            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.28) !important;
+            background: transparent !important;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18) !important;
+            cursor: pointer;
         }
-        /* SEM transform:scale aqui: o crop 1:1 + zoom 1.7x já vem
-        pré-aplicado em cada frame do `fin360_logo.gif` regenerado —
-        replicar via CSS duplica o zoom e mostra só o centro morto do
-        frame (círculo preto). Só `object-fit:cover` pra preencher a
-        moldura. Ver docs/04-licoes-aprendidas.md. */
-        [data-testid="stSidebarLogo"],
-        img.stLogo {
+        [data-testid="stSidebarHeader"] [data-testid="stSidebarLogo"],
+        [data-testid="stSidebarHeader"] img.stLogo {
             width: 100% !important;
             height: 100% !important;
+            min-width: 100% !important;
             max-width: none !important;
+            margin: 0 !important;
             object-fit: cover !important;
+            object-position: center !important;
+        }
+        /* Botão de colapsar (« ) — tirado do fluxo pro canto sup. direito,
+        pra logo centralizar de verdade na largura inteira do header (e
+        pra moldura circular nunca pegá-lo). Fica sobre a área do header,
+        aparece no hover como já é padrão do Streamlit. */
+        [data-testid="stSidebarCollapseButton"] {
+            position: absolute !important;
+            top: 0.35rem !important;
+            right: 0.15rem !important;
+            z-index: 3 !important;
+            flex: 0 0 auto !important;
+            width: auto !important; height: auto !important;
+            border-radius: 6px !important;
+            box-shadow: none !important;
+            background: transparent !important;
         }
 
-        /* Item de navegação ativo */
+        /* ===== Item de navegação ativo (st.navigation) — realce dourado ===== */
         [data-testid="stSidebar"] a[aria-current="page"] {
-            background: rgba(30, 58, 95, 0.12) !important;
+            background: var(--f360-gold-soft) !important;
             border-radius: 8px;
             font-weight: 600 !important;
         }
@@ -317,7 +361,7 @@ def inject_shell_css() -> None:
             content: "";
             position: absolute;
             left: -0.4rem; top: 15%; bottom: 15%; width: 3px;
-            background: var(--f360-accent);
+            background: var(--f360-gold);
             border-radius: 0 3px 3px 0;
         }
         [data-testid="stSidebar"] a { position: relative; }
