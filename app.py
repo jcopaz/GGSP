@@ -58,7 +58,17 @@ from pathlib import Path
 # arquivo — sem isso, todo import "src.*" falha com
 # "ModuleNotFoundError: No module named 'src'" (visto em produção
 # 2026-08-27, ver docs/05-publicacao-online-e-seguranca.md).
-_RAIZ_PROJETO = Path(__file__).resolve().parent.parent.parent
+#
+# CORRIGIDO em 2026-09-01: `app.py` mudou de `src/dashboard/app.py` (3
+# níveis abaixo da raiz, `git mv`) para a raiz do repositório. O cálculo de
+# 3 `.parent` valia para o local antigo; hoje soma 2 níveis a mais que o
+# necessário (aponta pra 2 pastas ACIMA da raiz real). Confirmado ao vivo:
+# `AppTest.from_file("app.py")` quebrava com o mesmo `ModuleNotFoundError:
+# No module named 'src'` que este bloco deveria estar prevenindo. Com
+# `app.py` na raiz, 1 único `.parent` (do arquivo pro diretório que o
+# contém) já é a raiz do projeto — mesma conta que `src/config.py::
+# RAIZ_PROJETO` já faz a partir de 1 nível a menos.
+_RAIZ_PROJETO = Path(__file__).resolve().parent
 if str(_RAIZ_PROJETO) not in sys.path:
     sys.path.insert(0, str(_RAIZ_PROJETO))
 

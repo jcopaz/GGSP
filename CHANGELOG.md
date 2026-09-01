@@ -4,6 +4,48 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.5.1 — 2026-09-01 (hotfix)
+
+- **`app.py` movido pra raiz do repositório** (era `src/dashboard/app.py`,
+  `git mv` — preserva histórico). Alinha com a arquitetura de publicação
+  em Streamlit Cloud (entrada principal na raiz).
+- **Corrige `ModuleNotFoundError: No module named 'src'` que essa mudança
+  introduziria**: `_RAIZ_PROJETO` em `app.py` calculava 3 `.parent` (conta
+  certa para quando o arquivo morava 3 níveis abaixo da raiz) — com o
+  arquivo na raiz, isso aponta 2 pastas ACIMA da raiz real, e o
+  `sys.path.insert` correspondente vira inofensivo/errado. Confirmado ao
+  vivo com `AppTest.from_file("app.py")`, que quebra exatamente assim
+  antes da correção. Trocado pra 1 único `.parent` (mesma conta que
+  `src/config.py::RAIZ_PROJETO` já faz, 1 nível mais fundo). Sem essa
+  correção, `st.logo()` da sidebar (mesma variável) também apontaria pro
+  caminho errado do `fin360_logo.gif` e quebraria pra todo usuário logado.
+- **Fallback técnico no vídeo do Login + cópia de `static/fin360.mp4` na
+  raiz** (`src/branding.py`): o Streamlit só serve a URL `app/static/...`
+  a partir de uma pasta `static/` ao lado do script principal — com
+  `app.py` na raiz, isso deixou de ser `src/dashboard/static/` (onde o
+  vídeo mora oficialmente, README.md) e passou a exigir `static/` também
+  na raiz. Adicionada uma cópia idêntica de `fin360.mp4` em `static/`
+  (raiz) só pra essa URL resolver; a cópia "oficial" continua em
+  `src/dashboard/static/` (é dali que `st.logo()` lê, por caminho de
+  arquivo, não por URL — não depende desse mecanismo). Se o arquivo não
+  existir em nenhuma das duas (ex.: ambiente sem o binário), o Login cai
+  sozinho pra `fin360_logo.png` embutida em base64, na mesma moldura
+  circular — mesmo tamanho/sombra, sem mudar layout/cor/texto/fluxo.
+- Validado: `py_compile`; `AppTest` (skip-login e login normal) sem
+  exceção, inclusive contra o warehouse/dado real (renderizou a Visão
+  Resumo Executivo de verdade); `tests/fase1_check.py` e
+  `tests/fase4_fase5_check.py` batendo contra o dado real (waterfall
+  fecha exatamente no Delta Total, Nível 3 bate com a categoria).
+- Descoberto durante a correção, registrado como achado do diagnóstico
+  (não corrigido agora, fora do escopo deste hotfix): o pacote que o
+  Copilot devolveu ao reorganizar o projeto (`Fin360_projeto_completo_
+  reenvio/`) tinha o mesmo código-fonte (100% idêntico em `app.py`,
+  `settings.yaml`, `schema_postgres.sql`, `requirements.txt`), mas **não
+  incluía os scripts reais de `tests/`** (só `__init__.py` vazio) nem o
+  `fin360_logo.gif`/`fin360.mp4` originais (gif de qualidade bem inferior,
+  vídeo ausente) — preservados aqui a partir da produção real, não do
+  pacote do Copilot.
+
 ## 6.5.0 — 2026-08-30
 
 Passada minuciosa na sidebar (`src/branding.py`). Só CSS — nenhuma

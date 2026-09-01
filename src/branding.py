@@ -3,10 +3,22 @@
 Usado tanto na tela de login (src/auth/login.py) quanto na sidebar
 (src/dashboard/app.py) — muda aqui, muda nos dois lugares.
 
-Depende de `enableStaticServing = true` em `.streamlit/config.toml` e do
-arquivo em `src/dashboard/static/fin360.mp4` (Streamlit serve `static/` a
-partir da pasta do script principal, não da raiz do repo — e expõe sempre
+Depende de `enableStaticServing = true` em `.streamlit/config.toml` e de um
+arquivo `static/fin360.mp4` na mesma pasta do script principal (Streamlit
+serve sempre `<pasta do script principal>/static/`, nunca outra — e expõe
 em `app/static/...`, independente de onde a pasta física está).
+
+**Mudou em 2026-09-01** (`app.py` passou de `src/dashboard/app.py` pra raiz
+do repo, arquitetura de publicação): o "script principal" agora é a raiz,
+então a pasta que o Streamlit realmente serve é `static/` na RAIZ, não mais
+`src/dashboard/static/`. Por isso `static/fin360.mp4` (raiz) é uma cópia
+exata de `src/dashboard/static/fin360.mp4` — a segunda continua sendo a
+localização "oficial"/documentada do arquivo (README.md, `st.logo()` na
+sidebar lê direto daqui via caminho de arquivo, não via URL), a primeira
+existe só porque o Streamlit exige isso pra servir a URL do vídeo do Login.
+Se o vídeo for atualizado no futuro, atualizar as DUAS cópias (ou apagar
+`static/` da raiz — nesse caso o Login cai sozinho no fallback de imagem
+estática, ver `render_logo_video`).
 
 Se o deploy no Streamlit Cloud der `ImportError: cannot import name
 'inject_shell_css'` mesmo depois de um Reboot, é cache do próprio
@@ -15,9 +27,23 @@ consistente) — ver docs/04-licoes-aprendidas.md, item 21.
 """
 from __future__ import annotations
 
+import base64
+from pathlib import Path
+
 import streamlit as st
 
 LOGO_VIDEO_URL = "app/static/fin360.mp4"
+
+# Caminho real em disco do vídeo/logo estática (independe de onde o script
+# principal está sendo executado — ver render_logo_video). `static/` mora
+# em src/dashboard/static/ (arquitetura fixada do projeto); só o vídeo
+# depende do mecanismo de static serving do Streamlit (LOGO_VIDEO_URL
+# acima), que só funciona quando o arquivo existe fisicamente ao lado do
+# script principal — ver nota em `static/` (raiz) sobre a cópia espelhada
+# de fin360.mp4 desde que `app.py` passou a viver na raiz.
+_STATIC_DIR = Path(__file__).resolve().parent / "dashboard" / "static"
+_LOGO_VIDEO_PATH = _STATIC_DIR / "fin360.mp4"
+_LOGO_PNG_PATH = _STATIC_DIR / "fin360_logo.png"
 
 
 def inject_shell_css() -> None:
@@ -412,7 +438,36 @@ def render_logo_video(size: int = 110) -> None:
     margem escura ao redor da marca — `overflow:hidden` + `transform:scale`
     recortam essa margem e mostram só o círculo dourado, sem caixa preta
     solta. (Na sidebar o equivalente é `st.logo()` + o CSS de
-    `inject_shell_css`, que NÃO usa scale porque lá o zoom já vem no gif.)"""
+    `inject_shell_css`, que NÃO usa scale porque lá o zoom já vem no gif.)
+
+    Fallback técnico (2026-09-01): com `app.py` na raiz, o mecanismo de
+    static serving do Streamlit passou a procurar `static/` ao lado da
+    raiz, não mais de `src/dashboard/` — por isso existe uma cópia de
+    `fin360.mp4` também em `static/` (raiz do repo, ver comentário lá) só
+    pra essa URL continuar resolvendo. Se mesmo assim o arquivo não
+    existir em disco (ex.: clone sem o binário), cai pra `fin360_logo.png`
+    (mesma moldura, mesmo tamanho/sombra, sem `transform:scale` — o PNG já
+    vem enquadrado, mesmo tratamento que `icon_image` já recebe no
+    sidebar) embutido como data URI. Nenhuma mudança de layout/cor/texto/
+    fluxo do Login: só o conteúdo dentro da mesma moldura muda, e só
+    quando o vídeo realmente não está presente."""
+    if not _LOGO_VIDEO_PATH.exists() and _LOGO_PNG_PATH.exists():
+        _logo_b64 = base64.b64encode(_LOGO_PNG_PATH.read_bytes()).decode("ascii")
+        st.markdown(
+            f"""
+            <div style="
+                width:{size}px; height:{size}px; margin:0 auto;
+                border-radius:50%; overflow:hidden;
+                box-shadow:0 6px 18px rgba(15,23,42,0.18);
+            ">
+                <img src="data:image/png;base64,{_logo_b64}"
+                    style="width:100%;height:100%;object-fit:cover;">
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
     st.markdown(
         f"""
         <div style="
