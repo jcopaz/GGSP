@@ -265,15 +265,15 @@ def _resolver_escopo_universo(
 def universos_permitidos(usuario: dict | None = None) -> set[str]:
     """1ª camada: universos financeiros que o usuário pode ver. `admin` e
     `ORCAMENTO_SKIP_LOGIN=1` veem os 3; `gg` NÃO é bypass. Fail closed:
-    erro de banco -> conjunto vazio."""
+    qualquer erro (banco fora, sessão inexistente) -> conjunto vazio."""
     if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
         return set(UNIVERSOS)
-    u = usuario or get_usuario()
     try:
+        u = usuario or get_usuario()
         linhas = _escopos_cache(u["id"]) if u else []
+        return _resolver_universos_permitidos(linhas, is_admin(), bool(u))
     except Exception:
         return set()
-    return _resolver_universos_permitidos(linhas, is_admin(), bool(u))
 
 
 def require_universo(universo: str) -> None:
@@ -299,9 +299,9 @@ def escopo_universo(universo: str, usuario: dict | None = None) -> tuple[bool, b
     `admin` / `ORCAMENTO_SKIP_LOGIN=1` -> (True, True, []). Fail closed."""
     if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
         return True, True, []
-    u = usuario or get_usuario()
     try:
+        u = usuario or get_usuario()
         linhas = _escopos_cache(u["id"]) if u else []
+        return _resolver_escopo_universo(universo, linhas, is_admin(), bool(u))
     except Exception:
         return False, False, []
-    return _resolver_escopo_universo(universo, linhas, is_admin(), bool(u))

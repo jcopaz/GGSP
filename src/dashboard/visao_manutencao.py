@@ -28,7 +28,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.branding import render_page_banner
-from src.dashboard.filtros import clausula_periodo
+from src.dashboard.filtros import clausula_escopo, clausula_periodo, guardar_e_faixa_universo
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY, com_alternancia_barra_linha
 from src.dashboard.layout import bloco_resumo_visual, nota_forecast
@@ -42,8 +42,19 @@ _NOMES_MES = {1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
               7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"}
 
 
+def _where_recorte() -> tuple[str, list]:
+    """`clausula_periodo` (filtro de Período da sidebar) + `clausula_escopo`
+    (RBAC de escopo por Gerência, universo opex_sustaining — docs/08 Fase
+    RBAC-A.2) num fragmento só. Todas as consultas desta página usam. Vale
+    pros dois fatos: `fact_orcamento` e `fact_realizado` têm `gerencia_id`
+    populado."""
+    where_p, params_p = clausula_periodo()
+    where_e, params_e = clausula_escopo("opex_sustaining")
+    return where_p + where_e, [*params_p, *params_e]
+
+
 def resumo_manutencao(con: duckdb.DuckDBPyConnection) -> dict:
-    where_periodo, params_periodo = clausula_periodo()
+    where_periodo, params_periodo = _where_recorte()
     (orcado,) = con.execute(
         f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE familia_pacote = ?{where_periodo}",
         [FAMILIA_MANUTENCAO, *params_periodo],
@@ -60,7 +71,7 @@ def resumo_manutencao(con: duckdb.DuckDBPyConnection) -> dict:
 
 
 def _dados_por_pacote(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
-    where_periodo, params_periodo = clausula_periodo()
+    where_periodo, params_periodo = _where_recorte()
     return con.execute(
         f"""
         WITH orc AS (
@@ -100,7 +111,7 @@ def _grafico_por_pacote(df: pd.DataFrame, nomes_pacote: dict[str, str]) -> go.Fi
 
 
 def _dados_mensal(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
-    where_periodo, params_periodo = clausula_periodo()
+    where_periodo, params_periodo = _where_recorte()
     df = con.execute(
         f"""
         WITH orc AS (
@@ -159,7 +170,7 @@ def _grafico_mensal(df: pd.DataFrame) -> go.Figure:
 
 def _grafico_escopo(con: duckdb.DuckDBPyConnection, top_n: int = 10) -> go.Figure | None:
     """Só Orçado — Realizado (SAP) não carrega Grupo/Disciplina."""
-    where_periodo, params_periodo = clausula_periodo()
+    where_periodo, params_periodo = _where_recorte()
     df = con.execute(
         f"""
         SELECT grupo_disciplina, SUM(valor_orcado) AS orcado
@@ -188,7 +199,7 @@ def _grafico_escopo(con: duckdb.DuckDBPyConnection, top_n: int = 10) -> go.Figur
 
 def _grafico_tipo(con: duckdb.DuckDBPyConnection) -> go.Figure | None:
     """Só Orçado — Realizado (SAP) não carrega Tipo (Material/Serviço)."""
-    where_periodo, params_periodo = clausula_periodo()
+    where_periodo, params_periodo = _where_recorte()
     df = con.execute(
         f"""
         SELECT tipo_item, SUM(valor_orcado) AS orcado
@@ -227,6 +238,7 @@ def _render_card_manutencao(resumo: dict) -> None:
 
 def render_visao_manutencao(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
     render_page_banner("🛠️", "Manutenção (SP)", "Recorte da família de pacote PM (Manutenção Malha).")
+    guardar_e_faixa_universo(con, "opex_sustaining")  # RBAC de escopo (docs/08)
 
     resumo = resumo_manutencao(con)
     nomes_pacote = mapa_nomes_pacote(con)
@@ -243,7 +255,14 @@ def render_visao_manutencao(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> 
     )
 
     st.divider()
-    df_tend = dados_tendencia(con, ano_fiscal, familia=FAMILIA_MANUTENCAO)
+    # Tendência com o mesmo recorte de escopo das demais consultas da
+    # página (o default de `dados_tendencia` já força OPEX no Orçado).
+    _frag_esc, _params_esc = clausula_escopo("opex_sustaining")
+    df_tend = dados_tendencia(
+        con, ano_fiscal, familia=FAMILIA_MANUTENCAO,
+        filtro_orcado=(" AND classificacao_contabil = 'OPEX'" + _frag_esc, list(_params_esc)),
+        filtro_realizado=(_frag_esc, list(_params_esc)) if _frag_esc else None,
+    )
     st.plotly_chart(
         figura_tendencia(df_tend, "Tendência do ano — Manutenção (SP)"),
         use_container_width=True, key="manut-tendencia", config=CONFIG_PLOTLY,

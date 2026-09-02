@@ -38,6 +38,7 @@ from src.dashboard.arvore_html import CSS_ARVORE, NOME_FAMILIA, cabecalho_arvore
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.layout import bloco_resumo_visual, nota_forecast
+from src.dashboard.filtros import guardar_e_faixa_universo
 from src.dashboard.nivel4_contas import _filtros_padrao, dados_familia, dados_pacote
 from src.dashboard.paleta import COR_ECONOMIA, COR_ESTOURO
 from src.dashboard.tendencia import dados_tendencia, figura_tendencia
@@ -232,4 +233,5 @@ def render_arvore_centro_custo(
 
 def render_nivel5_centro_custo(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
     render_page_banner("🏗️", "Centro de Custo", "Código compartilhado entre Orçamento e Realizado — fecha Delta de verdade até a linha-folha.")
+    guardar_e_faixa_universo(con, "opex_sustaining")  # RBAC de escopo (docs/08)
     render_arvore_centro_custo(con, key_prefix="n5", ano_fiscal=ano_fiscal)

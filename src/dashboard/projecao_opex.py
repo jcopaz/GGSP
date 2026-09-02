@@ -2,40 +2,19 @@
 from __future__ import annotations
 import duckdb
 import streamlit as st
-from src.auth.permissions import escopo_universo, require_universo
 from src.branding import render_page_banner
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
-from src.dashboard.filtros import clausula_escopo
+from src.dashboard.filtros import clausula_escopo, guardar_e_faixa_universo
 from src.dashboard.tendencia import dados_tendencia, figura_tendencia
 from src.dashboard.formatacao import fmt_reais_abrev
 
 FAMILIAS = {"PD": "Despesas Gerais", "PP": "Despesas Pessoais", "PM": "Manutenção"}
 
 
-def _rotulo_recorte(con: duckdb.DuckDBPyConnection, alvos: list[str]) -> None:
-    """Faixa "🔒 Recorte do seu acesso: <Gerências>" quando o usuário não
-    tem o universo inteiro (docs/08 — "recorte não é total"). Só rótulo;
-    o filtro em si vem de `clausula_escopo`."""
-    nomes = con.execute(
-        "SELECT gerencia_nome FROM dim_gerencia "
-        f"WHERE gerencia_id IN ({', '.join(['?'] * len(alvos))}) ORDER BY gerencia_nome",
-        alvos,
-    ).df()["gerencia_nome"].tolist()
-    st.caption(
-        "🔒 Recorte do seu acesso: " + ", ".join(nomes or alvos)
-        + " — os números abaixo são só desse recorte, não o total da GG."
-    )
-
-
 def render_projecao_opex(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
     render_page_banner("📈", "Projeção OPEX", "Ritmo médio do Realizado versus Orçamento, sem substituir o Forecast PMO.")
-    # RBAC de escopo (docs/08, Fase RBAC-A.2): esta tela é do universo
-    # opex_sustaining. Barra quem não tem acesso; recorta por Gerência
-    # quem não tem a GG inteira.
-    require_universo("opex_sustaining")
-    _tem, tudo, alvos = escopo_universo("opex_sustaining")
-    if not tudo:
-        _rotulo_recorte(con, alvos)
+    # RBAC de escopo (docs/08, Fase RBAC-A.2): universo opex_sustaining.
+    guardar_e_faixa_universo(con, "opex_sustaining")
     frag_escopo, params_escopo = clausula_escopo("opex_sustaining")
     filtro_opex = (" AND classificacao_contabil = 'OPEX'" + frag_escopo, list(params_escopo))
 

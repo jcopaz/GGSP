@@ -34,7 +34,14 @@ from src.dashboard.arvore_html import (
     cabecalho_arvore,
     linha_resumo,
 )
-from src.dashboard.filtros import clausula_familia, clausula_periodo, clausula_where, combinar_clausulas
+from src.dashboard.filtros import (
+    clausula_escopo,
+    clausula_familia,
+    clausula_periodo,
+    clausula_where,
+    combinar_clausulas,
+    guardar_e_faixa_universo,
+)
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.layout import bloco_resumo_visual, nota_forecast
@@ -65,6 +72,12 @@ def _filtros_padrao(familia: str | None) -> tuple[tuple[str, list], tuple[str, l
     nenhum (nem indireto), ver `_derivar_coordenacao`.
     """
     extra_where, extra_params = clausula_familia(familia)
+    # RBAC de escopo (docs/08, Fase RBAC-A.2): recorte sempre-ligado por
+    # Gerência do universo OPEX Sustaining. `gerencia_id` existe e está
+    # populado nos dois fatos (diferente do filtro de Gerência da sidebar,
+    # que no Orçado usa `gerencia_raw`). Nível 4 e Nível 5 (que reusa este
+    # helper) e a Visão Manutenção (árvores embutidas) herdam daqui.
+    escopo = clausula_escopo("opex_sustaining")
     where_orc, params_orc = combinar_clausulas(
         clausula_where({
             "pacote_id": "pacote_id", "centro_custo_id": "centro_custo_id",
@@ -72,6 +85,7 @@ def _filtros_padrao(familia: str | None) -> tuple[tuple[str, list], tuple[str, l
             "gerencia_nome": "gerencia_raw",
         }),
         clausula_periodo(),
+        escopo,
     )
     where_real, params_real = combinar_clausulas(
         clausula_where({
@@ -79,6 +93,7 @@ def _filtros_padrao(familia: str | None) -> tuple[tuple[str, list], tuple[str, l
             "coordenacao": "coordenacao", "gerencia_nome": "gerencia_nome",
         }),
         clausula_periodo(),
+        escopo,
     )
     return (where_orc + extra_where, params_orc + extra_params), (where_real + extra_where, params_real + extra_params)
 
@@ -278,4 +293,5 @@ def render_arvore_contas(
 
 def render_nivel4_contas(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
     render_page_banner("🧾", "Contas", "Conta sem nome catalogado mostra só o código, nunca um nome inventado.")
+    guardar_e_faixa_universo(con, "opex_sustaining")  # RBAC de escopo (docs/08)
     render_arvore_contas(con, key_prefix="n4", ano_fiscal=ano_fiscal)

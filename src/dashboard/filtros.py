@@ -480,6 +480,36 @@ def clausula_projeto_capex(
     return " AND " + " AND ".join(condicoes), params
 
 
+def guardar_e_faixa_universo(con: duckdb.DuckDBPyConnection, universo: str) -> None:
+    """`require_universo` (barra quem não tem acesso) + faixa "🔒 Recorte
+    do seu acesso: <Gerências>" quando o usuário não tem a GG inteira.
+    Chamar no topo da página/painel, logo depois do `render_page_banner`.
+    Admin / `ORCAMENTO_SKIP_LOGIN=1` passam sem faixa (veem tudo).
+
+    Sustaining (`opex_/capex_sustaining`): traduz `gerencia_id` → nome via
+    `dim_gerencia`. `capex_obras` (quando a Fase RBAC-A.2 chegar nele):
+    `alvos` já são nomes de `gerencia_obras` / códigos de PEP — mostra
+    como está."""
+    from src.auth.permissions import require_universo
+
+    require_universo(universo)
+    _tem, tudo, alvos = escopo_universo(universo)
+    if tudo or not alvos:
+        return
+    if universo == "capex_obras":
+        nomes = list(alvos)
+    else:
+        nomes = con.execute(
+            "SELECT gerencia_nome FROM dim_gerencia "
+            f"WHERE gerencia_id IN ({', '.join(['?'] * len(alvos))}) ORDER BY gerencia_nome",
+            list(alvos),
+        ).df()["gerencia_nome"].tolist() or list(alvos)
+    st.caption(
+        "🔒 Recorte do seu acesso: " + ", ".join(nomes)
+        + " — os números abaixo são só desse recorte, não o total da GG."
+    )
+
+
 def clausula_escopo(universo: str, coluna: str = "gerencia_id") -> tuple[str, list]:
     """Filtro sempre-ligado do RBAC de escopo por universo (docs/08,
     Fase RBAC-A.2). Mesmo formato de `clausula_periodo`/`clausula_where`

@@ -4,6 +4,38 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 7.2.0 — 2026-09-02
+
+**Fase RBAC-A.2 — Visão Manutenção + Nível 4 + Nível 5** (universo
+`opex_sustaining`). Mesmo padrão da Projeção; sem schema, sem tocar em
+gráfico.
+
+- **`src/dashboard/filtros.py`**: `guardar_e_faixa_universo(con, universo)`
+  — `require_universo` + a faixa "🔒 Recorte do seu acesso: <Gerências>"
+  (traduz `gerencia_id` → nome via `dim_gerencia`) num helper só. A
+  Projeção passou a usá-lo (removido o `_rotulo_recorte` inline).
+- **`src/dashboard/nivel4_contas.py::_filtros_padrao`**: injeta
+  `clausula_escopo("opex_sustaining")` (coluna `gerencia_id`, populada nos
+  dois fatos) em `where_orc` e `where_real`. Como o Nível 5
+  (`nivel5_centro_custo`) reusa `_filtros_padrao` e a Visão Manutenção
+  embute as duas árvores, os três herdam o recorte daqui. `render_nivel4_contas`
+  e `render_nivel5_centro_custo` chamam `guardar_e_faixa_universo`.
+- **`src/dashboard/visao_manutencao.py`**: novo `_where_recorte()`
+  (`clausula_periodo` + `clausula_escopo`) usado pelas 5 consultas diretas
+  da página; `render_visao_manutencao` chama `guardar_e_faixa_universo`; a
+  Tendência da página recebe o fragmento de escopo.
+- **`src/auth/permissions.py`**: `universos_permitidos` / `escopo_universo`
+  agora envolvem o corpo inteiro em try/except (fail closed também se
+  `st.session_state` não existir fora de um run do Streamlit).
+- **`tests/rbac_sustaining_check.py`**: com escopo GER MALHA (SP) semeado
+  na sessão (AppTest), `resumo_manutencao` (R$ 36,13 MM) e o Nível 4
+  (`dados_familia` / `dados_conta`) batem exatamente com a soma SQL direta
+  por `gerencia_id`; usuário sem grant é barrado.
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9 + `test_projecao_ritmo`
+  1); `tests.rbac_sustaining_check` e `tests.rbac_projecao_check`;
+  `AppTest.from_file("app.py")` skip-login e admin sem exceção; regressões
+  `fase4_fase5` e `validacao_rdg_julho` inalteradas.
+
 ## 7.1.0 — 2026-09-02
 
 **Fase RBAC-A.2 — 1ª página: Projeção OPEX.** O escopo por universo
