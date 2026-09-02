@@ -218,7 +218,7 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
     require_admin()
     render_page_banner("🛡️", "Administração", "Usuários, acessos, escopos e rastreabilidade em um só lugar.")
     if con is None:
-        st.caption("⚠️ Base local ainda não processada — Gerência/PEP/PEP Filho/Centro de Custo/Pacote aparecem como texto livre até reprocessar (Dados → Upload de Dados).")
+        st.caption("⚠️ Base local ainda não processada — Gerência/PEP/PEP Filho/Centro de Custo/Pacote aparecem como texto livre até reprocessar (Gestão → Dados e Qualidade).")
     t1, t2, t3, t4 = st.tabs(["Usuários", "Permissões e escopos", "Auditoria", "Uploads e exportações"])
 
     with t1:

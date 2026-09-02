@@ -67,6 +67,11 @@ def inject_shell_css() -> None:
 
     - Acento dourado de volta: item de nav ativo, anel de foco do
       multiselect, borda de hover dos botões, tag/chip.
+
+    **2026-09-01 — tag de filtro:** o chip do multiselect passou de
+    dourado suave + texto escuro para **dourado sólido (`--f360-gold`) +
+    texto e "×" brancos** (pedido do usuário). Único ponto em que o
+    dourado vira fundo cheio.
     - **Logo circular robusta**: o `st.logo()` do Streamlit 1.57 embrulha
       o `<img>` num `<div>` na página default e num
       `<button data-testid="stLogoLink">` nas demais — o seletor antigo
@@ -95,8 +100,9 @@ def inject_shell_css() -> None:
             --f360-sidebar-ink: #16283f;
             --f360-sidebar-ink-muted: #5b6b85;
             --f360-sidebar-line: #d8dfea;
-            /* Acento da marca — dourado. Usado só como realce
-            (nav ativo / foco / hover / tag), nunca como fundo grande. */
+            /* Acento da marca — dourado. Realce (nav ativo / foco / hover)
+            e fundo cheio da tag de filtro selecionada (2026-09-01), nunca
+            uma superfície grande. */
             --f360-gold: #c9932f;
             --f360-gold-soft: rgba(201, 147, 47, 0.13);
             --f360-gold-soft-hover: rgba(201, 147, 47, 0.22);
@@ -260,19 +266,23 @@ def inject_shell_css() -> None:
             font-size: 0.82rem !important;
         }
 
-        /* Tag / chip: dourado suave, texto e "×" escuros. */
+        /* Tag / chip: dourado SÓLIDO com texto e "×" brancos (pedido do
+        usuário 2026-09-01 — "fundo do texto dos filtros dourado, letras
+        brancas"). É o único ponto em que --f360-gold vira fundo cheio;
+        continua sendo um elemento pequeno (o valor selecionado), não uma
+        superfície grande. */
         [data-testid="stSidebar"] [data-baseweb="tag"] {
-            background: var(--f360-gold-soft) !important;
-            border: 1px solid var(--f360-gold-line) !important;
+            background: var(--f360-gold) !important;
+            border: 1px solid var(--f360-gold) !important;
             border-radius: 7px !important;
-            color: var(--f360-sidebar-ink) !important;
+            color: #ffffff !important;
             font-size: 0.78rem !important;
             font-weight: 500 !important;
             margin: 2px !important;
             padding: 1px 4px 1px 7px !important;
             box-shadow: none !important;
         }
-        [data-testid="stSidebar"] [data-baseweb="tag"] span { color: var(--f360-sidebar-ink) !important; }
+        [data-testid="stSidebar"] [data-baseweb="tag"] span { color: #ffffff !important; }
 
         /* Reset dos botõezinhos internos do BaseWeb (× da tag, limpar-tudo,
         seta) — sem fundo/borda/caixa; deixa o BaseWeb só desenhar o ícone.
@@ -289,18 +299,18 @@ def inject_shell_css() -> None:
         }
         [data-testid="stSidebar"] [data-baseweb="tag"] [role="button"]:hover,
         [data-testid="stSidebar"] [data-baseweb="tag"] button:hover {
-            background: var(--f360-gold-soft-hover) !important;
+            background: rgba(255, 255, 255, 0.25) !important;
             border-radius: 4px !important;
         }
-        /* "×" da tag: compacto e discreto. */
+        /* "×" da tag: branco sobre o dourado sólido. */
         [data-testid="stSidebar"] [data-baseweb="tag"] svg {
-            fill: var(--f360-sidebar-ink-muted) !important;
-            color: var(--f360-sidebar-ink-muted) !important;
+            fill: rgba(255, 255, 255, 0.9) !important;
+            color: rgba(255, 255, 255, 0.9) !important;
             width: 13px !important; height: 13px !important;
         }
         [data-testid="stSidebar"] [data-baseweb="tag"]:hover svg {
-            fill: var(--f360-sidebar-ink) !important;
-            color: var(--f360-sidebar-ink) !important;
+            fill: #ffffff !important;
+            color: #ffffff !important;
         }
         /* Seta ⌄ / limpar-tudo do select: legível (não miniatura). */
         [data-testid="stSidebar"] [data-baseweb="select"] > div > div:last-child svg {

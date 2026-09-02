@@ -4,6 +4,62 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 6.6.0 — 2026-09-02
+
+Etapa 2 da migração para a **Visão Ideal** (`docs/07`). Reagrupamento da
+sidebar — só rótulo/estrutura de menu, **nenhuma** mudança de permissão,
+chave de página, consulta, dado ou gráfico.
+
+- **Grupo `GESTÃO`** no lugar das duas seções soltas `Dados` e
+  `Administração` (`app.py`):
+  - `Dados` (1 página) + `Administração` (1 página) → um grupo só com as
+    duas.
+  - "Upload de Dados" renomeada para **"Dados e Qualidade"** (título de
+    `st.Page` + `render_page_banner` da `pagina_upload`). Chave de
+    permissão continua `upload`.
+  - "Gestão e Auditoria" renomeada para **"Administração"** (título de
+    `st.Page`) — o banner interno da página já dizia "Administração",
+    agora bate. Continua admin-only por checagem direta de papel (não
+    passa por `permissao_pagina`). Chave continua `administracao`.
+  - Montagem do grupo movida para fora do literal `st.navigation({...})`
+    (`_paginas_gestao` + `_secoes`); o grupo só entra no menu se sobrar
+    ao menos 1 página visível — corrige de passagem o caso de cabeçalho
+    de seção vazio para não-admin sem permissão de `upload`.
+- Textos de apoio que apontavam "Dados → Upload de Dados" atualizados para
+  "Gestão → Dados e Qualidade" (`app.py::_aviso_base_nao_processada`,
+  `administracao.py`, `pce_especialista.py`).
+- **Ainda não feito nesta etapa** (fica para uma etapa própria, é decisão
+  de RBAC — quem pode restaurar): mover histórico de versões de upload /
+  rollback da aba "Uploads e exportações" da Administração para dentro de
+  "Dados e Qualidade". Hoje segue admin-only, o que já satisfaz o
+  "restauração administrativa, quando autorizada" do `FIN360_VISAO_IDEAL`.
+- Validado: `py_compile` em `app.py`/`versao.py`/`administracao.py`/
+  `pce_especialista.py`; `AppTest.from_file("app.py")` (skip-login e login
+  admin) sobe sem exceção contra o `painel.duckdb` real, grupo `GESTÃO`
+  presente com as 2 páginas; as 2 regressões numéricas (`fase4_fase5`,
+  `RDG julho`) inalteradas.
+
+## 6.5.2 — 2026-09-01
+
+Etapa 1 da migração para a **Visão Ideal** (sidebar compacta — ver
+`docs/07-plano-migracao-visao-ideal.md`). Só documentação + 1 ajuste de CSS
+isolado; nenhuma mudança de navegação, dado ou gráfico ainda.
+
+- **`docs/07-plano-migracao-visao-ideal.md`** criado — de/para completo das
+  ~17 páginas de hoje para os 8 itens em 3 grupos do `FIN360_VISAO_IDEAL.md`,
+  7 etapas validáveis, 2 decisões em aberto (RBAC por aba; `st.tabs` nativo
+  x render preguiçoso), padrão de código `@st.fragment` por painel (conexão
+  DuckDB própria em cada fragmento).
+- **Tag de filtro da sidebar: dourado sólido + texto branco**
+  (`src/branding.py::inject_shell_css`) — o chip do multiselect passou de
+  `--f360-gold-soft` (13%) + texto escuro para `--f360-gold` (`#c9932f`)
+  cheio + texto e `×` brancos, a pedido do usuário. Hover do `×` e do
+  botão interno do BaseWeb ajustados para branco translúcido. Nenhum outro
+  seletor tocado; paleta de gráfico intocada.
+- Validado: `py_compile` em `branding.py`/`versao.py`; `AppTest.from_file
+  ("app.py")` (skip-login e login normal) sobe sem exceção contra o
+  `painel.duckdb` real.
+
 ## 6.5.1 — 2026-09-01 (hotfix)
 
 - **`app.py` movido pra raiz do repositório** (era `src/dashboard/app.py`,

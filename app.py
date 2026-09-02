@@ -3,8 +3,9 @@
 Navegação pela barra lateral (st.navigation): Visão Resumida Executiva,
 Painel Executivo (Nível 1 → 2 → 3), Visão Manutenção (SP), Nível 4
 (Contas), Nível 5 (Centro de Custo), Nível 6 (rastreabilidade SAP) e
-Upload de Dados. Nível 4-6 entraram no escopo a pedido do usuário em
-2026-08-06 (ver CLAUDE.md) — não fazem mais parte do "fora do MVP" original.
+Dados e Qualidade (era "Upload de Dados"). Nível 4-6 entraram no escopo a
+pedido do usuário em 2026-08-06 (ver CLAUDE.md) — não fazem mais parte do
+"fora do MVP" original.
 
 **Reestruturado em 2026-08-11/12** (a pedido do usuário): a navegação
 virou seções no Side Bar, renomeadas em 2026-08-12 pros nomes que o
@@ -15,9 +16,14 @@ são o universo "Manutenção Corrente" do diagrama que o usuário trouxe em
 em CJI4 Orçado + CJI3 Realizado, trazido em 2026-08-11, ver
 capex_dados.py). `st.navigation` aceita um dict `{titulo_secao:
 [st.Page, ...]}` pra criar esses cabeçalhos de seção — não precisa de N
-chamadas `st.navigation` separadas. Terceira seção **"Dados"** (Upload de
-Dados) devolvida à navegação em 2026-08-17 — cobre arquivo dos 2
-universos, por isso não entrou dentro de nenhuma das 2 seções acima.
+chamadas `st.navigation` separadas.
+
+**Etapa 2 da Visão Ideal (2026-09-02, ver docs/07):** as antigas seções
+**"Dados"** (Upload de Dados, devolvida à navegação em 2026-08-17) e
+**"Administração"** viraram um único grupo **"GESTÃO"**, com as páginas
+**"Dados e Qualidade"** (era "Upload de Dados") e **"Administração"** (era
+"Gestão e Auditoria"). É só rótulo/agrupamento — as chaves de permissão
+(`upload`, `administracao`) e toda a lógica de página continuam iguais.
 
 **"DINFRA" evitado em rótulos de UI desde 2026-08-12** (a pedido do
 usuário: pode ser lido como a Diretoria inteira, que tem mais Gerências
@@ -289,8 +295,8 @@ def _base_pronta(con: duckdb.DuckDBPyConnection) -> bool:
 
 def _aviso_base_nao_processada() -> None:
     st.warning(
-        "Base ainda não processada. Use a aba 'Dados → Upload de Dados' pra "
-        "subir os arquivos e clicar em 'Reprocessar base', ou rode "
+        "Base ainda não processada. Use a aba 'Gestão → Dados e Qualidade' "
+        "pra subir os arquivos e clicar em 'Reprocessar base', ou rode "
         "`python -m src.model.build_star_schema` no terminal."
     )
 
@@ -385,7 +391,7 @@ def _zona_upload(tipo: str, info: dict) -> None:
 
 
 def pagina_upload() -> None:
-    render_page_banner("📤", "Upload de Dados", "Cada arquivo tem sua própria área — o envio substitui o atual.")
+    render_page_banner("📤", "Dados e Qualidade", "Upload dos arquivos rotineiros, reprocessamento e conferência de carga.")
     with st.expander("Como funciona o upload"):
         st.caption(
             "**Rotina periódica**: formato padronizado (Base Analítico SAP "
@@ -941,7 +947,7 @@ def _somente_paginas(itens: list) -> list:
     return [item for item in itens if item is not None]
 
 
-# Navegação em 2 seções (dict, não lista — ver docstring do módulo).
+# Navegação em seções (dict, não lista — ver docstring do módulo).
 # Renomeado em 2026-08-12 (a pedido do usuário) pra "Plano de Manutenção"
 # / "Plano de Obras" — nomes que o próprio PMO usa (painel de referência
 # trazido pelo usuário se chama exatamente "Plano de Manutenção"). As 2
@@ -950,7 +956,31 @@ def _somente_paginas(itens: list) -> list:
 # metodologia FEL) — só juntei OPEX e CAPEX Manutenção numa seção só
 # (antes eram 2 separadas), porque as duas juntas SÃO o "Plano de
 # Manutenção" da referência, não 2 coisas diferentes.
-pg = st.navigation({
+#
+# Etapa 2 da Visão Ideal (2026-09-02, ver docs/07): as antigas seções
+# "Dados" e "Administração" viraram um único grupo "GESTÃO" — "Dados e
+# Qualidade" (era "Upload de Dados") + "Administração" (era "Gestão e
+# Auditoria"). Só rótulo/agrupamento; chaves de permissão (`upload`,
+# `administracao`) e lógica de página inalteradas.
+
+# Grupo GESTÃO montado antes do dict: "Dados e Qualidade" depende da
+# permissão de página `upload` (via _pagina_se_permitida); "Administração"
+# é sempre exclusiva de admin (checagem direta de papel, NÃO passa pelo
+# can_acessar_pagina/permissao_pagina genérico — essa tela não pode ser
+# liberada por engano via override de página). O grupo só entra no menu se
+# sobrar ao menos 1 página visível pro usuário.
+_paginas_gestao = _somente_paginas([
+    _pagina_se_permitida("upload", pagina_upload, "Dados e Qualidade", "📤"),
+])
+if is_admin():
+    _paginas_gestao.append(
+        st.Page(
+            _com_guard_pagina("administracao", pagina_administracao),
+            title="Administração", icon="🛡️",
+        )
+    )
+
+_secoes = {
     "Plano de Manutenção": _somente_paginas([
         _pagina_se_permitida("resumo_executivo", pagina_resumo_executivo, "Visão Resumo Executivo — GGSP", "🧭", default=True),
         _pagina_se_permitida("painel_executivo", pagina_painel, "Painel Executivo", "📊"),
@@ -978,23 +1008,15 @@ pg = st.navigation({
         # Atualizada/Gerência/Grupo/Versão), ver pce_especialista.py.
         _pagina_se_permitida("pce_especialista", pagina_pce_especialista, "CAPEX Obras — Especialista", "📐"),
     ]),
-    # "Upload de Dados" tinha saído da navegação em 2026-08-11 ("vamos
-    # precisar reorganizar futuramente, pode tirar ela por enquanto").
-    # Devolvida em 2026-08-17 (a pedido do usuário: reprocessar direto do
-    # painel quando CJI3/CJI4/Consulta de Contas forem atualizados, sem
-    # depender do terminal) numa seção própria — a página cobre arquivo
-    # dos dois universos (Manutenção e Obras), não faz sentido só numa
-    # das 2 seções de cima.
-    "Dados": _somente_paginas([
-        _pagina_se_permitida("upload", pagina_upload, "Upload de Dados", "📤"),
-    ]),
-    # Administração — sempre exclusiva de admin (checagem direta de papel,
-    # NÃO passa pelo can_acessar_pagina/permissao_pagina genérico: essa
-    # tela não pode ser liberada por engano via override de página, tem
-    # que continuar admin-only mesmo que alguém crie uma linha errada em
-    # app.permissao_pagina). Seção some do menu inteiro pra quem não é
-    # admin (lista vazia, "Dados"-style).
-    **({"Administração": [st.Page(_com_guard_pagina("administracao", pagina_administracao), title="Gestão e Auditoria", icon="🛡️")]} if is_admin() else {}),
-})
+}
+# "Upload de Dados" (hoje "Dados e Qualidade") tinha saído da navegação em
+# 2026-08-11 e voltou em 2026-08-17 (reprocessar direto do painel quando
+# CJI3/CJI4/Consulta de Contas forem atualizados, sem depender do terminal)
+# — cobre arquivo dos dois universos. Desde a Etapa 2 da Visão Ideal
+# (2026-09-02) fica no grupo GESTÃO, ao lado de "Administração".
+if _paginas_gestao:
+    _secoes["GESTÃO"] = _paginas_gestao
+
+pg = st.navigation(_secoes)
 pg.run()
 _renderizar_rodape_sidebar()

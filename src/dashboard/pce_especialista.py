@@ -704,7 +704,7 @@ def render_pce_especialista(con: duckdb.DuckDBPyConnection) -> None:
     if not tabelas:
         st.info(
             "Base PCE ainda não carregada — suba \"Consolidado.xlsx\" em "
-            "Dados → Upload de Dados e reprocesse."
+            "Gestão → Dados e Qualidade e reprocesse."
         )
         return
 
