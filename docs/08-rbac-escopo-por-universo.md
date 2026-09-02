@@ -228,13 +228,16 @@ cada uma):
     toggle em `pagina_opex_capex_manutencao` só mostra o(s) lado(s) com
     grant — restaura o controle fino por lado perdido na fusão de
     2026-08-29.
+  - **Nível 6 — Rastreabilidade SAP ✅ (v7.4.0)** —
+    `filtros.clausula_escopo_centro_custo(con, universo)` (traduz alvos de
+    Gerência → `centro_custo_id` via `fact_realizado`); `nivel6_sap`
+    gateia por `opex_sustaining` e filtra `fact_realizado_documento` por
+    `centro_custo_id`.
   - Falta: Resumo Executivo, Painel Executivo (waterfall — precisa
-    recortar `explicacoes.csv` também), **Nível 6**
-    (`fact_realizado_documento` não tem `gerencia_id` — recorte via
-    `centro_custo_id`), CAPEX Obras (universo `capex_obras`, coluna
-    `gerencia_obras`/`e_pep_projeto` — `clausula_escopo` precisa separar
-    alvos por tipo), + ligar o default-deny do `pce_especialista` em
-    `can_acessar_pagina`.
+    recortar `explicacoes.csv` também), CAPEX Obras (universo
+    `capex_obras`, coluna `gerencia_obras`/`e_pep_projeto` —
+    `clausula_escopo` precisa separar alvos por tipo), + ligar o
+    default-deny do `pce_especialista` em `can_acessar_pagina`.
 - **RBAC-B — navegação (1ª camada).** Esconder grupo / opção de
   `segmented_control` conforme `universos_permitidos`. Entra junto das
   Etapas 3–6 do `docs/07` (as páginas já consolidadas).

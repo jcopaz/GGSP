@@ -533,6 +533,32 @@ def clausula_escopo(universo: str, coluna: str = "gerencia_id") -> tuple[str, li
     return f" AND {coluna} IN ({marcadores})", list(alvos)
 
 
+def clausula_escopo_centro_custo(
+    con: duckdb.DuckDBPyConnection, universo: str = "opex_sustaining",
+    coluna: str = "centro_custo_id",
+) -> tuple[str, list]:
+    """Como `clausula_escopo`, mas pra tabela SEM `gerencia_id` (ex.:
+    `fact_realizado_documento`, Nível 6). Traduz os alvos de Gerência do
+    escopo → a lista de `centro_custo_id` daquelas Gerências (via
+    `fact_realizado`, onde CC ⊂ Gerência é hierarquia estrita — 0 exceção,
+    ver docs/04) e filtra por `centro_custo_id`."""
+    tem_acesso, tudo, alvos = escopo_universo(universo)
+    if tudo:
+        return "", []
+    if not tem_acesso or not alvos:
+        return " AND 1=0", []
+    marcadores = ", ".join("?" * len(alvos))
+    ccs = con.execute(
+        "SELECT DISTINCT centro_custo_id FROM fact_realizado "
+        f"WHERE centro_custo_id IS NOT NULL AND gerencia_id IN ({marcadores})",
+        list(alvos),
+    ).df()["centro_custo_id"].tolist()
+    if not ccs:
+        return " AND 1=0", []
+    marc_cc = ", ".join("?" * len(ccs))
+    return f" AND {coluna} IN ({marc_cc})", list(ccs)
+
+
 def clausula_familia(familia: str | None, coluna: str = "familia_pacote") -> tuple[str, list]:
     """Filtro explícito de Família de Pacote — diferente de
     `clausula_where`/`clausula_periodo`, não lê da sessão: quem decide o

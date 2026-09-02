@@ -17,7 +17,13 @@ import pandas as pd
 import streamlit as st
 
 from src.branding import render_page_banner
-from src.dashboard.filtros import clausula_periodo, clausula_where, combinar_clausulas
+from src.dashboard.filtros import (
+    clausula_escopo_centro_custo,
+    clausula_periodo,
+    clausula_where,
+    combinar_clausulas,
+    guardar_e_faixa_universo,
+)
 from src.dashboard.formatacao import fmt_reais, fmt_reais_abrev
 
 
@@ -31,6 +37,10 @@ def _fmt_codigo(valor: float | None) -> str:
 
 def render_nivel6_sap(con: duckdb.DuckDBPyConnection) -> None:
     render_page_banner("🔎", "Rastreabilidade SAP", "Só para Realizado — a Base Zero (Orçamento) não tem documento/nota fiscal.")
+    # RBAC de escopo (docs/08, Fase RBAC-A.2): universo opex_sustaining
+    # (o Realizado carregado é 100% OPEX). `fact_realizado_documento` não
+    # tem `gerencia_id` — o recorte vem por `centro_custo_id`.
+    guardar_e_faixa_universo(con, "opex_sustaining")
     st.caption(
         "'Usuário' do lançamento não está no export atual; o campo mais "
         "próximo é o responsável (ponta firme). Pacote/Centro de Custo/"
@@ -46,6 +56,7 @@ def render_nivel6_sap(con: duckdb.DuckDBPyConnection) -> None:
             "coordenacao": "coordenacao",
         }),
         clausula_periodo(),
+        clausula_escopo_centro_custo(con),
     )
     if busca:
         where += (

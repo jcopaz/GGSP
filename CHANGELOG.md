@@ -4,6 +4,28 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 7.4.0 — 2026-09-02
+
+**Fase RBAC-A.2 — Nível 6 (Rastreabilidade SAP).** `fact_realizado_documento`
+não tem `gerencia_id` — o recorte de escopo vem por `centro_custo_id`.
+Sem schema, sem tocar em gráfico.
+
+- **`src/dashboard/filtros.py`**: `clausula_escopo_centro_custo(con, universo,
+  coluna="centro_custo_id")` — traduz os alvos de Gerência do escopo → a
+  lista de `centro_custo_id` daquelas Gerências (via `fact_realizado`, onde
+  CC ⊂ Gerência é hierarquia estrita) e filtra por `centro_custo_id`.
+- **`src/dashboard/nivel6_sap.py`**: `render_nivel6_sap` chama
+  `guardar_e_faixa_universo(con, "opex_sustaining")` (o Realizado carregado
+  é 100% OPEX) e injeta `clausula_escopo_centro_custo(con)` no WHERE da
+  consulta a `fact_realizado_documento`.
+- **`tests/rbac_sustaining_check.py`**: + `n6_docs` — escopo GER MALHA (SP)
+  filtra 5.396 de 16.100 lançamentos (= mesma contagem que o SQL direto
+  por `centro_custo_id ∈ Gerência`).
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9); `tests.rbac_sustaining_check`
+  (7 checks) + `tests.rbac_projecao_check`; `AppTest` do Nível 6 barra
+  usuário sem grant; `AppTest.from_file("app.py")` skip-login e admin sem
+  exceção; regressões `fase4_fase5` e `validacao_rdg_julho` inalteradas.
+
 ## 7.3.0 — 2026-09-02
 
 **Fase RBAC-A.2 — OPEX / CAPEX Manutenção Malha** (`opex_capex_manutencao`

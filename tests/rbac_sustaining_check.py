@@ -21,6 +21,7 @@ def _script() -> None:
     import streamlit as st
     import duckdb
 
+    from src.dashboard.filtros import clausula_escopo_centro_custo
     from src.dashboard.nivel4_contas import dados_conta, dados_familia
     from src.dashboard.visao_classificacao import resumo_classificacao
     from src.dashboard.visao_manutencao import resumo_manutencao
@@ -51,6 +52,17 @@ def _script() -> None:
             "where classificacao_contabil='CAPEX' and gerencia_id in (?)", [_ALVO],
         ).fetchone()
 
+        # Nível 6 — recorte via centro_custo_id (fact_realizado_documento
+        # não tem gerencia_id).
+        frag6, p6 = clausula_escopo_centro_custo(con, "opex_sustaining")
+        (n6_scoped,) = con.execute(
+            f"select count(*) from fact_realizado_documento where 1=1{frag6}", p6
+        ).fetchone()
+        (n6_direct,) = con.execute(
+            "select count(*) from fact_realizado_documento where centro_custo_id in "
+            "(select distinct centro_custo_id from fact_realizado where gerencia_id = ?)", [_ALVO],
+        ).fetchone()
+
         checks = {
             "resumo_orcado": abs(r["orcado"] - orc_d) < 0.01,
             "resumo_realizado": abs(r["realizado"] - real_d) < 0.01,
@@ -58,6 +70,9 @@ def _script() -> None:
             "n4_conta_orcado": abs(float(df_cta["orcado"].sum()) - orc_d) < 0.01,
             "classif_opex": abs(rc_opex["orcado"] - opex_d) < 0.01,
             "classif_capex": abs(rc_capex["orcado"] - capex_d) < 0.01,
+            "n6_docs": n6_scoped == n6_direct and 0 < n6_scoped < con.execute(
+                "select count(*) from fact_realizado_documento"
+            ).fetchone()[0],
         }
         st.write("RESULT " + " ".join(f"{k}={v}" for k, v in checks.items()))
         st.write(f"VALORES orcado={r['orcado']:.2f} sql={orc_d:.2f}")
