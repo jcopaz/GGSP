@@ -4,6 +4,38 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 7.1.0 — 2026-09-02
+
+**Fase RBAC-A.2 — 1ª página: Projeção OPEX.** O escopo por universo
+(`docs/08`) passa a ser aplicado de verdade nesta tela. Sem mudança de
+schema; nenhuma figura Plotly tocada.
+
+- **`src/auth/permissions.py`**: `require_universo(universo)` — barra a
+  página (`st.error` + `st.stop`) se o usuário não tem acesso ao universo.
+  Admin / `ORCAMENTO_SKIP_LOGIN=1` passam.
+- **`src/dashboard/filtros.py`**: `clausula_escopo(universo, coluna="gerencia_id")`
+  — fragmento sempre-ligado no formato de `clausula_periodo`: `("",[])` se
+  vê o universo inteiro, `(" AND gerencia_id IN (?,…)", alvos)` no recorte,
+  `(" AND 1=0", [])` se sem acesso (defensivo — a página já barrou antes).
+- **`src/dashboard/projecao_opex.py`**: `render_projecao_opex` chama
+  `require_universo("opex_sustaining")`, mostra a faixa "🔒 Recorte do seu
+  acesso: <Gerências>" quando não tem a GG inteira, e injeta
+  `clausula_escopo` nos filtros passados a `dados_tendencia` (Orçado e
+  Realizado). Analista escopado em GER MALHA (SP) vê só os números dele;
+  quem tem `gg` vê a GG inteira, sem a faixa.
+- **`tests/rbac_projecao_check.py`**: confere que o Orçado das 3 famílias
+  no recorte bate exatamente com a soma SQL direta de `fact_orcamento`
+  filtrado por `gerencia_id`, e que o recorte de PM é estritamente menor
+  que o total (filtro não é no-op). Números reais: PM escopo GGE_0025 =
+  R$ 17,24 MM x total R$ 40,90 MM; PD R$ 2,88 MM x R$ 6,71 MM; PP
+  R$ 0,35 MM x R$ 0,68 MM.
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9 + `test_projecao_ritmo`
+  1); `tests.rbac_projecao_check`; `AppTest.from_function(render_projecao_opex)`
+  nos 3 cenários (sem acesso → barrado, 0 métrica; recorte → faixa +
+  R$ 17,2 MM; GG inteira → sem faixa + R$ 40,9 MM); `AppTest.from_file("app.py")`
+  skip-login e admin sem exceção; regressões `fase4_fase5` e
+  `validacao_rdg_julho` inalteradas.
+
 ## 7.0.0 — 2026-09-02
 
 **Fase RBAC-A.1** do RBAC de escopo por universo (`docs/08`). MAJOR por

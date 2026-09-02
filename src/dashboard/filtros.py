@@ -86,6 +86,8 @@ from __future__ import annotations
 import duckdb
 import streamlit as st
 
+from src.auth.permissions import escopo_universo
+
 _CHAVES_SESSAO = {
     "gerencia_nome": "filtro_gerencia",
     "coordenacao": "filtro_coordenacao",
@@ -476,6 +478,29 @@ def clausula_projeto_capex(
     if not condicoes:
         return "", []
     return " AND " + " AND ".join(condicoes), params
+
+
+def clausula_escopo(universo: str, coluna: str = "gerencia_id") -> tuple[str, list]:
+    """Filtro sempre-ligado do RBAC de escopo por universo (docs/08,
+    Fase RBAC-A.2). Mesmo formato de `clausula_periodo`/`clausula_where`
+    (fragmento pronto pra colar depois de "WHERE 1=1" + params):
+
+      - vê o universo inteiro   -> ("", [])
+      - recorte por Gerência    -> (" AND gerencia_id IN (?, ?)", [...])
+      - sem acesso ao universo  -> (" AND 1=0", [])
+
+    O último caso é defensivo: a página deve barrar antes com
+    `permissions.require_universo`, mas se não barrou, a consulta não
+    vaza dado nenhum. `coluna` troca pra `gerencia_obras` / `e_pep_projeto`
+    nas telas de CAPEX Obras. Admin / `ORCAMENTO_SKIP_LOGIN=1` sempre caem
+    no primeiro caso (`escopo_universo` devolve `tudo=True`)."""
+    tem_acesso, tudo, alvos = escopo_universo(universo)
+    if tudo:
+        return "", []
+    if not tem_acesso or not alvos:
+        return " AND 1=0", []
+    marcadores = ", ".join("?" * len(alvos))
+    return f" AND {coluna} IN ({marcadores})", list(alvos)
 
 
 def clausula_familia(familia: str | None, coluna: str = "familia_pacote") -> tuple[str, list]:

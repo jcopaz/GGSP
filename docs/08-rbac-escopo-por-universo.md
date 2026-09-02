@@ -211,11 +211,17 @@ cada uma):
   que rodar no Neon** antes de valer. Nada mudou no que as páginas do
   painel mostram.
 - **RBAC-A.2 — `clausula_escopo` + enforcement, página a página.**
-  Começar pela **Projeção** (exemplo do usuário, página contida), depois
-  Resumo Executivo / Painel / Visão Manutenção / Níveis 4-6 / CAPEX
-  Obras. Cada uma com AppTest numérico: "usuário escopado em SP vê R$X" e
+  Cada uma com AppTest numérico: "usuário escopado em SP vê R$X" e
   "R$X = soma SQL direta das linhas SP". Página que mostra OPEX **e**
   CAPEX aplica o escopo por seção (universo diferente por bloco).
+  - **Projeção OPEX ✅ (2026-09-02, v7.1.0)** — `require_universo` +
+    `clausula_escopo("opex_sustaining")` nos filtros de `dados_tendencia`;
+    faixa "🔒 Recorte do seu acesso" quando não é a GG inteira.
+    `tests/rbac_projecao_check.py`.
+  - Falta: Resumo Executivo, Painel Executivo, Visão Manutenção,
+    OPEX/CAPEX Manutenção, Níveis 4-6, CAPEX Obras (universo/coluna
+    próprios), + ligar o default-deny do `pce_especialista` em
+    `can_acessar_pagina`.
 - **RBAC-B — navegação (1ª camada).** Esconder grupo / opção de
   `segmented_control` conforme `universos_permitidos`. Entra junto das
   Etapas 3–6 do `docs/07` (as páginas já consolidadas).

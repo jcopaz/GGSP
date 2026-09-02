@@ -276,6 +276,20 @@ def universos_permitidos(usuario: dict | None = None) -> set[str]:
     return _resolver_universos_permitidos(linhas, is_admin(), bool(u))
 
 
+def require_universo(universo: str) -> None:
+    """Barra a página se o usuário não tem acesso ao universo financeiro
+    (1ª camada do RBAC de escopo — docs/08). Usar no topo da função da
+    página/painel, depois do `render_page_banner`. Admin / SKIP_LOGIN
+    passam. Fase RBAC-A.2."""
+    tem_acesso, _tudo, _alvos = escopo_universo(universo)
+    if not tem_acesso:
+        st.error(
+            "🚫 Você não tem acesso a este universo financeiro. "
+            "Fale com o administrador para liberar."
+        )
+        st.stop()
+
+
 def escopo_universo(universo: str, usuario: dict | None = None) -> tuple[bool, bool, list[str]]:
     """2ª camada: `(tem_acesso, tudo, alvos)` do usuário nesse universo.
     - tem_acesso=False -> sem grant, não vê nada nesse universo
