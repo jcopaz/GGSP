@@ -4,6 +4,34 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 7.3.0 — 2026-09-02
+
+**Fase RBAC-A.2 — OPEX / CAPEX Manutenção Malha** (`opex_capex_manutencao`
+/ `visao_classificacao`). Esta tela tem dois lados — cada um é um universo
+próprio (`OPEX` → `opex_sustaining`, `CAPEX` → `capex_sustaining`). Sem
+schema, sem tocar em gráfico.
+
+- **`src/dashboard/visao_classificacao.py`**: `UNIVERSO_POR_CLASSIFICACAO`
+  (público) + helper `_escopo(classificacao)` → `clausula_escopo` do
+  universo do lado. Aplicado nas 6 consultas (`resumo_classificacao` x4 —
+  inclusive o total e o Realizado de referência, que agora também
+  respeitam o recorte —, `_dados_por_pacote`, `_dados_por_conta`).
+  `render_visao_classificacao` chama `guardar_e_faixa_universo`.
+- **`app.py::pagina_opex_capex_manutencao`**: o toggle OPEX/CAPEX passa a
+  mostrar **só o(s) lado(s) que o usuário tem grant** (`universos_permitidos()`).
+  Sem nenhum dos dois → `st.error` e a página não renderiza. Isso
+  **restaura** o controle fino por lado que a fusão de 2026-08-29 tinha
+  perdido — agora no nível de universo do RBAC de escopo (docstring
+  atualizada).
+- **`tests/rbac_sustaining_check.py`**: + `classif_opex` / `classif_capex`
+  — com escopo GER MALHA (SP) nos dois universos, `resumo_classificacao`
+  bate exato: OPEX R$ 20,47 MM, CAPEX R$ 18,89 MM (= soma SQL direta por
+  `gerencia_id`).
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9 + `test_projecao_ritmo`
+  1); `tests.rbac_sustaining_check` (6 checks) + `tests.rbac_projecao_check`;
+  `AppTest.from_file("app.py")` skip-login e admin sem exceção; regressões
+  `fase4_fase5` e `validacao_rdg_julho` inalteradas.
+
 ## 7.2.0 — 2026-09-02
 
 **Fase RBAC-A.2 — Visão Manutenção + Nível 4 + Nível 5** (universo

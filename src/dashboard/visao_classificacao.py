@@ -39,10 +39,15 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.branding import render_page_banner
+from src.dashboard.filtros import clausula_escopo, guardar_e_faixa_universo
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.layout import bloco_resumo_visual
 from src.dashboard.paleta import COR_CAPEX, COR_OPEX
+
+# RBAC de escopo (docs/08): esta tela tem um lado OPEX e um lado CAPEX de
+# Manutenção — cada um é um universo próprio.
+UNIVERSO_POR_CLASSIFICACAO = {"OPEX": "opex_sustaining", "CAPEX": "capex_sustaining"}
 
 _COR_CLASSIFICACAO = {"CAPEX": COR_CAPEX, "OPEX": COR_OPEX}
 _TITULO = {"CAPEX": "CAPEX Manutenção — Malha", "OPEX": "Visão OPEX (Manutenção Malha)"}
@@ -60,18 +65,31 @@ def _badges_dominio() -> None:
     c3.markdown(":blue[↗️ Obras — carregado, ver seção **CAPEX Projetos (Obras)**]")
 
 
+def _escopo(classificacao: str) -> tuple[str, list]:
+    """Fragmento de recorte por Gerência (RBAC de escopo — docs/08), no
+    universo do lado escolhido (OPEX -> opex_sustaining, CAPEX ->
+    capex_sustaining). `gerencia_id` está populado nos dois fatos, tanto
+    pra linhas OPEX quanto CAPEX de `fact_orcamento`."""
+    return clausula_escopo(UNIVERSO_POR_CLASSIFICACAO[classificacao])
+
+
 def resumo_classificacao(con: duckdb.DuckDBPyConnection, classificacao: str) -> dict:
+    esc, esc_p = _escopo(classificacao)
     (orcado,) = con.execute(
-        "SELECT SUM(valor_orcado) FROM fact_orcamento WHERE classificacao_contabil = ?",
-        [classificacao],
+        f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE classificacao_contabil = ?{esc}",
+        [classificacao, *esc_p],
     ).fetchone()
-    (orcado_total,) = con.execute("SELECT SUM(valor_orcado) FROM fact_orcamento").fetchone()
+    (orcado_total,) = con.execute(
+        f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE 1=1{esc}", esc_p
+    ).fetchone()
     (fora_plano,) = con.execute(
         "SELECT SUM(valor_orcado) FROM fact_orcamento "
-        "WHERE classificacao_contabil = ? AND area LIKE 'Fora Plano%'",
-        [classificacao],
+        f"WHERE classificacao_contabil = ? AND area LIKE 'Fora Plano%'{esc}",
+        [classificacao, *esc_p],
     ).fetchone()
-    (realizado_total,) = con.execute("SELECT SUM(valor_realizado) FROM fact_realizado").fetchone()
+    (realizado_total,) = con.execute(
+        f"SELECT SUM(valor_realizado) FROM fact_realizado WHERE 1=1{esc}", esc_p
+    ).fetchone()
 
     orcado = orcado or 0.0
     orcado_total = orcado_total or 0.0
@@ -84,10 +102,11 @@ def resumo_classificacao(con: duckdb.DuckDBPyConnection, classificacao: str) -> 
 
 
 def _dados_por_pacote(con: duckdb.DuckDBPyConnection, classificacao: str) -> pd.DataFrame:
+    esc, esc_p = _escopo(classificacao)
     return con.execute(
         "SELECT pacote_id, SUM(valor_orcado) AS orcado FROM fact_orcamento "
-        "WHERE classificacao_contabil = ? GROUP BY pacote_id ORDER BY orcado DESC",
-        [classificacao],
+        f"WHERE classificacao_contabil = ?{esc} GROUP BY pacote_id ORDER BY orcado DESC",
+        [classificacao, *esc_p],
     ).df()
 
 
@@ -107,12 +126,13 @@ def _grafico_por_pacote(df: pd.DataFrame, cor: str, nomes_pacote: dict[str, str]
 def _dados_por_conta(con: duckdb.DuckDBPyConnection, classificacao: str, top_n: int = 10) -> pd.DataFrame:
     """`conta_interna_id`/`conta_interna_nome` — mesma chave unificada do
     Nível 4 (ver build_star_schema.py) — pra não mostrar código sem nome."""
+    esc, esc_p = _escopo(classificacao)
     return con.execute(
         "SELECT conta_interna_id AS conta, MAX(NULLIF(conta_interna_nome, '')) AS nome, "
         "SUM(valor_orcado) AS orcado FROM fact_orcamento "
-        "WHERE classificacao_contabil = ? GROUP BY conta_interna_id "
+        f"WHERE classificacao_contabil = ?{esc} GROUP BY conta_interna_id "
         "ORDER BY orcado DESC LIMIT ?",
-        [classificacao, top_n],
+        [classificacao, *esc_p, top_n],
     ).df()
 
 
@@ -153,6 +173,7 @@ def render_visao_classificacao(con: duckdb.DuckDBPyConnection, classificacao: st
         _ICONE[classificacao], _TITULO[classificacao],
         "Só o Orçado é fatiado por Classificação Contábil — Realizado aparece como referência de Malha (SP) inteira.",
     )
+    guardar_e_faixa_universo(con, UNIVERSO_POR_CLASSIFICACAO[classificacao])  # RBAC de escopo (docs/08)
     _badges_dominio()
 
     resumo = resumo_classificacao(con, classificacao)

@@ -82,7 +82,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-from src.auth.permissions import can_acessar_pagina, is_admin
+from src.auth.permissions import can_acessar_pagina, is_admin, universos_permitidos
 from src.dashboard.administracao import render_administracao
 from src.auth.session import (
     clear_session,
@@ -113,7 +113,7 @@ from src.dashboard.nivel4_contas import render_nivel4_contas
 from src.dashboard.nivel5_centro_custo import render_nivel5_centro_custo
 from src.dashboard.nivel6_sap import render_nivel6_sap
 from src.dashboard.resumo_executivo import render_resumo_executivo
-from src.dashboard.visao_classificacao import render_visao_classificacao
+from src.dashboard.visao_classificacao import UNIVERSO_POR_CLASSIFICACAO, render_visao_classificacao
 from src.dashboard.visao_manutencao import render_visao_manutencao
 from src.dashboard.projecao_opex import render_projecao_opex
 from src.dashboard.capex_resumo import render_resumo_executivo_capex
@@ -572,11 +572,12 @@ def pagina_opex_capex_manutencao() -> None:
     renderizar, no lugar de 2 itens de menu quase idênticos.
 
     Nota de RBAC: as chaves de permissão antigas ("visao_opex",
-    "capex_manutencao") viram uma só ("opex_capex_manutencao") — qualquer
-    restrição fina que já existisse pra só um dos dois lados (ex.: alguém
-    liberado pra ver OPEX mas não CAPEX) deixa de ser possível depois
-    dessa fusão; quem tem acesso à tela escolhe o lado livremente no
-    toggle. Ver CHANGELOG."""
+    "capex_manutencao") viraram uma só ("opex_capex_manutencao"). O
+    controle fino por lado voltou pelo RBAC de escopo por universo
+    (docs/08, Fase RBAC-A.2): OPEX = universo `opex_sustaining`, CAPEX =
+    `capex_sustaining`. O toggle abaixo só mostra o(s) lado(s) que o
+    usuário tem grant — quem só vê OPEX não consegue nem clicar em CAPEX.
+    Ver CHANGELOG."""
     caminho_db = CFG["caminhos"]["warehouse_db"]
     if not os.path.exists(caminho_db):
         _aviso_base_nao_processada()
@@ -587,11 +588,19 @@ def pagina_opex_capex_manutencao() -> None:
             _aviso_base_nao_processada()
             return
         renderizar_badge_filtros_ativos()
+        permitidos = universos_permitidos()
+        opcoes = [c for c in ("OPEX", "CAPEX") if UNIVERSO_POR_CLASSIFICACAO[c] in permitidos]
+        if not opcoes:
+            st.error(
+                "🚫 Você não tem acesso ao OPEX nem ao CAPEX de Manutenção. "
+                "Fale com o administrador para liberar."
+            )
+            return
         escolha = st.segmented_control(
-            "Classificação Contábil", ["OPEX", "CAPEX"],
-            default="OPEX", key="w_toggle_opex_capex_manutencao",
+            "Classificação Contábil", opcoes,
+            default=opcoes[0], key="w_toggle_opex_capex_manutencao",
         )
-        render_visao_classificacao(con, escolha or "OPEX")
+        render_visao_classificacao(con, escolha or opcoes[0])
     finally:
         con.close()
 

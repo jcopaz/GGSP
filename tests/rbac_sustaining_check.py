@@ -22,6 +22,7 @@ def _script() -> None:
     import duckdb
 
     from src.dashboard.nivel4_contas import dados_conta, dados_familia
+    from src.dashboard.visao_classificacao import resumo_classificacao
     from src.dashboard.visao_manutencao import resumo_manutencao
 
     _ALVO = "GGE_0025"
@@ -30,6 +31,8 @@ def _script() -> None:
         r = resumo_manutencao(con)
         df_fam = dados_familia(con, "PM")
         df_cta = dados_conta(con, "PM")
+        rc_opex = resumo_classificacao(con, "OPEX")
+        rc_capex = resumo_classificacao(con, "CAPEX")
 
         (orc_d,) = con.execute(
             "select coalesce(sum(valor_orcado),0) from fact_orcamento "
@@ -39,12 +42,22 @@ def _script() -> None:
             "select coalesce(sum(valor_realizado),0) from fact_realizado "
             "where familia_pacote='PM' and gerencia_id in (?)", [_ALVO],
         ).fetchone()
+        (opex_d,) = con.execute(
+            "select coalesce(sum(valor_orcado),0) from fact_orcamento "
+            "where classificacao_contabil='OPEX' and gerencia_id in (?)", [_ALVO],
+        ).fetchone()
+        (capex_d,) = con.execute(
+            "select coalesce(sum(valor_orcado),0) from fact_orcamento "
+            "where classificacao_contabil='CAPEX' and gerencia_id in (?)", [_ALVO],
+        ).fetchone()
 
         checks = {
             "resumo_orcado": abs(r["orcado"] - orc_d) < 0.01,
             "resumo_realizado": abs(r["realizado"] - real_d) < 0.01,
             "n4_familia_orcado": abs(float(df_fam["orcado"].sum()) - orc_d) < 0.01,
             "n4_conta_orcado": abs(float(df_cta["orcado"].sum()) - orc_d) < 0.01,
+            "classif_opex": abs(rc_opex["orcado"] - opex_d) < 0.01,
+            "classif_capex": abs(rc_capex["orcado"] - capex_d) < 0.01,
         }
         st.write("RESULT " + " ".join(f"{k}={v}" for k, v in checks.items()))
         st.write(f"VALORES orcado={r['orcado']:.2f} sql={orc_d:.2f}")
@@ -62,7 +75,10 @@ def _run(escopos):
 
 
 def main() -> None:
-    at = _run([{"universo": "opex_sustaining", "tipo": "gerencia", "valor": _ALVO}])
+    at = _run([
+        {"universo": "opex_sustaining", "tipo": "gerencia", "valor": _ALVO},
+        {"universo": "capex_sustaining", "tipo": "gerencia", "valor": _ALVO},
+    ])
     if at.exception:
         raise SystemExit(f"exceção no cenário recorte: {at.exception}")
     linha = next((m.value for m in at.markdown if m.value.startswith("RESULT")), "")
