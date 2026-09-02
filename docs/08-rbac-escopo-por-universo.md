@@ -154,48 +154,138 @@ Elemento PEP. Escreve linhas em `app.escopo_acesso`. Só `admin` (e talvez
 
 ---
 
-## 7. Perguntas a confirmar (antes de virar etapa)
+## 7. Respostas do usuário (2026-09-02)
 
-1. **Migração fail-closed.** Hoje `gerente` / `especialista_analista` sem
-   linha de escopo = irrestrito (nada aplicado). Novo: sem grant = não vê.
-   Migro todos a partir de `usuario.gerencia_id` (OPEX + CAPEX Sustaining
-   da própria Gerência). Quem tem `gerencia_id` nulo perde acesso até o
-   admin conceder. OK? Tem a lista de usuários atuais pra eu semear certo?
-2. **Papel `gg`** vê tudo sempre (igual admin), ou também passa por grant
-   de universo?
-3. **CAPEX Obras — Especialistas** (`pce_especialista`): entra no grant
-   `capex_obras` (mesma porta que o resto de Obras), ou tem chave própria
-   (análise densa, só alguns analistas)?
-4. **Níveis de escopo de `capex_obras`**: Gerência de Obras + Projeto +
-   Elemento PEP bastam? Precisa escopar por Classe de Custo / rubrica?
-5. **Cross-universo**: os grants são independentes por universo (o admin
-   concede a Gerência em cada universo separadamente), sem ligação
-   automática "Gerência Sustaining ↔ Gerência de Obras". Confere?
-6. **Totais no recorte**: analista escopado numa Gerência vê **só** os
-   números daquela Gerência em tudo (cards, waterfall, ranking) — não vê
-   o total da GG nem como contexto. Confere?
-7. **Pendências e Justificativas + Evidências SAP** herdam universo +
-   escopo (só vê pendência / evidência das Gerências que pode ver).
-   Confere?
-8. **Várias Gerências**: um analista pode receber N Gerências específicas
-   (não só 1) — união. Confere?
-9. Finura do Sustaining: Gerência é o nível mais fino nesta fase?
-   (`coordenacao` / `centro_custo` / `pacote` continuam no schema, sem uso.)
+1. **Migração fail-closed — CONFIRMADO, sem migração automática agora.**
+   Poucos usuários, ambiente em teste. Não semear a partir de
+   `usuario.gerencia_id`. Construir o enforcement fail-closed + a tela de
+   delegação; os usuários atuais ficam sem escopo (não veem nada nos
+   universos escopados) até o admin conceder pela tela. SQL de inspeção
+   dos usuários atuais entregue na conversa (seção 9).
+2. **Totais no recorte — CONFIRMADO.** Analista de uma Gerência vê **só**
+   os números dela em tudo — inclusive Projeção (só a projeção da própria
+   Gerência). Quem tem escopo `gg` vê a projeção da GG inteira (Orçado,
+   Realizado, Forecast, curva de Realizado médio etc.). O recorte vale pra
+   toda métrica, sem "total da GG como contexto".
+3. **CAPEX Obras — Especialistas — EM ABERTO.** Usuário quer entender a
+   diferença antes de decidir. Ver seção 10 (execução CJI3/CJI4 x
+   planejamento PCE) e a recomendação (chave de página própria em cima do
+   grant `capex_obras`).
+4. **Papel `gg` — NÃO é bypass.** Só `admin` é bypass total. `gg` também
+   recebe escopo delegado pela Gestão de Usuários, como analista (o
+   normal é conceder `(todos os universos, gg)` num clique). `can_ver_
+   gerencia` deixa de tratar `gg` como "vê tudo" — passa a depender de
+   grant.
+
+### Refinamentos (respostas anteriores / assumidos, confirmar se divergir)
+
+- **Níveis de `capex_obras`**: Gerência de Obras + Projeto + Elemento PEP.
+  Sem escopo por Classe de Custo / rubrica.
+- **Cross-universo**: grants independentes por universo; sem ligação
+  automática Gerência Sustaining ↔ Gerência de Obras.
+- **Pendências e Justificativas + Evidências SAP**: herdam universo +
+  escopo (só vê o das Gerências que pode ver).
+- **Várias Gerências**: N Gerências específicas por analista — união.
+- **Finura do Sustaining**: Gerência é o nível mais fino nesta fase
+  (`coordenacao` / `centro_custo` / `pacote` continuam no schema, sem uso).
 
 ---
 
-## 8. Sequenciamento sugerido
+## 8. Sequenciamento
 
-Esta camada é **pré-requisito** das Etapas 3–6 do `docs/07` (as páginas
-consolidadas precisam consultar a 1ª camada pra navegação e a 2ª pro
-filtro sempre-ligado). Proposta:
+Esta camada é **pré-requisito** das Etapas 3–6 do `docs/07`. Quebrada em
+incrementos validáveis (a lição de `docs/06` pesa: aplicar escopo sem
+validar contra o schema real de cada página arrisca mudar total /
+reconciliação — então enforcement é página a página, com regressão a
+cada uma):
 
-- **Fase RBAC-A** — schema (`universo` em `escopo_acesso`) + helpers em
-  `permissions.py` + `clausula_escopo` em `filtros.py`, aplicada às
-  **páginas atuais** (sem mexer na navegação ainda). Validável
-  numericamente: "Analista SP vê R$X" e "R$X = soma das linhas SP".
-- **Fase RBAC-B** — tela de delegação na Administração.
-- **Etapas 3–6** (`docs/07`) — consolidação, já consumindo o RBAC.
+- **RBAC-A.1 ✅ (2026-09-02, v7.0.0)** — schema + leitura + tela de
+  delegação, **sem enforcement**. `universo` em `app.escopo_acesso` (+
+  tipo `gg` + índice único novo); `permissions.py::universos_permitidos`
+  e `escopo_universo(universo) -> (tem_acesso, tudo, alvos)` com cache
+  1x/sessão e fail-closed; seção "Acesso por universo financeiro" na aba
+  "Permissões e escopos" da Administração (`substituir_escopo_universo`,
+  delete+insert atômico; checkbox da tela do Especialista grava
+  `permissao_pagina['pce_especialista']`). `tests/test_rbac_escopo.py`
+  (9 casos da lógica pura). **Migração `config/schema_postgres.sql` tem
+  que rodar no Neon** antes de valer. Nada mudou no que as páginas do
+  painel mostram.
+- **RBAC-A.2 — `clausula_escopo` + enforcement, página a página.**
+  Começar pela **Projeção** (exemplo do usuário, página contida), depois
+  Resumo Executivo / Painel / Visão Manutenção / Níveis 4-6 / CAPEX
+  Obras. Cada uma com AppTest numérico: "usuário escopado em SP vê R$X" e
+  "R$X = soma SQL direta das linhas SP". Página que mostra OPEX **e**
+  CAPEX aplica o escopo por seção (universo diferente por bloco).
+- **RBAC-B — navegação (1ª camada).** Esconder grupo / opção de
+  `segmented_control` conforme `universos_permitidos`. Entra junto das
+  Etapas 3–6 do `docs/07` (as páginas já consolidadas).
 
-A **Etapa 2** do `docs/07` (grupo GESTÃO) é independente e pode ir antes
-de tudo isso.
+A **Etapa 2** do `docs/07` (grupo GESTÃO) já foi, era independente.
+
+## 9. SQL de inspeção dos usuários atuais
+
+Rodar no **SQL Editor do Neon** (rede da MRS não abre a porta 5432 direto
+— ver `docs/05`).
+
+```sql
+-- 1) Usuários e o que já têm hoje
+select id, coalesce(matricula,'') matricula, coalesce(email,'') email,
+       nome_completo, papel, gg_id, gerencia_id, ativo,
+       permissao_upload, permissao_exportacao,
+       permissao_justificativa_macro, permissao_justificativa_micro,
+       precisa_trocar_senha, ultimo_login
+from app.usuario
+order by papel, nome_completo;
+
+-- 2) Escopos já cadastrados (provável: nenhum aplicado, mas pode haver linha)
+select u.nome_completo, u.papel, e.universo, e.tipo, e.valor, e.ativo, e.criado_em
+from app.escopo_acesso e join app.usuario u on u.id = e.usuario_id
+order by u.nome_completo, e.universo, e.tipo, e.valor;
+
+-- 3) Overrides de página por usuário
+select u.nome_completo, p.pagina, p.permitido, p.atualizado_em
+from app.permissao_pagina p join app.usuario u on u.id = p.usuario_id
+order by u.nome_completo, p.pagina;
+```
+
+## 10. CAPEX Obras — execução (CJI3/CJI4) x planejamento (PCE)
+
+O grupo "CAPEX Plano de Obras" tem **dois tipos de tela**:
+
+**A) Execução / contábil — CJI4 (Orçado) x CJI3 (Realizado).**
+Páginas: `capex_resumo`, `capex_painel`, `capex_contas`, `capex_
+rastreabilidade`. Respondem "onde estamos vs o orçamento aprovado":
+Orçado CJI4 x Realizado CJI3, Delta, aderência, drill Gerência de Obras →
+Projeto → Conta → documento CJI3. Público: GG / PMO / gestão executiva.
+
+**B) Planejamento especializado — PCE (`fact_pce_consolidado` /
+`fact_pce_realizado`).** Página: `pce_especialista` ("CAPEX Obras —
+Especialista"). Tem o que A não tem: 13 versões de planejamento
+(Orçamento 2026, PN24/25/26, FEL3, forecasts FC01+11…FC06+06), comparação
+livre entre versões, curva plurianual 2022–2038, % Contingência /
+Escalation / Capitalização, análise fina por Descrição (Serviços /
+Materiais / Engenharia / SMA…). Público: Especialista de Obras/Projetos —
+quem constrói e revisa o plano (metodologia FEL), dono do threshold de
+CAPEX (R$500k, papel diferente do Analista de OPEX — ver `docs/03`).
+Densidade bem maior, é tela de trabalho técnico.
+
+**Nota técnica:** A e B usam a **mesma** dimensão de Gerência
+(`gerencia_obras`) — então o recorte por Gerência de Obras funciona igual
+nos dois. A escolha é só de público.
+
+**Opções de RBAC:**
+- **A) Mesma porta (`capex_obras`)** — um grant só; quem vê Obras vê
+  execução E planejamento. Menos administração; ruim se GG/PMO devem ver
+  só o "vs orçamento aprovado" e não as versões de forecast/PN/FEL.
+- **B) Chave de página própria** (`capex_obras_especialista`) **em cima
+  do grant `capex_obras`** — `capex_obras` libera as telas de execução +
+  fornece o escopo por Gerência de Obras; uma 2ª permissão (via
+  `app.permissao_pagina`, mas invertida: exige allow explícito) libera a
+  tela do Especialista. Dá execução sem plano, ou o especialista só com o
+  plano da Gerência dele. Custo: 1 checkbox a mais por usuário.
+
+**Recomendação: B.** PCE é dado de planejamento (cenários, forecast, FEL),
+público e sensibilidade diferentes da execução contábil; e o próprio
+`FIN360_VISAO_IDEAL.md` já trata "CAPEX Obras - Especialistas" como página
+à parte, "preservação absoluta", "maior densidade". Formaliza isso a custo
+quase zero e o escopo por `gerencia_obras` continua valendo.

@@ -236,7 +236,7 @@ create table if not exists app.escopo_acesso (
 );
 
 comment on table app.escopo_acesso is
-    'Cadastro de escopo de dado por usuário. Só cadastro/consulta por enquanto — nenhuma query de dashboard aplica isso ainda, ver docs/06.';
+    'Escopo de dado por usuário. Desde 2026-09-02 (docs/08): coluna `universo` separa OPEX Sustaining / CAPEX Sustaining / CAPEX Obras — src/auth/permissions.py::escopo_universo lê essas linhas. `universo` NULL = linha legada, ignorada pelo enforcement novo. Admin = bypass; papel gg NÃO. Enforcement nas telas entra página a página na Fase RBAC-A.2.';
 
 -- Migração 2026-08-29: adiciona 'gerencia_obras' à lista de tipos aceitos
 -- (o CHECK acima só vale pra CRIAÇÃO da tabela — precisa rodar de novo
@@ -248,8 +248,39 @@ comment on table app.escopo_acesso is
 -- com esse tipo, sem precisar conferir se existe alguma.
 alter table app.escopo_acesso drop constraint if exists escopo_acesso_tipo_check;
 alter table app.escopo_acesso add constraint escopo_acesso_tipo_check check (tipo in (
-    'projeto', 'elemento_pep', 'pep_filho', 'gerencia', 'gerencia_obras', 'coordenacao', 'centro_custo', 'pacote'
+    'gg', 'projeto', 'elemento_pep', 'pep_filho', 'gerencia', 'gerencia_obras', 'coordenacao', 'centro_custo', 'pacote'
 ));
+
+-- Migração 2026-09-02: RBAC de escopo por universo financeiro (ver
+-- docs/08-rbac-escopo-por-universo.md). O escopo de dado passa a ser POR
+-- UNIVERSO:
+--   opex_sustaining  = Plano de Manutenção, classificacao_contabil='OPEX'
+--   capex_sustaining = Plano de Manutenção, classificacao_contabil='CAPEX'
+--   capex_obras      = Projetos e Obras (CJI4/CJI3/PCE)
+-- Regra de leitura (src/auth/permissions.py::escopo_universo):
+--   0 linha para (usuario, universo)  -> não vê o universo (fail closed)
+--   1+ linha tipo='gg'                -> vê o universo inteiro
+--   linhas tipo='gerencia'/'gerencia_obras'/'elemento_pep'/'projeto' ->
+--                                        recorte = união dos `valor`
+-- `universo` NULL = linha LEGADA (cadastrada antes desta migração, no
+-- bloco "Escopos avançados" da tela) — o enforcement novo IGNORA essas
+-- linhas de propósito; continuam servindo os tipos fora do modelo de 2
+-- camadas (pacote/centro_custo/pep_filho). Admin nunca usa escopo (bypass
+-- total em código); papel 'gg' NÃO é bypass (decisão do usuário
+-- 2026-09-02) — passa por grant como qualquer papel.
+alter table app.escopo_acesso add column if not exists universo text;
+alter table app.escopo_acesso drop constraint if exists escopo_acesso_universo_check;
+alter table app.escopo_acesso add constraint escopo_acesso_universo_check
+    check (universo is null or universo in ('opex_sustaining', 'capex_sustaining', 'capex_obras'));
+
+-- A unicidade original (usuario_id, tipo, valor) impedia o mesmo recorte
+-- em universos diferentes (ex.: Gerência X em OPEX e em CAPEX Sustaining).
+-- Troca por índice único que considera o universo (linhas legadas com
+-- universo NULL entram como '' no índice, sem colidir entre si por tipo/valor).
+alter table app.escopo_acesso drop constraint if exists escopo_acesso_usuario_id_tipo_valor_key;
+drop index if exists app.escopo_acesso_usuario_id_tipo_valor_key;
+create unique index if not exists escopo_acesso_uk
+    on app.escopo_acesso (usuario_id, coalesce(universo, ''), tipo, valor);
 
 -- ---------------------------------------------------------------------------
 -- app.artefato_exportado

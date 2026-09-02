@@ -1,6 +1,6 @@
 """Consultas da Administração. Todas as mutações são auditáveis."""
 from __future__ import annotations
-from src.auth.db import buscar_todos, buscar_um, executar
+from src.auth.db import buscar_todos, buscar_um, executar, conectar
 
 def listar_usuarios():
     return buscar_todos("select id,matricula,email,nome_completo,papel,gg_id,gerencia_id,ativo,permissao_upload,permissao_exportacao,permissao_justificativa_macro,permissao_justificativa_micro,ultimo_login,criado_em,atualizado_em from app.usuario order by nome_completo")
@@ -17,10 +17,38 @@ def listar_permissoes(usuario_id):
 def salvar_permissao(usuario_id,pagina,permitido):
     executar("insert into app.permissao_pagina(usuario_id,pagina,permitido) values(%s,%s,%s) on conflict(usuario_id,pagina) do update set permitido=excluded.permitido",(usuario_id,pagina,permitido))
 def listar_escopos(usuario_id):
-    return buscar_todos("select id,tipo,valor,descricao,ativo from app.escopo_acesso where usuario_id=%s order by tipo,valor",(usuario_id,))
+    # Só os legados (universo NULL) — os por universo saem em listar_escopos_universo.
+    return buscar_todos("select id,tipo,valor,descricao,ativo from app.escopo_acesso where usuario_id=%s and universo is null order by tipo,valor",(usuario_id,))
 def adicionar_escopo(usuario_id,tipo,valor,descricao=''):
-    executar("insert into app.escopo_acesso(usuario_id,tipo,valor,descricao) values(%s,%s,%s,%s) on conflict(usuario_id,tipo,valor) do update set descricao=excluded.descricao,ativo=true",(usuario_id,tipo,valor,descricao))
+    # Legado (universo NULL). delete+insert numa transação — a unicidade
+    # virou índice sobre coalesce(universo,'') em 2026-09-02, não dá mais
+    # pra usar "on conflict(usuario_id,tipo,valor)".
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from app.escopo_acesso where usuario_id=%s and universo is null and tipo=%s and valor=%s",(usuario_id,tipo,valor))
+            cur.execute("insert into app.escopo_acesso(usuario_id,tipo,valor,descricao) values(%s,%s,%s,%s)",(usuario_id,tipo,valor,descricao))
 def desativar_escopo(escopo_id): executar("update app.escopo_acesso set ativo=false where id=%s",(escopo_id,))
+
+def listar_escopos_universo(usuario_id):
+    """Linhas de escopo COM universo (RBAC de escopo — docs/08). Resiliente
+    a coluna ausente (migração ainda não rodada no Neon): devolve []."""
+    try:
+        return buscar_todos("select universo,tipo,valor,descricao from app.escopo_acesso where usuario_id=%s and universo is not null and ativo=true order by universo,tipo,valor",(usuario_id,))
+    except Exception:
+        return []
+def substituir_escopo_universo(usuario_id, universo, linhas):
+    """Troca ATÔMICA das linhas do usuário nesse universo. `linhas`: lista
+    de (tipo, valor, descricao). Lista vazia = usuário deixa de ver o
+    universo. `conectar()` faz commit no fim do bloco ou rollback se
+    estourar — delete e inserts numa transação só."""
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute("delete from app.escopo_acesso where usuario_id=%s and universo=%s",(usuario_id,universo))
+            for tipo, valor, desc in linhas:
+                cur.execute(
+                    "insert into app.escopo_acesso(usuario_id,universo,tipo,valor,descricao) values(%s,%s,%s,%s,%s) on conflict do nothing",
+                    (usuario_id, universo, tipo, valor, desc or ""),
+                )
 def listar_atividades(limite=500):
     # app.log_auditoria (não log_atividade — reaproveitada, ver audit.py).
     return buscar_todos("select l.criado_em,u.nome_completo,u.matricula,l.acao,l.recurso,l.detalhe from app.log_auditoria l left join app.usuario u on u.id=l.usuario_id order by l.criado_em desc limit %s",(limite,))

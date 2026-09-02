@@ -199,6 +199,125 @@ def _opcoes_escopo(tipo: str, con: duckdb.DuckDBPyConnection | None) -> list[tup
     }.get(tipo, lambda _c: [])(con)
 
 
+# RBAC de escopo por universo (docs/08). Rótulos e helper da tela de
+# delegação. NENHUMA página aplica isso ainda — Fase RBAC-A.2.
+_UNIVERSOS_ROTULO = {
+    "opex_sustaining": "OPEX Sustaining (Manutenção Corrente)",
+    "capex_sustaining": "CAPEX Sustaining (Malha / Infra)",
+    "capex_obras": "CAPEX Plano de Obras",
+}
+
+
+def _multiselect_escopo(rotulo, opcoes, linhas_uni, tipo, *, key):
+    """multiselect (cód — nome) pré-marcado com o que já está gravado pra
+    esse `tipo`. Devolve lista de (cód, nome). Sem base processada
+    (`opcoes` vazio) cai pra text_input separado por vírgula."""
+    ja = [r["valor"] for r in linhas_uni if r["tipo"] == tipo]
+    if not opcoes:
+        bruto = st.text_input(
+            f"{rotulo} — base não processada, digite os códigos separados por vírgula",
+            value=", ".join(ja), key=key + "-txt",
+        )
+        return [(c.strip(), "") for c in bruto.split(",") if c.strip()]
+    rot = {(f"{c} — {n}" if n else c): (c, n) for c, n in opcoes}
+    inv = {c: lbl for lbl, (c, _n) in rot.items()}
+    default = [inv[c] for c in ja if c in inv]
+    escolhidos = st.multiselect(rotulo, list(rot), default=default, key=key)
+    return [rot[e] for e in escolhidos]
+
+
+def _render_acesso_por_universo(u: dict, con: duckdb.DuckDBPyConnection | None) -> None:
+    """1ª camada (vê o universo?) + 2ª camada (GG inteira x Gerências) do
+    RBAC de escopo — grava em `app.escopo_acesso` com `universo` + a
+    permissão de página `pce_especialista` (opção B, docs/08 §10).
+    Enforcement nas telas do painel = Fase RBAC-A.2, ainda não ligado."""
+    uid = str(u["id"])
+    try:
+        atuais = listar_escopos_universo(u["id"])
+    except Exception:
+        atuais = []
+    por_uni: dict[str, list[dict]] = {}
+    for r in atuais:
+        por_uni.setdefault(r["universo"], []).append(r)
+
+    st.markdown("**Acesso por universo financeiro**")
+    st.caption(
+        "1ª camada: quais universos a pessoa vê. 2ª camada: GG inteira ou "
+        "Gerências específicas. `admin` vê tudo; papel `gg` também passa por "
+        "aqui. Enforcement nas telas ainda não está ligado (Fase RBAC-A.2) — "
+        "aqui só se cadastra a intenção."
+    )
+
+    gers_sust = _listar_gerencias(con)
+    gers_obras = _listar_gerencias_obras(con)
+    projetos = _listar_elemento_pep(con)
+    esp_atual = {r["pagina"]: r["permitido"] for r in listar_permissoes(u["id"])}.get("pce_especialista", False)
+
+    plano: dict[str, list[tuple[str, str, str]]] = {}
+    ve_especialista = bool(esp_atual)
+    for universo in ("opex_sustaining", "capex_sustaining", "capex_obras"):
+        linhas_uni = por_uni.get(universo, [])
+        tem = len(linhas_uni) > 0
+        tem_gg = any(r["tipo"] == "gg" for r in linhas_uni)
+        with st.container(border=True):
+            on = st.checkbox(
+                f"Vê {_UNIVERSOS_ROTULO[universo]}", value=tem,
+                key=f"uni-{uid}-{universo}-on",
+            )
+            linhas_novas: list[tuple[str, str, str]] = []
+            if on:
+                abr = st.radio(
+                    "Abrangência", ["GG inteira", "Gerências específicas"],
+                    index=0 if (tem_gg or not tem) else 1,
+                    horizontal=True, key=f"uni-{uid}-{universo}-abr",
+                )
+                if abr == "GG inteira":
+                    linhas_novas.append(("gg", "(todas)", ""))
+                elif universo == "capex_obras":
+                    linhas_novas += [
+                        ("gerencia_obras", v, n) for v, n in _multiselect_escopo(
+                            "Gerências de Obras", gers_obras, linhas_uni,
+                            "gerencia_obras", key=f"uni-{uid}-{universo}-ger")
+                    ]
+                    linhas_novas += [
+                        ("elemento_pep", v, n) for v, n in _multiselect_escopo(
+                            "Projetos (Elemento PEP) — opcional", projetos, linhas_uni,
+                            "elemento_pep", key=f"uni-{uid}-{universo}-proj")
+                    ]
+                else:
+                    linhas_novas += [
+                        ("gerencia", v, n) for v, n in _multiselect_escopo(
+                            "Gerências", gers_sust, linhas_uni,
+                            "gerencia", key=f"uni-{uid}-{universo}-ger")
+                    ]
+            if universo == "capex_obras":
+                marcado = st.checkbox(
+                    "Vê a tela CAPEX Obras — Especialista (planejamento PCE)",
+                    value=bool(esp_atual), disabled=not on,
+                    key=f"uni-{uid}-{universo}-esp",
+                    help="Tela densa de planejamento (13 versões, forecasts, FEL). Opção B do docs/08 §10.",
+                )
+                ve_especialista = bool(on and marcado)
+            plano[universo] = linhas_novas
+
+    if st.button("Salvar acessos por universo", type="primary", key=f"uni-{uid}-salvar"):
+        try:
+            for universo, linhas_novas in plano.items():
+                substituir_escopo_universo(u["id"], universo, linhas_novas)
+            salvar_permissao(u["id"], "pce_especialista", ve_especialista)
+            registrar_atividade("delegar_escopo_universo", "administracao", {
+                "usuario_id": uid,
+                "resumo": {k: [f"{t}:{v}" for t, v, _ in vs] for k, vs in plano.items()},
+                "pce_especialista": ve_especialista,
+            })
+            st.success("Acessos por universo salvos. O efeito aparece no próximo login da pessoa.")
+        except Exception as exc:
+            st.error(
+                f"Não consegui salvar — a migração do `docs/08` (coluna "
+                f"`universo` em `app.escopo_acesso`) já rodou no Neon? Detalhe: {exc}"
+            )
+
+
 def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
     """`con`: conexão de leitura do warehouse DuckDB LOCAL (não o Neon) —
     só usada pra popular os dropdowns de Gerência/Gerência de Obras/PEP/
@@ -282,7 +401,17 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
                 registrar_atividade("alterar_permissoes_pagina", "administracao", {"usuario_id": str(u["id"])})
                 st.success("Permissões salvas.")
 
-            st.markdown("**Escopos de dados**")
+            st.divider()
+            _render_acesso_por_universo(u, con)
+
+            st.divider()
+            st.markdown("**Escopos avançados (legado)**")
+            st.caption(
+                "Cadastro genérico por tipo (Pacote / Centro de Custo / PEP Filho / "
+                "Projeto). Grava linhas SEM universo — o RBAC de escopo por universo "
+                "acima NÃO lê estas linhas. Mantido para os tipos fora do modelo de "
+                "2 camadas do `docs/08`."
+            )
             tipo = st.selectbox(
                 "Tipo", TIPOS_ESCOPO, key="admin-escopo-tipo",
                 format_func=lambda t: _ROTULO_TIPO_ESCOPO.get(t, t),

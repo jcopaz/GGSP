@@ -4,6 +4,56 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 7.0.0 — 2026-09-02
+
+**Fase RBAC-A.1** do RBAC de escopo por universo (`docs/08`). MAJOR por
+mudança de schema (coluna nova no Neon). **Nada muda no que as páginas do
+painel mostram** — enforcement nas telas é a Fase RBAC-A.2, ainda não
+ligado. Aqui: schema + camada de leitura + tela de delegação.
+
+> **Ação de deploy:** rodar `config/schema_postgres.sql` de novo no SQL
+> Editor do Neon (idempotente) — adiciona `universo` em
+> `app.escopo_acesso`, o tipo `gg` e o índice único novo. Sem isso, a
+> nova seção da Administração mostra erro (tratado, não quebra a página) e
+> os helpers caem em fail-closed.
+
+- **Schema** (`config/schema_postgres.sql`): `app.escopo_acesso` ganha
+  `universo` (`opex_sustaining` / `capex_sustaining` / `capex_obras`, ou
+  NULL = linha legada), o `tipo` `gg` (= universo inteiro), e o índice
+  único passa a considerar `coalesce(universo,'')` (antes
+  `unique(usuario_id,tipo,valor)` impedia o mesmo recorte em universos
+  diferentes).
+- **Leitura** (`src/auth/permissions.py`): `universos_permitidos(usuario)`
+  (1ª camada) e `escopo_universo(universo, usuario) -> (tem_acesso, tudo,
+  alvos)` (2ª camada), com cache 1x/sessão (`_escopos_cache`) igual ao de
+  permissão de página. `admin` e `ORCAMENTO_SKIP_LOGIN=1` = bypass; papel
+  `gg` **não** é bypass (decisão do usuário 2026-09-02). Fail closed em
+  erro de banco. Lógica pura isolada em `_resolver_*` para teste sem
+  Streamlit. Constante `_PAGINAS_ALLOW_EXPLICITO = {"pce_especialista"}`
+  registrada (opção B do `docs/08` §10) mas **ainda não usada** por
+  `can_acessar_pagina` — só na Fase RBAC-A.2.
+- **Delegação** (`src/dashboard/administracao.py`, aba "Permissões e
+  escopos"): nova seção "Acesso por universo financeiro" — por usuário, um
+  bloco por universo (vê? → GG inteira | Gerências específicas →
+  multiselect; CAPEX Obras ainda tem Projetos/Elemento PEP e o checkbox
+  "vê a tela CAPEX Obras — Especialista", que grava `permissao_pagina`
+  para `pce_especialista`). Grava via `substituir_escopo_universo`
+  (delete+insert atômico por universo). A antiga seção "Escopos de dados"
+  virou "Escopos avançados (legado)" — grava linhas sem `universo`, que o
+  RBAC novo ignora; mantida para `pacote`/`centro_custo`/`pep_filho`.
+- **`src/auth/admin_queries.py`**: `listar_escopos_universo` (resiliente a
+  coluna ausente → `[]`), `substituir_escopo_universo` (transação via
+  `conectar()`). `adicionar_escopo` (legado) reescrito para delete+insert
+  — não dá mais para usar `on conflict(usuario_id,tipo,valor)` (índice
+  mudou). `listar_escopos` passou a filtrar `universo is null`.
+- **`tests/test_rbac_escopo.py`**: 9 casos da lógica pura de resolução
+  (admin bypass, fail-closed sem grant, grant `gg` = tudo, recorte por
+  Gerência = união, `gg` + Gerência → `gg` manda).
+- Validado: `py_compile`; `python -m pytest -q tests/test_rbac_escopo.py`
+  (9 passa); `AppTest.from_file("app.py")` skip-login e sessão admin sem
+  exceção contra o `painel.duckdb` real; regressões `fase4_fase5` e
+  `validacao_rdg_julho` inalteradas.
+
 ## 6.6.0 — 2026-09-02
 
 Etapa 2 da migração para a **Visão Ideal** (`docs/07`). Reagrupamento da

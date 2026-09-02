@@ -190,3 +190,104 @@ def require_acesso_pagina(pagina: str) -> None:
     if not can_acessar_pagina(pagina):
         st.error("🚫 Você não tem permissão para acessar esta página.")
         st.stop()
+
+
+# ---------------------------------------------------------------------------
+# RBAC de escopo por universo financeiro (ver docs/08-rbac-escopo-por-
+# universo.md). Duas camadas:
+#   1) universo   — pode ver opex_sustaining / capex_sustaining / capex_obras
+#   2) escopo     — dentro do universo: GG inteira OU lista de Gerências /
+#                   Projetos / Elementos PEP
+#
+# Fase RBAC-A.1 (2026-09-02): schema + estes helpers + tela de delegação.
+# NENHUMA página do painel ainda chama `escopo_universo` pra filtrar dado —
+# o enforcement entra página a página na Fase RBAC-A.2, com regressão
+# numérica em cada uma (a lição de docs/06 pesa: aplicar escopo sem
+# validar contra o schema real de cada consulta arrisca mudar total /
+# reconciliação).
+# ---------------------------------------------------------------------------
+
+UNIVERSOS = ("opex_sustaining", "capex_sustaining", "capex_obras")
+
+# Páginas que exigem allow EXPLÍCITO em app.permissao_pagina (o default das
+# demais é "liberado se não houver linha"). `pce_especialista` (CAPEX Obras
+# — Especialista) é tela de planejamento densa (13 versões, forecasts,
+# FEL), público diferente da execução CJI3/CJI4 — decisão do usuário
+# 2026-09-02, docs/08 §10 opção B. Registrado aqui; o `can_acessar_pagina`
+# só passa a usar isso na Fase RBAC-A.2 (não mexe no comportamento atual).
+_PAGINAS_ALLOW_EXPLICITO = {"pce_especialista"}
+
+
+def _escopos_cache(usuario_id: str) -> list[dict]:
+    """Todas as linhas de `app.escopo_acesso` do usuário COM universo
+    preenchido (as legadas, universo NULL, ficam de fora do enforcement
+    novo de propósito) — 1x por sessão, mesmo padrão de
+    `_permissoes_pagina_cache`. Não invalida sozinho durante a sessão: se
+    o admin mudar o escopo de alguém logado, pega efeito no próximo login
+    dessa pessoa (trade-off aceito, igual permissão de página)."""
+    chave = "_escopos_acesso_cache"
+    if chave not in st.session_state:
+        from src.auth.db import buscar_todos
+
+        st.session_state[chave] = buscar_todos(
+            "select universo, tipo, valor from app.escopo_acesso "
+            "where usuario_id = %s and ativo = true and universo is not null",
+            (usuario_id,),
+        )
+    return st.session_state[chave]
+
+
+def _resolver_universos_permitidos(linhas: list[dict], eh_admin: bool, tem_usuario: bool) -> set[str]:
+    if eh_admin:
+        return set(UNIVERSOS)
+    if not tem_usuario:
+        return set()
+    return {r["universo"] for r in linhas if r.get("universo") in UNIVERSOS}
+
+
+def _resolver_escopo_universo(
+    universo: str, linhas: list[dict], eh_admin: bool, tem_usuario: bool
+) -> tuple[bool, bool, list[str]]:
+    """(tem_acesso, tudo, alvos). Função pura — testável sem Streamlit."""
+    if eh_admin:
+        return True, True, []
+    if not tem_usuario:
+        return False, False, []
+    rel = [r for r in linhas if r.get("universo") == universo]
+    if not rel:
+        return False, False, []
+    if any(r.get("tipo") == "gg" for r in rel):
+        return True, True, []
+    alvos = sorted({r["valor"] for r in rel if r.get("valor")})
+    return bool(alvos), False, alvos
+
+
+def universos_permitidos(usuario: dict | None = None) -> set[str]:
+    """1ª camada: universos financeiros que o usuário pode ver. `admin` e
+    `ORCAMENTO_SKIP_LOGIN=1` veem os 3; `gg` NÃO é bypass. Fail closed:
+    erro de banco -> conjunto vazio."""
+    if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
+        return set(UNIVERSOS)
+    u = usuario or get_usuario()
+    try:
+        linhas = _escopos_cache(u["id"]) if u else []
+    except Exception:
+        return set()
+    return _resolver_universos_permitidos(linhas, is_admin(), bool(u))
+
+
+def escopo_universo(universo: str, usuario: dict | None = None) -> tuple[bool, bool, list[str]]:
+    """2ª camada: `(tem_acesso, tudo, alvos)` do usuário nesse universo.
+    - tem_acesso=False -> sem grant, não vê nada nesse universo
+    - tudo=True        -> nível 'gg', vê o universo inteiro
+    - alvos=[...]      -> recorte: gerencia_id / gerencia_obras /
+                          e_pep_projeto / elemento_pep (união das linhas)
+    `admin` / `ORCAMENTO_SKIP_LOGIN=1` -> (True, True, []). Fail closed."""
+    if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
+        return True, True, []
+    u = usuario or get_usuario()
+    try:
+        linhas = _escopos_cache(u["id"]) if u else []
+    except Exception:
+        return False, False, []
+    return _resolver_escopo_universo(universo, linhas, is_admin(), bool(u))
