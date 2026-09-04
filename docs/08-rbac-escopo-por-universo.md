@@ -238,12 +238,17 @@ cada uma):
     `filtros.clausula_escopo_obras` (`AND (gerencia_obras IN (…) OR
     e_pep_projeto IN (…))`). `capex_dados._filtro_base_capex` +
     `dados_tendencia_capex` colam o fragmento; `render_*` de Resumo /
-    Painel / Nível 4 / Rastreabilidade CJI3 gateiam. `pce_especialista`
-    ("CAPEX Obras — Especialista") **ainda não** — vai junto do
-    default-deny (opção B).
+    Painel / Nível 4 / Rastreabilidade CJI3 gateiam.
+  - **CAPEX Obras — Especialista + default-deny ✅ (v7.6.0)** —
+    `pce_especialista` entra em `_PAGINAS_ALLOW_EXPLICITO` (default da
+    página = negar; admin/SKIP_LOGIN à parte). `render_pce_especialista`
+    gateia `capex_obras` e recorta o multiselect "Gerência" pelas
+    Gerências de Obras do grant (deriva de `gerencia_obras` e/ou das
+    Gerências dos Projetos `elemento_pep`). Ação de deploy: quem via a
+    tela sem allow explícito perde o acesso — admin reconcede.
   - Falta: Resumo Executivo + Painel Executivo do **OPEX** (waterfall —
-    precisa recortar `explicacoes.csv` também), `pce_especialista` +
-    default-deny em `can_acessar_pagina`.
+    precisa recortar `explicacoes.csv` também). Depois disso, RBAC-A.2
+    fechado; começa a RBAC-B (navegação) + Etapas 3-6 do `docs/07`.
 - **RBAC-B — navegação (1ª camada).** Esconder grupo / opção de
   `segmented_control` conforme `universos_permitidos`. Entra junto das
   Etapas 3–6 do `docs/07` (as páginas já consolidadas).

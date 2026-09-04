@@ -4,6 +4,40 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 7.6.0 — 2026-09-04
+
+**Fase RBAC-A.2 — CAPEX Obras — Especialista** (`pce_especialista`) +
+default-deny da página (docs/08 §10, opção B). Sem schema, sem gráfico.
+
+> **Ação de deploy:** `pce_especialista` passou a exigir allow EXPLÍCITO.
+> Quem hoje vê essa tela **sem** uma linha `permitido=true` em
+> `app.permissao_pagina` vai perder o acesso no próximo login — o admin
+> reconcede pela Administração (aba "Permissões e escopos" → "Visão de
+> páginas" ou o checkbox "Vê a tela CAPEX Obras — Especialista" no bloco
+> "Acesso por universo financeiro"). Admin e `ORCAMENTO_SKIP_LOGIN=1`
+> continuam vendo.
+
+- **`src/auth/permissions.py`**: `can_acessar_pagina` passa a usar
+  `_PAGINAS_ALLOW_EXPLICITO = {"pce_especialista"}` — para essas páginas o
+  default (sem linha) é **negar**, não permitir.
+- **`src/dashboard/administracao.py`**: o checkbox de `pce_especialista`
+  no editor "Visão de páginas" nasce desmarcado (`value=atuais.get(p,
+  p not in _PAGINAS_ALLOW_EXPLICITO)`).
+- **`src/dashboard/pce_especialista.py`**: `render_pce_especialista` chama
+  `require_universo("capex_obras")` e recorta pelo escopo — helper
+  `_gerencias_obras_permitidas(con)` (deriva de `gerencia_obras` do grant
+  e/ou das Gerências dos Projetos `elemento_pep`; `None` = grant `gg`).
+  Restringe as opções do multiselect "Gerência" às permitidas e, se o
+  usuário não escolher nenhuma, força o recorte (multiselect vazio
+  significaria "todas"). Faixa "🔒 Recorte do seu acesso".
+- **`tests/rbac_pce_especialista_check.py`**: default de `pce_especialista`
+  = negar (e `capex_resumo` segue permitir); escopo "Expansão" → faixa de
+  recorte; sem grant no universo → barrado.
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9 + `test_projecao_ritmo`
+  1); os 4 `tests.rbac_*_check`; `AppTest.from_file("app.py")` skip-login
+  e admin sem exceção; regressões `fase4_fase5` e `validacao_rdg_julho`
+  inalteradas.
+
 ## 7.5.0 — 2026-09-04
 
 **Fase RBAC-A.2 — CAPEX Plano de Obras** (universo `capex_obras`: Resumo

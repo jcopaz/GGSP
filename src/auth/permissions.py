@@ -170,7 +170,13 @@ def can_acessar_pagina(pagina: str) -> bool:
     ficava inútil: sem usuário real de sessão, toda página seria negada
     (fail closed corretamente, mas contra o propósito do flag, que é
     "sem Neon, mas ainda dá pra olhar o painel"). Nunca fica ligado no
-    deploy (mesmo aviso já existente no app.py)."""
+    deploy (mesmo aviso já existente no app.py).
+
+    **`_PAGINAS_ALLOW_EXPLICITO`** (2026-09-04, docs/08 §10 opção B):
+    páginas nesse conjunto invertem o default — exigem uma linha
+    `permitido=true` explícita em `app.permissao_pagina`. Hoje só
+    `pce_especialista` (CAPEX Obras — Especialista, tela densa de
+    planejamento). Admin e SKIP_LOGIN continuam vendo."""
     if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
         return True
     if is_admin():
@@ -180,7 +186,8 @@ def can_acessar_pagina(pagina: str) -> bool:
         return False
     try:
         permissoes = _permissoes_pagina_cache(u["id"])
-        return permissoes.get(pagina, True)
+        default = pagina not in _PAGINAS_ALLOW_EXPLICITO
+        return permissoes.get(pagina, default)
     except Exception:
         return False
 

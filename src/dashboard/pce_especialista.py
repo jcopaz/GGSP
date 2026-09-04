@@ -75,6 +75,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.auth.permissions import escopo_alvos_por_tipo, require_universo
 from src.branding import render_page_banner
 from src.dashboard.formatacao import fmt_pct, fmt_reais_abrev
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
@@ -692,11 +693,49 @@ def _grafico_grupo(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def _gerencias_obras_permitidas(con: duckdb.DuckDBPyConnection) -> list[str] | None:
+    """RBAC de escopo (docs/08). `None` = sem restrição (grant `gg` /
+    admin). Lista = só essas Gerências de Obras podem aparecer — derivada
+    dos alvos `gerencia_obras` do escopo e/ou das Gerências dos Projetos
+    (`elemento_pep`) do escopo. `[]` = tem acesso ao universo mas nenhuma
+    Gerência com dado de planejamento cai no recorte."""
+    alvos = escopo_alvos_por_tipo("capex_obras")
+    if "gg" in alvos:
+        return None
+    gers = set(alvos.get("gerencia_obras") or [])
+    projs = alvos.get("elemento_pep") or []
+    if projs:
+        df = con.execute(
+            "SELECT DISTINCT gerencia_obras FROM dim_catalogo_capex_obras "
+            f"WHERE gerencia_obras IS NOT NULL AND e_pep_projeto IN ({', '.join(['?'] * len(projs))})",
+            projs,
+        ).df()
+        gers |= set(df["gerencia_obras"].tolist())
+    return sorted(gers)
+
+
 def render_pce_especialista(con: duckdb.DuckDBPyConnection) -> None:
     render_page_banner(
         "📐", "CAPEX Obras — Especialista",
         "Orçado: Consolidado.xlsx · Realizado: CJI3 + Catálogo CAPEX Obras · Filtros próprios, não usam a sidebar global.",
     )
+    # RBAC de escopo (docs/08, Fase RBAC-A.2): universo capex_obras. A
+    # visibilidade da PÁGINA em si é default-deny (`_PAGINAS_ALLOW_EXPLICITO`
+    # em permissions.py, opção B do docs/08 §10) — quem chega aqui já tem
+    # allow explícito; abaixo aplica o recorte por Gerência de Obras.
+    require_universo("capex_obras")
+    _gers_permitidas = _gerencias_obras_permitidas(con)
+    if _gers_permitidas is not None and not _gers_permitidas:
+        st.error(
+            "🚫 Seu acesso a CAPEX Obras não cobre nenhuma Gerência de Obras "
+            "com dado de planejamento. Fale com o administrador."
+        )
+        return
+    if _gers_permitidas is not None:
+        st.caption(
+            "🔒 Recorte do seu acesso: " + ", ".join(_gers_permitidas)
+            + " — os números abaixo são só desse recorte."
+        )
 
     tabelas = con.execute(
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'fact_pce_consolidado'"
@@ -721,7 +760,14 @@ def render_pce_especialista(con: duckdb.DuckDBPyConnection) -> None:
             help=f"O Orçado dos blocos de análise é sempre \"{_VERSAO_ORCADO}\" fixo — essa Versão só decide o Forecast.",
         )
     with col_g:
-        gerencias = st.multiselect("Gerência", _opcoes(con, "gerencia_obras"))
+        _opcoes_ger = _opcoes(con, "gerencia_obras")
+        if _gers_permitidas is not None:
+            _opcoes_ger = [g for g in _opcoes_ger if g in _gers_permitidas]
+        gerencias = st.multiselect("Gerência", _opcoes_ger)
+        # Escopado e sem escolha manual -> força o recorte pras Gerências
+        # permitidas (multiselect vazio, por si só, significaria "todas").
+        if _gers_permitidas is not None and not gerencias:
+            gerencias = list(_gers_permitidas)
     with col_c:
         classificacoes = st.multiselect("Classificação Atualizada", _opcoes(con, "classificacao_atualizada"))
     with col_gr:

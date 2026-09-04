@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from src.branding import render_page_banner
-from src.auth.permissions import require_admin
+from src.auth.permissions import _PAGINAS_ALLOW_EXPLICITO, require_admin
 from src.auth.queries import criar_usuario
 from src.auth.senha import gerar_hash, gerar_senha_temporaria
 from src.auth.admin_queries import *
@@ -394,7 +394,7 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
             atuais = {r["pagina"]: r["permitido"] for r in listar_permissoes(u["id"])}
             st.markdown("**Visão de páginas**")
             cols = st.columns(3)
-            escolhas = {p: cols[i % 3].checkbox(p.replace("_", " ").title(), value=atuais.get(p, True), key=f"perm-{u['id']}-{p}") for i, p in enumerate(PAGINAS)}
+            escolhas = {p: cols[i % 3].checkbox(p.replace("_", " ").title(), value=atuais.get(p, p not in _PAGINAS_ALLOW_EXPLICITO), key=f"perm-{u['id']}-{p}") for i, p in enumerate(PAGINAS)}
             if st.button("Salvar páginas"):
                 for pg, val in escolhas.items():
                     salvar_permissao(u["id"], pg, val)
