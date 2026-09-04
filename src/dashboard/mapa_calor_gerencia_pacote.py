@@ -35,7 +35,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-from src.dashboard.filtros import clausula_periodo
+from src.dashboard.filtros import clausula_escopo, clausula_periodo
 from src.dashboard.formatacao import fmt_pacote, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.nivel2_gg import _pacotes_do_gg
 from src.dashboard.paleta import COR_ECONOMIA, COR_ESTOURO, hex_para_rgb
@@ -93,6 +93,11 @@ def dados_heatmap_gerencia_pacote(con: duckdb.DuckDBPyConnection, gg_id: str) ->
     aplicado desde 2026-08-11."""
     pacotes = _pacotes_do_gg(con, gg_id)
     where_periodo, params_periodo = clausula_periodo()
+    # RBAC de escopo (docs/08): no-op pra GG inteira/admin; recorte por
+    # Gerência pra usuário escopado.
+    where_escopo, params_escopo = clausula_escopo("opex_sustaining")
+    where_periodo += where_escopo
+    params_periodo = params_periodo + params_escopo
     if pacotes is None:
         where_orc, params_orc = "WHERE 1=1", []
         where_real, params_real = "WHERE 1=1", []

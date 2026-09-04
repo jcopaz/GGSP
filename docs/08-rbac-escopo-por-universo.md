@@ -246,9 +246,22 @@ cada uma):
     Gerências de Obras do grant (deriva de `gerencia_obras` e/ou das
     Gerências dos Projetos `elemento_pep`). Ação de deploy: quem via a
     tela sem allow explícito perde o acesso — admin reconcede.
-  - Falta: Resumo Executivo + Painel Executivo do **OPEX** (waterfall —
-    precisa recortar `explicacoes.csv` também). Depois disso, RBAC-A.2
-    fechado; começa a RBAC-B (navegação) + Etapas 3-6 do `docs/07`.
+  - **Resumo Executivo + Painel Executivo (OPEX) ✅ (v7.7.0) — fecha o
+    RBAC-A.2.** Opção B (decisão do usuário): o waterfall de causa é
+    Macro por Pacote, um Pacote cruza até 9 Gerências, então não dá pra
+    recortar a causa por Gerência sem ratear. Quem tem a GG inteira (o
+    "Analista que apura a GG") vê o waterfall completo, sem mudança
+    nenhuma — validado idêntico ao baseline. Quem está escopado numa
+    Gerência (a Analista que justifica o estouro da própria área) vê uma
+    versão recortada (card, Composição, Visão por Gerência, Tendência,
+    ranking de Pacotes por Delta puro) com o waterfall trocado por um
+    aviso. Corrigido de passagem um bug real: contexto sem sessão
+    (scripts/testes) devolvia `AND 1=0` em vez de no-op, zerando a
+    regressão `fase4_fase5_check`.
+
+**RBAC-A.2 fechado.** Próximo: **RBAC-B** (esconder grupo/opção de
+navegação conforme `universos_permitidos`) — entra junto das Etapas 3-6
+do `docs/07` (consolidação em `segmented_control`).
 - **RBAC-B — navegação (1ª camada).** Esconder grupo / opção de
   `segmented_control` conforme `universos_permitidos`. Entra junto das
   Etapas 3–6 do `docs/07` (as páginas já consolidadas).

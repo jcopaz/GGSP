@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.branding import render_page_banner
-from src.dashboard.filtros import clausula_periodo, filtrar_periodo_df
+from src.dashboard.filtros import clausula_escopo, clausula_periodo, filtrar_periodo_df
 from src.dashboard.formatacao import fmt_pacote, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.layout import nota_forecast
@@ -75,6 +75,13 @@ def dados_waterfall_gg(
     mesmo recorte de tempo sem inventar rateio nenhum."""
     pacotes = _pacotes_do_gg(con, gg_id)
     where_periodo, params_periodo = clausula_periodo()
+    # RBAC de escopo (docs/08) — no-op (fragmento vazio) pra quem tem a GG
+    # inteira/admin, então o waterfall da visão GG fica byte-idêntico. O
+    # Resumo/Painel só chegam aqui com `tudo=True`; um usuário escopado
+    # nem vê o waterfall (ver render_resumo_executivo / pagina_painel).
+    where_escopo, params_escopo = clausula_escopo("opex_sustaining")
+    where_periodo += where_escopo
+    params_periodo = params_periodo + params_escopo
 
     if pacotes is None:
         (orcado,) = con.execute(
@@ -207,6 +214,11 @@ def dados_gerencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str) -> pd.DataFram
     """
     pacotes = _pacotes_do_gg(con, gg_id)
     where_periodo, params_periodo = clausula_periodo()
+    # RBAC de escopo (docs/08): no-op pra GG inteira/admin. Pra usuário
+    # escopado, a "Visão por Gerência" fica só com as Gerências do grant.
+    where_escopo, params_escopo = clausula_escopo("opex_sustaining")
+    where_periodo += where_escopo
+    params_periodo = params_periodo + params_escopo
     if pacotes is None:
         where_orc, params_orc = "WHERE 1=1", []
         where_real, params_real = "WHERE 1=1", []
@@ -401,7 +413,16 @@ def render_tendencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str, ano_fiscal: 
     renderizar full-width, não espremido na coluna estreita ao lado do
     Nível 1."""
     nome_gg = _nome_gg(con, gg_id)
-    df_tend = dados_tendencia(con, ano_fiscal, pacotes=_pacotes_do_gg(con, gg_id))
+    # RBAC de escopo (docs/08): no-op pra GG inteira/admin; recorte por
+    # Gerência pra usuário escopado. Com `filtro_orcado` explícito o
+    # `dados_tendencia` não aplica sozinho o trava de OPEX — por isso vai
+    # aqui no fragmento.
+    _frag, _params = clausula_escopo("opex_sustaining")
+    df_tend = dados_tendencia(
+        con, ano_fiscal, pacotes=_pacotes_do_gg(con, gg_id),
+        filtro_orcado=(" AND classificacao_contabil = 'OPEX'" + _frag, list(_params)),
+        filtro_realizado=((_frag, list(_params)) if _frag else None),
+    )
     st.plotly_chart(
         figura_tendencia(df_tend, f"Tendência do ano — {nome_gg}"),
         use_container_width=True, key=f"tendencia-{gg_id}", config=CONFIG_PLOTLY,

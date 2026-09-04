@@ -245,21 +245,23 @@ def _escopos_cache(usuario_id: str) -> list[dict]:
 
 
 def _resolver_universos_permitidos(linhas: list[dict], eh_admin: bool, tem_usuario: bool) -> set[str]:
-    if eh_admin:
+    # `not tem_usuario` = contexto sem sessão (script/teste). O recorte de
+    # escopo só narra um usuário AUTENTICADO não-admin — quem decide "pode
+    # abrir esta página" é o guard de página (`require_acesso_pagina`), que
+    # já fail-closa sem usuário. Aqui, sem usuário -> no-op (vê tudo).
+    if eh_admin or not tem_usuario:
         return set(UNIVERSOS)
-    if not tem_usuario:
-        return set()
     return {r["universo"] for r in linhas if r.get("universo") in UNIVERSOS}
 
 
 def _resolver_escopo_universo(
     universo: str, linhas: list[dict], eh_admin: bool, tem_usuario: bool
 ) -> tuple[bool, bool, list[str]]:
-    """(tem_acesso, tudo, alvos). Função pura — testável sem Streamlit."""
-    if eh_admin:
+    """(tem_acesso, tudo, alvos). Função pura — testável sem Streamlit.
+    `not tem_usuario` = contexto sem sessão (script/teste) -> no-op
+    (`True, True, []`), o guard de página é quem fail-closa sem usuário."""
+    if eh_admin or not tem_usuario:
         return True, True, []
-    if not tem_usuario:
-        return False, False, []
     rel = [r for r in linhas if r.get("universo") == universo]
     if not rel:
         return False, False, []
@@ -277,10 +279,9 @@ def _resolver_alvos_por_tipo(
     Usado por `capex_obras`, onde os alvos podem ser de 2 tipos ao mesmo
     tempo (`gerencia_obras` + `elemento_pep`) — `escopo_universo` achata
     tudo numa lista só e não serve pra montar o WHERE."""
-    if eh_admin:
+    # `not tem_usuario` (script/teste) -> no-op, igual `_resolver_escopo_universo`.
+    if eh_admin or not tem_usuario:
         return {"gg": ["(todas)"]}
-    if not tem_usuario:
-        return {}
     rel = [r for r in linhas if r.get("universo") == universo]
     if any(r.get("tipo") == "gg" for r in rel):
         return {"gg": ["(todas)"]}

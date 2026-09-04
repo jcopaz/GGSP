@@ -44,8 +44,14 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.auth.permissions import escopo_universo
 from src.branding import render_page_banner
-from src.dashboard.filtros import clausula_periodo, periodo_efetivo
+from src.dashboard.filtros import (
+    clausula_escopo,
+    clausula_periodo,
+    guardar_e_faixa_universo,
+    periodo_efetivo,
+)
 from src.dashboard.formatacao import (
     escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, fmt_semaforo, mapa_nomes_pacote,
 )
@@ -84,11 +90,20 @@ def _subtitulo_periodo_acumulado() -> str:
     return f"Detalhamento orçamento acumulado – {_NOMES_MES_ABREV[primeiro]} a {_NOMES_MES_ABREV[ultimo]}"
 
 
+def _where_recorte_opex() -> tuple[str, list]:
+    """`clausula_periodo` + `clausula_escopo("opex_sustaining")` num
+    fragmento só (RBAC de escopo — docs/08). No-op pra quem tem a GG
+    inteira/admin; recorte por `gerencia_id` pra usuário escopado."""
+    where_p, params_p = clausula_periodo()
+    where_e, params_e = clausula_escopo("opex_sustaining")
+    return where_p + where_e, [*params_p, *params_e]
+
+
 def _resumo_geral(con: duckdb.DuckDBPyConnection) -> dict:
     """`delta`/`aderencia` comparam Realizado (só OPEX) contra Orçado
     OPEX, não o total (CAPEX+OPEX) — ver docstring do módulo. `orcado`
     (total) continua no retorno só pra exibição no card."""
-    where_periodo, params_periodo = clausula_periodo()
+    where_periodo, params_periodo = _where_recorte_opex()
     (orcado,) = con.execute(
         f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE 1=1{where_periodo}", params_periodo,
     ).fetchone()
@@ -181,7 +196,7 @@ def _dados_composicao_opex(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     painel de referência do PMO não têm fonte separada aqui, ou já são
     idênticos ao Real Contabilizado — decisão já validada com o
     usuário)."""
-    where_periodo, params_periodo = clausula_periodo()
+    where_periodo, params_periodo = _where_recorte_opex()
     (orcado,) = con.execute(
         f"SELECT COALESCE(SUM(valor_orcado), 0) FROM fact_orcamento "
         f"WHERE classificacao_contabil = 'OPEX'{where_periodo}",
@@ -411,6 +426,101 @@ def _render_card_resumo(
         )
 
 
+def _render_resumo_recorte(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
+    """Resumo Executivo para usuário SEM a GG inteira (RBAC de escopo —
+    docs/08, Opção B). Mostra Orçado/Realizado/Delta/Aderência, Visão por
+    Gerência, Composição OPEX, Tendência e o ranking de Pacotes ofensores
+    — tudo recortado nas Gerências do grant. NÃO mostra o waterfall de
+    causa: a causa é rastreada por Pacote (Macro) e cruza Gerências, então
+    não dá pra atribuí-la corretamente a um sub-recorte de Gerência
+    (ratear seria inventar dado). O waterfall fica no acesso à GG inteira
+    (Analista que apura a GG)."""
+    from src.engine.delta_calculator import calcular_delta
+
+    frag, params = clausula_escopo("opex_sustaining")
+    filtro_opex = (" AND classificacao_contabil = 'OPEX'" + frag, list(params))
+    filtro_real = (frag, list(params)) if frag else None
+
+    resumo = _resumo_geral(con)
+    delta = resumo["delta"]
+    cor_delta = "red" if delta > 0 else "green" if delta < 0 else "gray"
+
+    def _card() -> None:
+        with st.container(border=True):
+            st.markdown("**Recorte do seu acesso — OPEX**")
+            st.markdown(escapar_cifrao_md(f"""
+            | | |
+            |---|---|
+            | Orçado OPEX | {fmt_reais_abrev(resumo["orcado_opex"])} |
+            | Real Contabilizado | {fmt_reais_abrev(resumo["realizado"])} |
+            | Delta | :{cor_delta}[**{fmt_reais_abrev(delta)}**] |
+            | Aderência | {fmt_pct(resumo["aderencia"])} |
+            """))
+            st.caption(
+                "🔒 A decomposição de causa (waterfall) é Macro por Pacote e "
+                "cruza Gerências — disponível só no acesso à GG inteira "
+                "(Analista que apura a GG). Aqui você tem Orçado/Realizado/"
+                "Delta e os ofensores da(s) sua(s) Gerência(s)."
+            )
+
+    def _visual() -> None:
+        st.plotly_chart(
+            figura_tendencia(
+                dados_tendencia(con, ano_fiscal, filtro_orcado=filtro_opex, filtro_realizado=filtro_real),
+                "Visão Anual — Orçado x Real x Forecast (OPEX, seu recorte)",
+            ),
+            use_container_width=True, key="resumo-recorte-tendencia", config=CONFIG_PLOTLY,
+        )
+        nota_forecast(com_recorte=True)
+
+    st.subheader("📊 Financeiro")
+    bloco_resumo_visual(_card, _visual, key="resumo-recorte-financeiro")
+
+    st.divider()
+    st.subheader("🛠️ OPEX — Composição e Gerências (seu recorte)")
+    st.plotly_chart(
+        _grafico_composicao_opex(_dados_composicao_opex(con)), use_container_width=True,
+        key="resumo-recorte-composicao", config=CONFIG_PLOTLY,
+    )
+
+    df_gerencia = dados_gerencia_gg(con, GG_TOTAL)
+    df_ordenado = _dados_visao_gg_ordenado(df_gerencia) if not df_gerencia.empty else df_gerencia
+    df_reais, linha_na = (
+        _separar_nao_atribuido(df_ordenado) if not df_ordenado.empty else (df_ordenado, None)
+    )
+    if df_reais.empty:
+        st.caption("Nenhuma Gerência com dado no recorte selecionado.")
+    else:
+        col_l, col_g = st.columns([1.2, 2.8], gap="medium")
+        with col_l:
+            _render_legenda_visao_gg(df_reais)
+        with col_g:
+            st.plotly_chart(
+                _grafico_visao_gg_opex(df_reais), use_container_width=True,
+                key="resumo-recorte-visao-gg", config=CONFIG_PLOTLY,
+            )
+    if not df_ordenado.empty:
+        st.dataframe(_tabela_visao_gg_opex(df_ordenado), hide_index=True, use_container_width=True)
+
+    st.divider()
+    st.subheader("Pacotes com Maior Desvio (seu recorte)")
+    ranking = calcular_delta(
+        con, dims=["pacote_id"], filtro_orcado=filtro_opex, filtro_realizado=(filtro_real or ("", [])),
+    )
+    if ranking.empty:
+        st.caption("Nenhum Pacote com desvio neste recorte.")
+    else:
+        ranking = ranking.reindex(ranking["delta_total"].abs().sort_values(ascending=False).index).head(5)
+        nomes_pacote = mapa_nomes_pacote(con)
+        tabela = ranking.assign(
+            pacote_id=ranking["pacote_id"].map(lambda p: fmt_pacote(p, nomes_pacote.get(p))),
+            delta_total=ranking["delta_total"].map(fmt_reais_abrev),
+        ).rename(columns={"pacote_id": "Pacote", "orcado": "Orçado", "realizado": "Realizado", "delta_total": "Delta"})
+        for col in ("Orçado", "Realizado"):
+            tabela[col] = tabela[col].map(fmt_reais_abrev)
+        st.dataframe(tabela[["Pacote", "Orçado", "Realizado", "Delta"]], hide_index=True, use_container_width=True)
+
+
 def render_resumo_executivo(
     con: duckdb.DuckDBPyConnection,
     caminho_explicacoes: str,
@@ -419,6 +529,13 @@ def render_resumo_executivo(
     ano_fiscal: int,
 ) -> None:
     render_page_banner("🧭", "Resumo Executivo", "Quanto é o desvio, CAPEX x OPEX, e como se distribui nas Gerências Locais.")
+    # RBAC de escopo (docs/08, Fase RBAC-A.2, Opção B): quem não tem a GG
+    # inteira em opex_sustaining vê um resumo recortado, sem waterfall de
+    # causa (a causa é Macro por Pacote, cruza Gerências).
+    guardar_e_faixa_universo(con, "opex_sustaining")
+    if not escopo_universo("opex_sustaining")[1]:
+        _render_resumo_recorte(con, ano_fiscal)
+        return
     if simulado:
         st.warning(
             "🎲 Modo simulação ativo — os valores de causa/justificativa "

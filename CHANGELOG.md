@@ -4,6 +4,55 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 7.7.0 — 2026-09-04
+
+**Fase RBAC-A.2 — Resumo Executivo + Painel Executivo (OPEX), Opção B —
+fecha o RBAC-A.2.** Estas duas telas têm o waterfall de causa (Macro por
+Pacote). Como a causa (`explicacoes.csv`) é rastreada por Pacote — e um
+Pacote pode pertencer a até 9 Gerências — não dá pra recortá-la por
+Gerência sem ratear (inventar dado, contra a Regra de Ouro). Decisão do
+usuário: quem tem a **GG inteira** (o "Analista que apura a GG") continua
+vendo o waterfall completo, sem nenhuma mudança; quem está **escopado
+numa Gerência** (a Analista que justifica o estouro da própria área) vê
+uma versão recortada sem o waterfall de causa. Sem schema, sem gráfico
+alterado — só troca o que aparece pra cada perfil.
+
+- **`src/auth/permissions.py`** — correção de um bug descoberto ao validar
+  esta etapa: `_resolver_universos_permitidos` / `_resolver_escopo_universo`
+  / `_resolver_alvos_por_tipo` devolviam bloqueio total (`AND 1=0`) em
+  contexto **sem sessão** (scripts/testes) — zerava o waterfall na
+  regressão `fase4_fase5_check`. Corrigido: **sem usuário autenticado é
+  no-op** (vê tudo) — quem fail-closa sem usuário é o guard de página
+  (`require_acesso_pagina`), não a cláusula de escopo da consulta.
+  `tests/test_rbac_escopo.py` atualizado pro novo comportamento.
+- **`src/dashboard/nivel1_diretoria.py`, `nivel2_gg.py`,
+  `mapa_calor_gerencia_pacote.py`**: `resumo_nivel1`, `dados_gerencia_gg`,
+  `dados_waterfall_gg` (só Orçado/Realizado, não a causa),
+  `render_tendencia_gg`, `dados_heatmap_gerencia_pacote` passam a colar
+  `clausula_escopo("opex_sustaining")` — no-op pra GG inteira/admin.
+- **`src/dashboard/resumo_executivo.py`**: `render_resumo_executivo` chama
+  `guardar_e_faixa_universo` e, sem a GG inteira, delega pra
+  `_render_resumo_recorte` (nova) — card Orçado/Realizado/Delta/Aderência
+  recortado, Composição OPEX, Visão por Gerência (só as do grant),
+  Tendência e ranking de Pacotes por Delta puro (sem causa), com o aviso
+  de que o waterfall só existe no acesso à GG inteira.
+- **`app.py::pagina_painel`**: mesmo padrão — o painel lado a lado
+  (Nível 1 | waterfall) troca o waterfall pelo aviso quando o usuário não
+  tem a GG inteira; o drill-down de causa (Nível 3) só abre pra quem tem.
+- **`tests/rbac_resumo_painel_check.py`**: GG inteira recalculada dentro
+  de uma sessão com grant `gg` bate **idêntica** ao baseline sem sessão
+  (orçado R$ 48,28 MM, delta −R$ 24,33 MM, 10 Gerências); escopado em GER
+  MALHA (SP) bate exato com a soma SQL por `gerencia_id` (orçado OPEX
+  R$ 20.473.651,65); Resumo Executivo escopado mostra o aviso de recorte
+  no lugar do waterfall.
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9 + `test_projecao_ritmo`
+  1); as 5 `tests.rbac_*_check`; `AppTest.from_file("app.py")` skip-login
+  e admin sem exceção; regressões `fase4_fase5` e `validacao_rdg_julho`
+  fecham com os números reais (não mais zeradas pelo bug do no-op).
+- **Fase RBAC-A.2 fechada.** Falta RBAC-B (esconder grupo/opção de
+  navegação por universo) e as Etapas 3-6 do `docs/07` (consolidação em
+  `segmented_control`).
+
 ## 7.6.0 — 2026-09-04
 
 **Fase RBAC-A.2 — CAPEX Obras — Especialista** (`pce_especialista`) +

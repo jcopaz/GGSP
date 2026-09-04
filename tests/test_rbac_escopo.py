@@ -24,8 +24,10 @@ def test_admin_ve_os_tres_universos():
     assert _resolver_universos_permitidos([], eh_admin=True, tem_usuario=True) == set(UNIVERSOS)
 
 
-def test_sem_usuario_nao_ve_nada():
-    assert _resolver_universos_permitidos([], eh_admin=False, tem_usuario=False) == set()
+def test_sem_usuario_e_noop_contexto_script():
+    # Sem sessão (script/teste) o recorte é no-op — vê tudo. Quem fail-closa
+    # sem usuário é o guard de página, não a cláusula de escopo (docs/08).
+    assert _resolver_universos_permitidos([], eh_admin=False, tem_usuario=False) == set(UNIVERSOS)
 
 
 def test_sem_linha_nao_ve_nada_fail_closed():

@@ -82,7 +82,7 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-from src.auth.permissions import can_acessar_pagina, is_admin, universos_permitidos
+from src.auth.permissions import can_acessar_pagina, escopo_universo, is_admin, universos_permitidos
 from src.dashboard.administracao import render_administracao
 from src.auth.session import (
     clear_session,
@@ -103,7 +103,11 @@ from src.ingestion.arquivo_bruto import (
     salvar_versao_arquivo,
 )
 from src.auth.audit import registrar_atividade, registrar_visualizacao_pagina
-from src.dashboard.filtros import renderizar_badge_filtros_ativos, renderizar_filtros_sidebar
+from src.dashboard.filtros import (
+    guardar_e_faixa_universo,
+    renderizar_badge_filtros_ativos,
+    renderizar_filtros_sidebar,
+)
 from src.dashboard.layout import bloco_resumo_visual
 from src.dashboard.nivel1_diretoria import gg_padrao, render_nivel1
 from src.dashboard.mapa_calor_gerencia_pacote import render_mapa_calor_gerencia_pacote
@@ -518,8 +522,14 @@ def pagina_painel() -> None:
             _aviso_base_nao_processada()
             return
         renderizar_badge_filtros_ativos()
+        # RBAC de escopo (docs/08, Fase RBAC-A.2, Opção B): quem não tem a
+        # GG inteira em opex_sustaining não vê o waterfall de causa (Macro
+        # por Pacote, cruza Gerências) — só o resumo/tendência/Gerência do
+        # recorte dele.
+        guardar_e_faixa_universo(con, "opex_sustaining")
+        _tem_gg_inteira = escopo_universo("opex_sustaining")[1]
 
-        if st.session_state["modo_simulado"]:
+        if st.session_state["modo_simulado"] and _tem_gg_inteira:
             st.warning(
                 "🎲 Modo simulação ativo — o waterfall e o ranking abaixo "
                 "usam causas/justificativas sintéticas. Orçamento e "
@@ -530,6 +540,14 @@ def pagina_painel() -> None:
         st.session_state.setdefault("categoria_selecionada", None)
         caminho_explicacoes = st.session_state["caminho_explicacoes_ativo"]
 
+        def _sem_waterfall_recorte() -> None:
+            st.info(
+                "🔒 A decomposição de causa (waterfall por categoria) é Macro "
+                "por Pacote e cruza Gerências — fica disponível só no acesso à "
+                "GG inteira (Analista que apura a GG). Seu recorte mostra "
+                "Orçado/Realizado/Delta, a Tendência e a Visão por Gerência."
+            )
+
         # Nível 1 (resumo) e Nível 2 (waterfall) lado a lado, com uma linha
         # vertical separando os dois — pedido do usuário em 2026-08-10
         # ("colocaria o gráfico do lado desse resumo"), no lugar do
@@ -537,10 +555,10 @@ def pagina_painel() -> None:
         # Layout compartilhado desde 6.4.0 (ver src/dashboard/layout.py).
         bloco_resumo_visual(
             lambda: render_nivel1(con),
-            lambda: render_nivel2(
+            (lambda: render_nivel2(
                 con, st.session_state["gg_selecionado"], caminho_explicacoes,
                 CFG["categorias_causa"], ano_fiscal=CFG["ano_fiscal_orcamento"],
-            ),
+            )) if _tem_gg_inteira else _sem_waterfall_recorte,
             key="painel",
         )
 
@@ -550,7 +568,7 @@ def pagina_painel() -> None:
         render_gerencia_gg(con, st.session_state["gg_selecionado"])
         render_mapa_calor_gerencia_pacote(con, st.session_state["gg_selecionado"])
 
-        if st.session_state.get("categoria_selecionada"):
+        if _tem_gg_inteira and st.session_state.get("categoria_selecionada"):
             st.divider()
             render_nivel3(
                 con,

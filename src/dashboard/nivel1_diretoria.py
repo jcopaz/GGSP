@@ -23,7 +23,7 @@ import pandas as pd
 import streamlit as st
 
 from src.branding import render_page_banner
-from src.dashboard.filtros import clausula_periodo
+from src.dashboard.filtros import clausula_escopo, clausula_periodo
 from src.dashboard.formatacao import fmt_pct, fmt_reais_abrev, fmt_semaforo_chip
 from src.engine.semaforo import classificar_semaforo
 
@@ -86,6 +86,12 @@ def resumo_nivel1(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     coluna nula do DuckDB volta como float64 pro pandas.
     """
     where_periodo, params_periodo = clausula_periodo()
+    # RBAC de escopo (docs/08): no-op pra GG inteira/admin. Pra usuário
+    # escopado numa Gerência, o card do Painel Executivo fica só com o
+    # recorte dele (o filtro é por `gerencia_id`, a própria Gerência).
+    where_escopo, params_escopo = clausula_escopo("opex_sustaining")
+    where_periodo += where_escopo
+    params_periodo = params_periodo + params_escopo
     orcado_gg = con.execute(
         f"SELECT CAST(gg_id AS VARCHAR) AS gg_id, gg_nome, SUM(valor_orcado) AS orcado "
         f"FROM fact_orcamento WHERE gg_id IS NOT NULL{where_periodo} GROUP BY gg_id, gg_nome",
