@@ -533,6 +533,37 @@ def clausula_escopo(universo: str, coluna: str = "gerencia_id") -> tuple[str, li
     return f" AND {coluna} IN ({marcadores})", list(alvos)
 
 
+def clausula_escopo_obras(
+    coluna_gerencia: str = "gerencia_obras", coluna_projeto: str = "e_pep_projeto",
+) -> tuple[str, list]:
+    """Escopo sempre-ligado do universo `capex_obras` (docs/08). Os alvos
+    podem ser de dois tipos ao mesmo tempo — Gerência de Obras e/ou Projeto
+    (`e_pep_projeto`, gravado pela tela de delegação com `tipo='elemento_pep'`)
+    — combinados com OR:
+      - vê o universo inteiro   -> ("", [])
+      - recorte                 -> " AND (gerencia_obras IN (...) OR e_pep_projeto IN (...))"
+      - sem acesso              -> (" AND 1=0", [])
+    """
+    from src.auth.permissions import escopo_alvos_por_tipo
+
+    alvos = escopo_alvos_por_tipo("capex_obras")
+    if "gg" in alvos:
+        return "", []
+    partes: list[str] = []
+    params: list = []
+    gers = alvos.get("gerencia_obras") or []
+    if gers:
+        partes.append(f"{coluna_gerencia} IN ({', '.join(['?'] * len(gers))})")
+        params += gers
+    projs = alvos.get("elemento_pep") or []
+    if projs:
+        partes.append(f"{coluna_projeto} IN ({', '.join(['?'] * len(projs))})")
+        params += projs
+    if not partes:
+        return " AND 1=0", []
+    return " AND (" + " OR ".join(partes) + ")", params
+
+
 def clausula_escopo_centro_custo(
     con: duckdb.DuckDBPyConnection, universo: str = "opex_sustaining",
     coluna: str = "centro_custo_id",

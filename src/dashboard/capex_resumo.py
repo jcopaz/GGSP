@@ -27,6 +27,7 @@ from src.dashboard.capex_dados import (
     rotulo_projeto,
     tabelas_disponiveis,
 )
+from src.dashboard.filtros import guardar_e_faixa_universo
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pct, fmt_reais_abrev, fmt_semaforo
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.layout import bloco_resumo_visual
@@ -75,6 +76,7 @@ def _grafico_gerencia_obras(df) -> go.Figure:
 
 def render_resumo_executivo_capex(con: duckdb.DuckDBPyConnection) -> None:
     render_page_banner("🧭", "Resumo Executivo", "CAPEX de Projetos e Obras — Orçado (CJI4) x Realizado (CJI3).")
+    guardar_e_faixa_universo(con, "capex_obras")  # RBAC de escopo (docs/08)
 
     tem_orc, tem_real = tabelas_disponiveis(con)
     if not tem_orc and not tem_real:

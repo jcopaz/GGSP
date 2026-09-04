@@ -34,7 +34,12 @@ from __future__ import annotations
 import duckdb
 import pandas as pd
 
-from src.dashboard.filtros import clausula_periodo, clausula_projeto_capex, combinar_clausulas
+from src.dashboard.filtros import (
+    clausula_escopo_obras,
+    clausula_periodo,
+    clausula_projeto_capex,
+    combinar_clausulas,
+)
 
 _TABELA_ORCADO = "fact_cji4_capex_obras"
 _TABELA_REALIZADO = "fact_cji3_capex_obras"
@@ -90,10 +95,13 @@ def _agregado(
 
 
 def _filtro_base_capex() -> tuple[str, list]:
-    """Combina Período + Projeto/Elemento PEP da sidebar — os 2 únicos
-    grupos de filtro que fazem sentido pro CAPEX de Projetos e Obras (ver
-    docstring do módulo)."""
-    return combinar_clausulas(clausula_periodo(), clausula_projeto_capex())
+    """Combina Período + Projeto/Elemento PEP da sidebar + o recorte de
+    escopo do universo `capex_obras` (RBAC — docs/08, Fase RBAC-A.2, por
+    `gerencia_obras`/`e_pep_projeto`). Usado por toda consulta deste
+    módulo."""
+    return combinar_clausulas(
+        clausula_periodo(), clausula_projeto_capex(), clausula_escopo_obras()
+    )
 
 
 def calcular_delta_capex(
@@ -258,8 +266,9 @@ def dados_tendencia_capex(
         filtros.append("e_pep_projeto = ?")
         params.append(e_pep_projeto)
     where_sidebar, params_sidebar = clausula_projeto_capex()
-    where = " AND ".join(filtros) + where_sidebar
-    params = params + params_sidebar
+    where_escopo, params_escopo = clausula_escopo_obras()  # RBAC de escopo (docs/08)
+    where = " AND ".join(filtros) + where_sidebar + where_escopo
+    params = params + params_sidebar + params_escopo
 
     if tem_orc:
         df_orc = con.execute(

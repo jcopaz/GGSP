@@ -233,11 +233,17 @@ cada uma):
     Gerência → `centro_custo_id` via `fact_realizado`); `nivel6_sap`
     gateia por `opex_sustaining` e filtra `fact_realizado_documento` por
     `centro_custo_id`.
-  - Falta: Resumo Executivo, Painel Executivo (waterfall — precisa
-    recortar `explicacoes.csv` também), CAPEX Obras (universo
-    `capex_obras`, coluna `gerencia_obras`/`e_pep_projeto` —
-    `clausula_escopo` precisa separar alvos por tipo), + ligar o
-    default-deny do `pce_especialista` em `can_acessar_pagina`.
+  - **CAPEX Plano de Obras ✅ (v7.5.0)** — universo `capex_obras`.
+    `permissions.escopo_alvos_por_tipo` (`{tipo: [valores]}`) +
+    `filtros.clausula_escopo_obras` (`AND (gerencia_obras IN (…) OR
+    e_pep_projeto IN (…))`). `capex_dados._filtro_base_capex` +
+    `dados_tendencia_capex` colam o fragmento; `render_*` de Resumo /
+    Painel / Nível 4 / Rastreabilidade CJI3 gateiam. `pce_especialista`
+    ("CAPEX Obras — Especialista") **ainda não** — vai junto do
+    default-deny (opção B).
+  - Falta: Resumo Executivo + Painel Executivo do **OPEX** (waterfall —
+    precisa recortar `explicacoes.csv` também), `pce_especialista` +
+    default-deny em `can_acessar_pagina`.
 - **RBAC-B — navegação (1ª camada).** Esconder grupo / opção de
   `segmented_control` conforme `universos_permitidos`. Entra junto das
   Etapas 3–6 do `docs/07` (as páginas já consolidadas).

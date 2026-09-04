@@ -4,6 +4,37 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 7.5.0 — 2026-09-04
+
+**Fase RBAC-A.2 — CAPEX Plano de Obras** (universo `capex_obras`: Resumo
+Executivo, Painel Executivo, Nível 4, Rastreabilidade CJI3). O recorte
+aqui pode ter dois eixos ao mesmo tempo — Gerência de Obras e/ou Projeto
+(`e_pep_projeto`). Sem schema, sem tocar em gráfico.
+
+- **`src/auth/permissions.py`**: `escopo_alvos_por_tipo(universo)` →
+  `{tipo: [valores]}` (`{"gg": ["(todas)"]}` = universo inteiro; `{}` =
+  sem grant / erro). `escopo_universo` achata os alvos numa lista só e não
+  serve pra montar o WHERE de `capex_obras`.
+- **`src/dashboard/filtros.py`**: `clausula_escopo_obras(coluna_gerencia,
+  coluna_projeto)` → `" AND (gerencia_obras IN (…) OR e_pep_projeto IN (…))"`
+  (só a parte que tiver alvo), `""` se vê tudo, `" AND 1=0"` se sem acesso.
+- **`src/dashboard/capex_dados.py`**: `_filtro_base_capex()` (usado por
+  `resumo_geral_capex`, `dados_gerencia_obras`, `dados_projetos`,
+  `dados_contas`, `dados_heatmap_gerencia_projeto`) e `dados_tendencia_capex`
+  passam a colar `clausula_escopo_obras()`.
+- **`capex_resumo` / `capex_painel` / `capex_contas` / `capex_rastreabilidade`**:
+  cada `render_*` chama `guardar_e_faixa_universo(con, "capex_obras")`; a
+  Rastreabilidade CJI3 injeta `clausula_escopo_obras()` no WHERE próprio.
+- **`tests/rbac_capex_obras_check.py`**: escopo Gerência "Expansão" →
+  `resumo_geral_capex` orçado R$ 362,86 MM (= soma SQL direta),
+  `dados_gerencia_obras` reduz a 1 linha; combinação Gerência + Projeto →
+  `AND (gerencia_obras IN (?) OR e_pep_projeto IN (?))` = R$ 368,42 MM;
+  usuário sem grant é barrado.
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9); `tests.rbac_capex_obras_check`
+  + `tests.rbac_sustaining_check` + `tests.rbac_projecao_check`;
+  `AppTest.from_file("app.py")` skip-login e admin sem exceção; regressões
+  `fase4_fase5` e `validacao_rdg_julho` inalteradas.
+
 ## 7.4.0 — 2026-09-02
 
 **Fase RBAC-A.2 — Nível 6 (Rastreabilidade SAP).** `fact_realizado_documento`

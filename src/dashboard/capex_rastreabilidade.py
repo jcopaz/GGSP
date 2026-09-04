@@ -17,7 +17,13 @@ import pandas as pd
 import streamlit as st
 
 from src.branding import render_page_banner
-from src.dashboard.filtros import clausula_periodo, clausula_projeto_capex, combinar_clausulas
+from src.dashboard.filtros import (
+    clausula_escopo_obras,
+    clausula_periodo,
+    clausula_projeto_capex,
+    combinar_clausulas,
+    guardar_e_faixa_universo,
+)
 from src.dashboard.formatacao import fmt_reais, fmt_reais_abrev
 from src.dashboard.capex_dados import tabelas_disponiveis
 
@@ -36,6 +42,7 @@ def _fmt_documento(valor) -> str:
 
 def render_nivel6_sap_capex(con: duckdb.DuckDBPyConnection) -> None:
     render_page_banner("🔎", "Rastreabilidade SAP", "CJI3, no grão de lançamento — só Realizado (CJI4/Orçado é planejamento, sem documento).")
+    guardar_e_faixa_universo(con, "capex_obras")  # RBAC de escopo (docs/08)
 
     tem_orc, tem_real = tabelas_disponiveis(con)
     if not tem_real:
@@ -44,7 +51,9 @@ def render_nivel6_sap_capex(con: duckdb.DuckDBPyConnection) -> None:
 
     busca = st.text_input("Buscar por projeto, documento ou texto do pedido", "", key="capex-n6-busca")
 
-    where_periodo, params_periodo = combinar_clausulas(clausula_periodo(), clausula_projeto_capex())
+    where_periodo, params_periodo = combinar_clausulas(
+        clausula_periodo(), clausula_projeto_capex(), clausula_escopo_obras()
+    )
     where, params = where_periodo, list(params_periodo)
     if busca:
         where += (

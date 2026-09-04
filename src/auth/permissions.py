@@ -262,6 +262,42 @@ def _resolver_escopo_universo(
     return bool(alvos), False, alvos
 
 
+def _resolver_alvos_por_tipo(
+    universo: str, linhas: list[dict], eh_admin: bool, tem_usuario: bool
+) -> dict[str, list[str]]:
+    """{tipo: [valores]} do usuário nesse universo. `{"gg": ["(todas)"]}`
+    = vê o universo inteiro (admin ou linha tipo 'gg'). `{}` = sem grant.
+    Usado por `capex_obras`, onde os alvos podem ser de 2 tipos ao mesmo
+    tempo (`gerencia_obras` + `elemento_pep`) — `escopo_universo` achata
+    tudo numa lista só e não serve pra montar o WHERE."""
+    if eh_admin:
+        return {"gg": ["(todas)"]}
+    if not tem_usuario:
+        return {}
+    rel = [r for r in linhas if r.get("universo") == universo]
+    if any(r.get("tipo") == "gg" for r in rel):
+        return {"gg": ["(todas)"]}
+    out: dict[str, list[str]] = {}
+    for r in rel:
+        tipo, valor = r.get("tipo"), r.get("valor")
+        if tipo and valor:
+            out.setdefault(tipo, []).append(valor)
+    return {k: sorted(set(v)) for k, v in out.items()}
+
+
+def escopo_alvos_por_tipo(universo: str, usuario: dict | None = None) -> dict[str, list[str]]:
+    """Ver `_resolver_alvos_por_tipo`. `admin` / `ORCAMENTO_SKIP_LOGIN=1` ->
+    `{"gg": ["(todas)"]}`. Fail closed: erro -> `{}`."""
+    if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
+        return {"gg": ["(todas)"]}
+    try:
+        u = usuario or get_usuario()
+        linhas = _escopos_cache(u["id"]) if u else []
+        return _resolver_alvos_por_tipo(universo, linhas, is_admin(), bool(u))
+    except Exception:
+        return {}
+
+
 def universos_permitidos(usuario: dict | None = None) -> set[str]:
     """1ª camada: universos financeiros que o usuário pode ver. `admin` e
     `ORCAMENTO_SKIP_LOGIN=1` veem os 3; `gg` NÃO é bypass. Fail closed:

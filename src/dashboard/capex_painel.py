@@ -31,6 +31,7 @@ from src.dashboard.capex_dados import (
     rotulo_projeto,
     tabelas_disponiveis,
 )
+from src.dashboard.filtros import guardar_e_faixa_universo
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pct, fmt_reais_abrev, fmt_semaforo
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.mapa_calor_gerencia_pacote import CSS_MAPA_CALOR, LIMIAR_PULSO, _cor_celula, sombra_texto
@@ -196,6 +197,7 @@ def render_mapa_calor_capex(con: duckdb.DuckDBPyConnection) -> None:
 
 def render_painel_executivo_capex(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
     render_page_banner("📊", "Painel Executivo", "Orçado (CJI4) x Realizado (CJI3) — sem waterfall por causa, só Orçado x Real x Delta.")
+    guardar_e_faixa_universo(con, "capex_obras")  # RBAC de escopo (docs/08)
 
     tem_orc, tem_real = tabelas_disponiveis(con)
     if not tem_orc and not tem_real:
