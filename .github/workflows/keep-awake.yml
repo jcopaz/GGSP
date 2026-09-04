@@ -2,11 +2,8 @@
 #
 # Community Cloud (plano free) dorme o app depois de um tempo sem
 # visitante — ping periódico na URL conta como visita e reseta esse
-# relógio. Intervalo de 30 min (não menor): a conta GitHub Free dá 2.000
-# minutos/mês de Actions em repositório privado, e cada execução é
-# cobrada em minuto cheio (mínimo 1 min mesmo pra um curl de 2 segundos)
-# — a cada 30 min = ~1.440 min/mês, com folga segura sob o limite. Um
-# intervalo menor (ex. 5 min) estouraria a cota sozinho.
+# relógio. Intervalo de 10 min: este repositório é público, então os
+# runners padrão não consomem a cota mensal de minutos do GitHub Free.
 #
 # Achado 2026-08-29 (conferido na API de execuções do GitHub, não só
 # suposição): o `schedule` do GitHub Actions é "melhor esforço" — a
@@ -14,21 +11,27 @@
 # justamente no início de cada hora/meia hora. Rodando com
 # "*/30 * * * *" (dispara exatamente em :00/:30, o pior minuto possível),
 # o intervalo REAL entre execuções ficou de 3h a 7h, não 30 min — longe
-# do previsto. Deslocado pra `:07`/`:37` (minuto de menos disputa),
-# mitigação oficialmente recomendada pra esse atraso. Ainda é
-# best-effort — se o app dormir mesmo assim, considerar um pinger
+# do previsto. Agora há seis oportunidades por hora, todas deslocadas
+# dos minutos de maior disputa. Ainda é best-effort — se o app dormir
+# mesmo assim, considerar um pinger
 # externo (ex. UptimeRobot/cron-job.org), que não sofre esse atraso por
 # rodar fora da fila do GitHub Actions.
 name: Keep Fin360 awake
 
 on:
   schedule:
-    - cron: "7,37 * * * *"
+    - cron: "7,17,27,37,47,57 * * * *"
   workflow_dispatch: {}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Ping fin360.streamlit.app
-        run: curl -sS -o /dev/null -w "HTTP %{http_code}\n" https://fin360.streamlit.app
+        run: >-
+          curl --fail --silent --show-error --location
+          --retry 3 --retry-delay 5 --connect-timeout 15 --max-time 60
+          --user-agent "Fin360-keep-awake/1.0"
+          --write-out "HTTP %{http_code}\n"
+          "https://fin360.streamlit.app/?keepalive=$(date +%s)"

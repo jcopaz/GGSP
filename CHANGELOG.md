@@ -4,6 +4,13 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 7.7.1 — 2026-09-04
+
+- **Keep-awake reforçado**: o workflow passou a oferecer seis execuções
+  por hora, usar URL com cache-busting, retries e falhar explicitamente
+  em respostas HTTP inválidas. O app continua sendo acessado com TLS
+  verificado e timeout limitado.
+
 ## 7.7.0 — 2026-09-04
 
 **Fase RBAC-A.2 — Resumo Executivo + Painel Executivo (OPEX), Opção B —
