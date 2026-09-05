@@ -35,6 +35,18 @@ src/TXT/
 # como histórico, só não sobe pro git.
 fin360_melhorias_v3_4_0/
 
+# Pacote que o Copilot devolveu ao "reorganizar" o projeto (2026-09-01) —
+# mesmo código-fonte da versão atual, sem os testes reais nem os assets
+# de qualidade. Material de comparação, não sobe pro git.
+Fin360_projeto_completo_reenvio/
+Fin360_projeto_completo_reenvio.zip
+
+# Backup local grande (>100 MB) e cópias .TXT/.txt soltas de arquivos de
+# config — artefatos locais, nunca vão pro git.
+Backup.zip
+*.TXT
+.streamlit/*.txt
+
 # Python
 __pycache__/
 *.pyc

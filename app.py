@@ -964,8 +964,33 @@ def _com_guard_pagina(chave: str, funcao):
     return _pagina_guardada
 
 
+# RBAC-B (docs/08): universo(s) financeiro(s) que cada página exige. Se o
+# usuário não tem NENHUM deles em `universos_permitidos()`, a página some
+# do menu inteiro (não só barra na entrada). Admin / ORCAMENTO_SKIP_LOGIN=1
+# passam (universos_permitidos devolve os 3). Página fora deste mapa
+# (upload/administracao) não é escopada por universo.
+_UNIVERSO_DA_PAGINA = {
+    "resumo_executivo": {"opex_sustaining"},
+    "painel_executivo": {"opex_sustaining"},
+    "opex_capex_manutencao": {"opex_sustaining", "capex_sustaining"},
+    "visao_manutencao": {"opex_sustaining"},
+    "projecao_opex": {"opex_sustaining"},
+    "contas": {"opex_sustaining"},
+    "centro_custo": {"opex_sustaining"},
+    "rastreabilidade_sap": {"opex_sustaining"},
+    "capex_resumo": {"capex_obras"},
+    "capex_painel": {"capex_obras"},
+    "capex_contas": {"capex_obras"},
+    "capex_rastreabilidade": {"capex_obras"},
+    "pce_especialista": {"capex_obras"},
+}
+
+
 def _pagina_se_permitida(chave: str, funcao, titulo: str, icon: str, default: bool = False):
     if not can_acessar_pagina(chave):
+        return None
+    universos_req = _UNIVERSO_DA_PAGINA.get(chave)
+    if universos_req and not (universos_req & universos_permitidos()):
         return None
     return st.Page(_com_guard_pagina(chave, funcao), title=titulo, icon=icon, default=default)
 
@@ -1007,8 +1032,13 @@ if is_admin():
         )
     )
 
-_secoes = {
-    "Plano de Manutenção": _somente_paginas([
+# RBAC-B (docs/08): cada grupo só entra no menu se sobrar ao menos 1
+# página visível pro usuário — `_pagina_se_permitida` devolve None tanto
+# por permissão de página quanto por falta do universo financeiro. Um
+# usuário só de CAPEX Obras não vê "Plano de Manutenção"; só de Sustaining
+# não vê "Plano de Obras".
+_secoes: dict[str, list] = {}
+_paginas_manutencao = _somente_paginas([
         _pagina_se_permitida("resumo_executivo", pagina_resumo_executivo, "Visão Resumo Executivo — GGSP", "🧭", default=True),
         _pagina_se_permitida("painel_executivo", pagina_painel, "Painel Executivo", "📊"),
         # Unificado em 2026-08-29 (a pedido do usuário) — "Visão OPEX" e
@@ -1024,8 +1054,8 @@ _secoes = {
         _pagina_se_permitida("contas", pagina_contas, "Nível 4 — Contas", "🧾"),
         _pagina_se_permitida("centro_custo", pagina_centro_custo, "Nível 5 — Centro de Custo", "🏗️"),
         _pagina_se_permitida("rastreabilidade_sap", pagina_sap, "Nível 6 — Rastreabilidade SAP", "🔎"),
-    ]),
-    "Plano de Obras": _somente_paginas([
+])
+_paginas_obras = _somente_paginas([
         _pagina_se_permitida("capex_resumo", pagina_capex_resumo, "Resumo Executivo", "🧭"),
         _pagina_se_permitida("capex_painel", pagina_capex_painel, "Painel Executivo", "📊"),
         _pagina_se_permitida("capex_contas", pagina_capex_contas, "Nível 4 — Contas", "🧾"),
@@ -1034,8 +1064,11 @@ _secoes = {
         # — universo à parte de CJI4/CJI3, filtros próprios (Classificação
         # Atualizada/Gerência/Grupo/Versão), ver pce_especialista.py.
         _pagina_se_permitida("pce_especialista", pagina_pce_especialista, "CAPEX Obras — Especialista", "📐"),
-    ]),
-}
+])
+if _paginas_manutencao:
+    _secoes["Plano de Manutenção"] = _paginas_manutencao
+if _paginas_obras:
+    _secoes["Plano de Obras"] = _paginas_obras
 # "Upload de Dados" (hoje "Dados e Qualidade") tinha saído da navegação em
 # 2026-08-11 e voltou em 2026-08-17 (reprocessar direto do painel quando
 # CJI3/CJI4/Consulta de Contas forem atualizados, sem depender do terminal)
@@ -1043,6 +1076,19 @@ _secoes = {
 # (2026-09-02) fica no grupo GESTÃO, ao lado de "Administração".
 if _paginas_gestao:
     _secoes["GESTÃO"] = _paginas_gestao
+
+# Fail-safe: usuário autenticado sem NENHUM universo liberado e sem
+# permissão de upload — `st.navigation({})` quebraria. Mostra uma página
+# única de "sem acesso" em vez de erro cru.
+if not _secoes:
+    def _pagina_sem_acesso() -> None:
+        render_page_banner("🚫", "Sem acesso", "Nenhum universo financeiro liberado para o seu usuário.")
+        st.info(
+            "Seu usuário ainda não tem acesso a nenhuma área do Fin360. "
+            "Peça ao administrador para liberar um universo (OPEX Sustaining, "
+            "CAPEX Sustaining ou CAPEX Plano de Obras) na Administração."
+        )
+    _secoes = {"Fin360": [st.Page(_pagina_sem_acesso, title="Sem acesso", icon="🚫")]}
 
 pg = st.navigation(_secoes)
 pg.run()

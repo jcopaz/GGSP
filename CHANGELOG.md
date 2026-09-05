@@ -4,6 +4,37 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 7.8.0 — 2026-09-05
+
+**Fase RBAC-B — navegação escondida por universo** (`docs/08`). Até aqui
+as páginas fora do acesso do usuário apareciam no menu e só barravam na
+entrada (`require_universo`); agora somem do menu inteiro.
+
+- **`app.py`**: novo mapa `_UNIVERSO_DA_PAGINA` (chave da página →
+  universo(s) exigido(s)); `_pagina_se_permitida` devolve `None` também
+  quando `universos_permitidos()` não intersecta o exigido. Os grupos
+  "Plano de Manutenção" e "Plano de Obras" passaram a ser montados como
+  listas condicionais (`_paginas_manutencao` / `_paginas_obras`) e só
+  entram em `_secoes` se sobrar ao menos 1 página — mesmo padrão de
+  GESTÃO. Efeito: usuário só de CAPEX Obras não vê "Plano de Manutenção";
+  só de Sustaining não vê "Plano de Obras"; um `capex_sustaining`-only vê
+  só "OPEX / CAPEX — Manutenção Malha" (as telas OPEX-only somem).
+  Admin / `ORCAMENTO_SKIP_LOGIN=1` veem tudo.
+- **Fail-safe**: usuário autenticado sem nenhum universo e sem permissão
+  de `upload` — `st.navigation({})` quebraria — cai numa página única
+  "Sem acesso" com orientação pra procurar o admin.
+- **`.gitignore`**: entradas novas pra `Fin360_projeto_completo_reenvio/`,
+  `Backup.zip`, `*.TXT` e `.streamlit/*.txt` — artefatos locais que tinham
+  sido adicionados ao índice por engano (`git add -A`), agora nunca sobem.
+- **`tests/rbac_navegacao_check.py`**: página ativa por cenário —
+  `opex_sustaining` → Resumo Executivo (OPEX); `capex_obras` → Resumo de
+  Obras; `capex_sustaining` → OPEX/CAPEX Manutenção Malha; sem universo mas
+  com upload → Dados e Qualidade; sem nada → "Sem acesso".
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9 + `test_projecao_ritmo`
+  1); as 6 `tests.rbac_*_check`; `AppTest.from_file("app.py")` skip-login,
+  admin e os 5 cenários de escopo sem exceção; regressões `fase4_fase5` e
+  `validacao_rdg_julho` inalteradas.
+
 ## 7.7.1 — 2026-09-04
 
 - **Keep-awake reforçado**: o workflow passou a oferecer seis execuções

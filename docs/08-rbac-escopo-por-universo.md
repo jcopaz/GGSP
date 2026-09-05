@@ -259,9 +259,19 @@ cada uma):
     (scripts/testes) devolvia `AND 1=0` em vez de no-op, zerando a
     regressão `fase4_fase5_check`.
 
-**RBAC-A.2 fechado.** Próximo: **RBAC-B** (esconder grupo/opção de
-navegação conforme `universos_permitidos`) — entra junto das Etapas 3-6
-do `docs/07` (consolidação em `segmented_control`).
+**RBAC-A.2 fechado.**
+
+- **RBAC-B ✅ (v7.8.0)** — navegação escondida por universo. `app.py`:
+  mapa `_UNIVERSO_DA_PAGINA` + `_pagina_se_permitida` devolve `None`
+  quando `universos_permitidos()` não cobre o exigido; grupos "Plano de
+  Manutenção"/"Plano de Obras" montados como listas condicionais (só
+  entram em `_secoes` com 1+ página). Fail-safe: sem universo nem upload
+  → página única "Sem acesso" (em vez de `st.navigation({})` quebrar).
+  `tests/rbac_navegacao_check.py`.
+
+Próximo: **Etapas 3-6 do `docs/07`** — consolidação das ~17 páginas em
+`segmented_control` (a redução da sidebar que era o pedido original),
+agora consumindo o RBAC pronto.
 - **RBAC-B — navegação (1ª camada).** Esconder grupo / opção de
   `segmented_control` conforme `universos_permitidos`. Entra junto das
   Etapas 3–6 do `docs/07` (as páginas já consolidadas).
