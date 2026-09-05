@@ -4,6 +4,27 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 8.2.1 — 2026-09-05
+
+**Etapa 6a da Visão Ideal (`docs/07` §3.4) — rótulos "Evidências SAP" /
+"Rastreabilidade CJI3".** Só renomeação de label, sem mudança de chave,
+consulta ou lógica.
+
+- **Manutenção**: "Nível 6 — Rastreabilidade SAP" → **"Evidências SAP"**
+  (item de menu + `render_page_banner` em `nivel6_sap.py`). Chave
+  `rastreabilidade_sap` mantida (rename puro de 1 página, não fusão — não
+  vale criar chave nova + linhas órfãs em `app.permissao_pagina`).
+- **CAPEX Obras**: "Nível 6 — Rastreabilidade SAP" → **"Rastreabilidade
+  CJI3"** (item de menu + banner em `capex_rastreabilidade.py`), como o
+  `docs/07` §7.4 chama. Chave `capex_rastreabilidade` mantida.
+- **Pendente — Etapa 6b**: links contextuais Pacote/Conta/Centro de Custo
+  → Evidências SAP (com o recorte herdado do drill-down e retorno à
+  análise). É feature nova, sensível a UX e a estado de navegação —
+  entrega própria, com o usuário.
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9);
+  `AppTest.from_file` skip-login sem exceção; `render_nivel6_sap` direto
+  mostra o banner "Evidências SAP"; regressão `fase4_fase5` inalterada.
+
 ## 8.2.0 — 2026-09-05
 
 **Etapa 5 da Visão Ideal (`docs/07` §3.2) — página "Análise Financeira" de

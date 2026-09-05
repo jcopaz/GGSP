@@ -36,7 +36,7 @@ def _fmt_codigo(valor: float | None) -> str:
 
 
 def render_nivel6_sap(con: duckdb.DuckDBPyConnection) -> None:
-    render_page_banner("🔎", "Rastreabilidade SAP", "Só para Realizado — a Base Zero (Orçamento) não tem documento/nota fiscal.")
+    render_page_banner("🔎", "Evidências SAP", "Só para Realizado — a Base Zero (Orçamento) não tem documento/nota fiscal.")
     # RBAC de escopo (docs/08, Fase RBAC-A.2): universo opex_sustaining
     # (o Realizado carregado é 100% OPEX). `fact_realizado_documento` não
     # tem `gerencia_id` — o recorte vem por `centro_custo_id`.

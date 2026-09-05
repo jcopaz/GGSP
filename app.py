@@ -1087,7 +1087,12 @@ _paginas_manutencao = _somente_paginas([
         # de Custo" + "OPEX / CAPEX — Manutenção Malha" (segmented_control:
         # Pacotes | Contas e Centros de Custo | CAPEX Sustaining).
         _pagina_se_permitida("manutencao_analise_financeira", pagina_manutencao_analise_financeira, "Análise Financeira", "🧾"),
-        _pagina_se_permitida("rastreabilidade_sap", pagina_sap, "Nível 6 — Rastreabilidade SAP", "🔎"),
+        # Etapa 6 da Visão Ideal (docs/07 §3.4): "Nível 6 — Rastreabilidade
+        # SAP" renomeado pra "Evidências SAP" (rótulo de negócio). Chave
+        # `rastreabilidade_sap` mantida — é rename puro de 1 página, não
+        # fusão, então não vale criar chave nova + órfãs. Links contextuais
+        # Pacote/Conta/CC → Evidências ficam pra uma entrega própria (6b).
+        _pagina_se_permitida("rastreabilidade_sap", pagina_sap, "Evidências SAP", "🔎"),
 ])
 _paginas_obras = _somente_paginas([
         # Etapa 4 da Visão Ideal (docs/07): "Resumo" funde "Resumo
@@ -1095,7 +1100,7 @@ _paginas_obras = _somente_paginas([
         # Visão Executiva | Desvios e Evolução).
         _pagina_se_permitida("obras_resumo", pagina_obras_resumo, "Resumo", "🧭"),
         _pagina_se_permitida("capex_contas", pagina_capex_contas, "Nível 4 — Contas", "🧾"),
-        _pagina_se_permitida("capex_rastreabilidade", pagina_capex_rastreabilidade, "Nível 6 — Rastreabilidade SAP", "🔎"),
+        _pagina_se_permitida("capex_rastreabilidade", pagina_capex_rastreabilidade, "Rastreabilidade CJI3", "🔎"),
         # Label do Especialista (PCE Base Luiz.xlsx, trazida em 2026-08-19)
         # — universo à parte de CJI4/CJI3, filtros próprios (Classificação
         # Atualizada/Gerência/Grupo/Versão), ver pce_especialista.py.

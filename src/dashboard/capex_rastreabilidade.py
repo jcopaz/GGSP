@@ -41,7 +41,7 @@ def _fmt_documento(valor) -> str:
 
 
 def render_nivel6_sap_capex(con: duckdb.DuckDBPyConnection) -> None:
-    render_page_banner("🔎", "Rastreabilidade SAP", "CJI3, no grão de lançamento — só Realizado (CJI4/Orçado é planejamento, sem documento).")
+    render_page_banner("🔎", "Rastreabilidade CJI3", "CJI3, no grão de lançamento — só Realizado (CJI4/Orçado é planejamento, sem documento).")
     guardar_e_faixa_universo(con, "capex_obras")  # RBAC de escopo (docs/08)
 
     tem_orc, tem_real = tabelas_disponiveis(con)
