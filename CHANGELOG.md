@@ -4,6 +4,44 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 8.0.0 — 2026-09-05
+
+**Etapa 3 da Visão Ideal (`docs/07`) — página "Resumo" de Plano de
+Manutenção.** MAJOR: tela nova consolidada. Funde três itens de menu
+("Visão Resumo Executivo — GGSP", "Painel Executivo", "Projeção OPEX") num
+só — **"Resumo"** — com um `st.segmented_control` interno (Visão Executiva
+| Desvios e Causas | Projeção). "Plano de Manutenção" cai de 6 para 4
+itens. Nenhum gráfico/consulta alterado; só a casca de navegação.
+
+- **`app.py`**: `pagina_resumo_executivo` / `pagina_painel` /
+  `pagina_projecao_opex` deletados; no lugar, `pagina_manutencao_resumo`
+  (host do `segmented_control`) + três `@st.fragment` — `_frag_manut_visao_
+  executiva`, `_frag_manut_desvios_causas`, `_frag_manut_projecao`. Cada
+  fragment abre a própria conexão DuckDB e re-checa `_base_pronta`
+  (interação dentro de um painel não re-renderiza os outros nem re-checa a
+  base — D2 do `docs/07`). O badge de filtros ativos e a checagem de
+  arquivo ficam uma vez em `pagina_manutencao_resumo`, antes do seletor.
+  Chave de página nova `manutencao_resumo` (em `_UNIVERSO_DA_PAGINA` como
+  `{"opex_sustaining"}`); as três antigas viram órfãs em
+  `app.permissao_pagina`.
+- **`src/auth/permissions.py`**: `_JORNADA_HERDA_DENY` — um `permitido=false`
+  explícito numa das três sub-páginas antigas nega `manutencao_resumo`
+  inteira (salvaguarda das Etapas 3-6 do `docs/07`, promessa da decisão
+  D1). **Correção de latente**: `universos_permitidos` / `escopo_universo`
+  / `escopo_alvos_por_tipo` checavam `is_admin()` **depois** da consulta a
+  `app.escopo_acesso` — um admin perdia todo acesso a universo se o Neon
+  estivesse fora (e no AppTest, que não tem Neon). Agora `is_admin()` vem
+  antes da consulta. Sem essa correção a Etapa 3 (que passou a filtrar a
+  navegação por universo) escondia "Resumo" até de admin no AppTest.
+- **`src/dashboard/administracao.py`**: `PAGINAS` — as três chaves antigas
+  → `manutencao_resumo`.
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9 + `test_projecao_ritmo`
+  1); as 6 `tests.rbac_*_check`; `AppTest.from_file("app.py")` — admin
+  cai em "Resumo" → painel "Visão Executiva"; troca de painel via
+  `segmented_control` (`['Visão Executiva','Desvios e Causas','Projeção']`)
+  sem exceção; skip-login idem; regressões `fase4_fase5` e
+  `validacao_rdg_julho` inalteradas.
+
 ## 7.8.0 — 2026-09-05
 
 **Fase RBAC-B — navegação escondida por universo** (`docs/08`). Até aqui

@@ -488,17 +488,23 @@ def pagina_upload() -> None:
             st.info("Sem linha sem Gerência no Orçado nem no Realizado — atribuição 100% fechada.")
 
 
-def pagina_resumo_executivo() -> None:
-    caminho_db = CFG["caminhos"]["warehouse_db"]
-    if not os.path.exists(caminho_db):
-        _aviso_base_nao_processada()
-        return
+# ===== Etapa 3 da Visão Ideal (docs/07): página "Resumo" de Plano de
+# Manutenção — funde "Visão Resumo Executivo — GGSP", "Painel Executivo" e
+# "Projeção OPEX" num item de menu só. `st.segmented_control` escolhe o
+# painel; cada painel é um `@st.fragment` com conexão DuckDB própria, então
+# interação dentro de um painel não re-renderiza os outros nem re-checa a
+# base (D2 do docs/07). O badge de filtros ativos e a checagem de arquivo
+# ficam em `pagina_manutencao_resumo`, uma vez, antes do seletor.
+_ABAS_MANUT_RESUMO = ("Visão Executiva", "Desvios e Causas", "Projeção")
+
+
+@st.fragment
+def _frag_manut_visao_executiva() -> None:
     con = _conectar()
     try:
         if not _base_pronta(con):
             _aviso_base_nao_processada()
             return
-        renderizar_badge_filtros_ativos()
         render_resumo_executivo(
             con,
             st.session_state["caminho_explicacoes_ativo"],
@@ -510,18 +516,13 @@ def pagina_resumo_executivo() -> None:
         con.close()
 
 
-def pagina_painel() -> None:
-    caminho_db = CFG["caminhos"]["warehouse_db"]
-    if not os.path.exists(caminho_db):
-        _aviso_base_nao_processada()
-        return
-
+@st.fragment
+def _frag_manut_desvios_causas() -> None:
     con = _conectar()
     try:
         if not _base_pronta(con):
             _aviso_base_nao_processada()
             return
-        renderizar_badge_filtros_ativos()
         # RBAC de escopo (docs/08, Fase RBAC-A.2, Opção B): quem não tem a
         # GG inteira em opex_sustaining não vê o waterfall de causa (Macro
         # por Pacote, cruza Gerências) — só o resumo/tendência/Gerência do
@@ -581,6 +582,37 @@ def pagina_painel() -> None:
         con.close()
 
 
+@st.fragment
+def _frag_manut_projecao() -> None:
+    con = _conectar()
+    try:
+        if not _base_pronta(con):
+            _aviso_base_nao_processada()
+            return
+        render_projecao_opex(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
+    finally:
+        con.close()
+
+
+def pagina_manutencao_resumo() -> None:
+    caminho_db = CFG["caminhos"]["warehouse_db"]
+    if not os.path.exists(caminho_db):
+        _aviso_base_nao_processada()
+        return
+    renderizar_badge_filtros_ativos()
+    escolha = st.segmented_control(
+        "Seção", _ABAS_MANUT_RESUMO, default=_ABAS_MANUT_RESUMO[0],
+        key="w_seg_manut_resumo", label_visibility="collapsed",
+    ) or _ABAS_MANUT_RESUMO[0]
+
+    if escolha == "Visão Executiva":
+        _frag_manut_visao_executiva()
+    elif escolha == "Desvios e Causas":
+        _frag_manut_desvios_causas()
+    else:
+        _frag_manut_projecao()
+
+
 def pagina_opex_capex_manutencao() -> None:
     """Unifica as antigas telas "Visão OPEX" e "CAPEX Manutenção — Malha"
     (2026-08-29, a pedido do usuário, depois de eu confirmar em código
@@ -619,21 +651,6 @@ def pagina_opex_capex_manutencao() -> None:
             default=opcoes[0], key="w_toggle_opex_capex_manutencao",
         )
         render_visao_classificacao(con, escolha or opcoes[0])
-    finally:
-        con.close()
-
-
-def pagina_projecao_opex() -> None:
-    caminho_db = CFG["caminhos"]["warehouse_db"]
-    if not os.path.exists(caminho_db):
-        _aviso_base_nao_processada()
-        return
-    con = _conectar()
-    try:
-        if not _base_pronta(con):
-            _aviso_base_nao_processada()
-            return
-        render_projecao_opex(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
     finally:
         con.close()
 
@@ -970,8 +987,7 @@ def _com_guard_pagina(chave: str, funcao):
 # passam (universos_permitidos devolve os 3). Página fora deste mapa
 # (upload/administracao) não é escopada por universo.
 _UNIVERSO_DA_PAGINA = {
-    "resumo_executivo": {"opex_sustaining"},
-    "painel_executivo": {"opex_sustaining"},
+    "manutencao_resumo": {"opex_sustaining"},
     "opex_capex_manutencao": {"opex_sustaining", "capex_sustaining"},
     "visao_manutencao": {"opex_sustaining"},
     "projecao_opex": {"opex_sustaining"},
@@ -1039,8 +1055,11 @@ if is_admin():
 # não vê "Plano de Obras".
 _secoes: dict[str, list] = {}
 _paginas_manutencao = _somente_paginas([
-        _pagina_se_permitida("resumo_executivo", pagina_resumo_executivo, "Visão Resumo Executivo — GGSP", "🧭", default=True),
-        _pagina_se_permitida("painel_executivo", pagina_painel, "Painel Executivo", "📊"),
+        # Etapa 3 da Visão Ideal (docs/07): "Resumo" funde as antigas
+        # "Visão Resumo Executivo — GGSP" + "Painel Executivo" + "Projeção
+        # OPEX" num item só, com `st.segmented_control` interno
+        # (Visão Executiva | Desvios e Causas | Projeção).
+        _pagina_se_permitida("manutencao_resumo", pagina_manutencao_resumo, "Resumo", "🧭", default=True),
         # Unificado em 2026-08-29 (a pedido do usuário) — "Visão OPEX" e
         # "CAPEX Manutenção — Malha" eram a mesma função
         # (render_visao_classificacao), só trocando o parâmetro; viram 1
@@ -1050,7 +1069,6 @@ _paginas_manutencao = _somente_paginas([
         # ainda não tem arquivo carregado.
         _pagina_se_permitida("opex_capex_manutencao", pagina_opex_capex_manutencao, "OPEX / CAPEX — Manutenção Malha", "🛠️"),
         _pagina_se_permitida("visao_manutencao", pagina_manutencao, "Visão Manutenção (SP)", "🛠️"),
-        _pagina_se_permitida("projecao_opex", pagina_projecao_opex, "Projeção OPEX", "📈"),
         _pagina_se_permitida("contas", pagina_contas, "Nível 4 — Contas", "🧾"),
         _pagina_se_permitida("centro_custo", pagina_centro_custo, "Nível 5 — Centro de Custo", "🏗️"),
         _pagina_se_permitida("rastreabilidade_sap", pagina_sap, "Nível 6 — Rastreabilidade SAP", "🔎"),

@@ -163,7 +163,7 @@ PM/PD/PP) isso também evita `st.tabs` dentro de `st.tabs`.
 |---|---|---|---|---|
 | **1** ✅ | Plano + memória + `docs/07`; CSS das tags de filtro → dourado sólido + texto branco (`branding.py`) | baixo | PATCH (6.5.2) | — |
 | **2** ✅ | Grupo `GESTÃO` = `Dados e Qualidade` (era "Upload de Dados") + `Administração` (era "Gestão e Auditoria"). Só rótulo/menu; chaves `upload`/`administracao` e lógica intactas. Mover histórico/rollback de upload pra dentro de "Dados e Qualidade" ficou para etapa própria (é decisão de RBAC — quem restaura) | baixo | MINOR (6.6.0) | — |
-| **3** | Página **Resumo** (Manutenção) = `segmented_control` Visão Executiva / Desvios e Causas / Projeção, cada painel `@st.fragment` com conexão própria. Extrair `pagina_painel` para `render_*` | médio | MAJOR (7.0.0) | D1 |
+| **3** ✅ | Página **Resumo** (Manutenção) = `segmented_control` Visão Executiva / Desvios e Causas / Projeção, cada painel `@st.fragment` com conexão própria. `pagina_resumo_executivo`/`pagina_painel`/`pagina_projecao_opex` → `pagina_manutencao_resumo` + 3 fragments. Chave `manutencao_resumo`; `_JORNADA_HERDA_DENY` pra herdar deny das 3 antigas. Corrigido de latente: `is_admin()` agora vem antes da consulta ao Neon em `universos_permitidos`/`escopo_universo`/`escopo_alvos_por_tipo`. v8.0.0 | médio | MAJOR (8.0.0) | D1 |
 | **4** | Página **Resumo** (Obras) = Visão Executiva / Desvios e Evolução | médio | MINOR | Etapa 3 |
 | **5** | Página **Análise Financeira** = Pacotes / Contas e Centros de Custo / CAPEX Sustaining (toggle Conta\|CC interno) | médio-alto | MINOR | Etapa 3 |
 | **6** | Renomear `Nível 6` → **Evidências SAP**; links contextuais Pacote/Conta/CC → Evidências (preservando recorte) | médio | MINOR | Etapa 5 |

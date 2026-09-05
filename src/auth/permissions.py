@@ -187,7 +187,15 @@ def can_acessar_pagina(pagina: str) -> bool:
     try:
         permissoes = _permissoes_pagina_cache(u["id"])
         default = pagina not in _PAGINAS_ALLOW_EXPLICITO
-        return permissoes.get(pagina, default)
+        permitido = permissoes.get(pagina, default)
+        # Salvaguarda das páginas-jornada consolidadas (Etapas 3-6, docs/07):
+        # um `permitido=false` explícito numa das sub-páginas antigas nega a
+        # jornada inteira — evita que a fusão "libere de volta" alguém que o
+        # admin tinha bloqueado numa das telas de origem.
+        if permitido and pagina in _JORNADA_HERDA_DENY:
+            if any(permissoes.get(sub) is False for sub in _JORNADA_HERDA_DENY[pagina]):
+                return False
+        return permitido
     except Exception:
         return False
 
@@ -223,6 +231,14 @@ UNIVERSOS = ("opex_sustaining", "capex_sustaining", "capex_obras")
 # 2026-09-02, docs/08 §10 opção B. Registrado aqui; o `can_acessar_pagina`
 # só passa a usar isso na Fase RBAC-A.2 (não mexe no comportamento atual).
 _PAGINAS_ALLOW_EXPLICITO = {"pce_especialista"}
+
+# Página-jornada consolidada -> sub-páginas antigas que ela absorveu. Se o
+# admin tinha negado explicitamente uma delas pra alguém, a jornada inteira
+# fica negada (ver can_acessar_pagina). Etapa 3 da Visão Ideal (docs/07):
+# "manutencao_resumo" = Visão Resumo Executivo + Painel Executivo + Projeção OPEX.
+_JORNADA_HERDA_DENY = {
+    "manutencao_resumo": ("resumo_executivo", "painel_executivo", "projecao_opex"),
+}
 
 
 def _escopos_cache(usuario_id: str) -> list[dict]:
@@ -299,9 +315,13 @@ def escopo_alvos_por_tipo(universo: str, usuario: dict | None = None) -> dict[st
     if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
         return {"gg": ["(todas)"]}
     try:
+        # `is_admin()` ANTES da consulta ao Neon: admin é bypass e não pode
+        # depender do banco estar de pé (nem existir, no AppTest).
+        if is_admin():
+            return {"gg": ["(todas)"]}
         u = usuario or get_usuario()
         linhas = _escopos_cache(u["id"]) if u else []
-        return _resolver_alvos_por_tipo(universo, linhas, is_admin(), bool(u))
+        return _resolver_alvos_por_tipo(universo, linhas, False, bool(u))
     except Exception:
         return {}
 
@@ -313,9 +333,13 @@ def universos_permitidos(usuario: dict | None = None) -> set[str]:
     if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
         return set(UNIVERSOS)
     try:
+        # `is_admin()` ANTES da consulta ao Neon — admin é bypass e não
+        # pode depender do banco (nem existir, no AppTest).
+        if is_admin():
+            return set(UNIVERSOS)
         u = usuario or get_usuario()
         linhas = _escopos_cache(u["id"]) if u else []
-        return _resolver_universos_permitidos(linhas, is_admin(), bool(u))
+        return _resolver_universos_permitidos(linhas, False, bool(u))
     except Exception:
         return set()
 
@@ -344,8 +368,12 @@ def escopo_universo(universo: str, usuario: dict | None = None) -> tuple[bool, b
     if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
         return True, True, []
     try:
+        # `is_admin()` ANTES da consulta ao Neon — admin é bypass e não
+        # pode depender do banco (nem existir, no AppTest).
+        if is_admin():
+            return True, True, []
         u = usuario or get_usuario()
         linhas = _escopos_cache(u["id"]) if u else []
-        return _resolver_escopo_universo(universo, linhas, is_admin(), bool(u))
+        return _resolver_escopo_universo(universo, linhas, False, bool(u))
     except Exception:
         return False, False, []
