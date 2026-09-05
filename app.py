@@ -613,31 +613,59 @@ def pagina_manutencao_resumo() -> None:
         _frag_manut_projecao()
 
 
-def pagina_opex_capex_manutencao() -> None:
-    """Unifica as antigas telas "Visão OPEX" e "CAPEX Manutenção — Malha"
-    (2026-08-29, a pedido do usuário, depois de eu confirmar em código
-    que as duas eram literalmente a mesma função —
-    `render_visao_classificacao` — só trocando o parâmetro
-    `classificacao`). Um `st.segmented_control` decide qual dos dois lados
-    renderizar, no lugar de 2 itens de menu quase idênticos.
+# ===== Etapa 5 da Visão Ideal (docs/07 §3.2): página "Análise Financeira"
+# de Plano de Manutenção — funde "Visão Manutenção (SP)", "Nível 4 —
+# Contas", "Nível 5 — Centro de Custo" e "OPEX / CAPEX — Manutenção Malha"
+# num item de menu, `st.segmented_control` (Pacotes | Contas e Centros de
+# Custo | CAPEX Sustaining). Cada painel é um `@st.fragment` com conexão
+# DuckDB própria.
+#
+# Nota (item em aberto do docs/07 §3.2): o lado OPEX da antiga tela
+# "OPEX / CAPEX — Manutenção Malha" (`render_visao_classificacao("OPEX")`)
+# não tinha destino definido no doc. Aqui ele sobrevive como a opção
+# "OPEX" do toggle DENTRO do painel "CAPEX Sustaining" (o toggle já
+# filtra por grant de universo). Renomear/remover quando o usuário decidir.
+_ABAS_AF = ("Pacotes", "Contas e Centros de Custo", "CAPEX Sustaining")
 
-    Nota de RBAC: as chaves de permissão antigas ("visao_opex",
-    "capex_manutencao") viraram uma só ("opex_capex_manutencao"). O
-    controle fino por lado voltou pelo RBAC de escopo por universo
-    (docs/08, Fase RBAC-A.2): OPEX = universo `opex_sustaining`, CAPEX =
-    `capex_sustaining`. O toggle abaixo só mostra o(s) lado(s) que o
-    usuário tem grant — quem só vê OPEX não consegue nem clicar em CAPEX.
-    Ver CHANGELOG."""
-    caminho_db = CFG["caminhos"]["warehouse_db"]
-    if not os.path.exists(caminho_db):
-        _aviso_base_nao_processada()
-        return
+
+@st.fragment
+def _frag_af_pacotes() -> None:
     con = _conectar()
     try:
         if not _base_pronta(con):
             _aviso_base_nao_processada()
             return
-        renderizar_badge_filtros_ativos()
+        render_visao_manutencao(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
+    finally:
+        con.close()
+
+
+@st.fragment
+def _frag_af_contas_cc() -> None:
+    por = st.segmented_control(
+        "Analisar por", ("Conta", "Centro de Custo"), default="Conta",
+        key="w_seg_af_contas_cc", label_visibility="collapsed",
+    ) or "Conta"
+    con = _conectar()
+    try:
+        if not _base_pronta(con):
+            _aviso_base_nao_processada()
+            return
+        if por == "Conta":
+            render_nivel4_contas(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
+        else:
+            render_nivel5_centro_custo(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
+    finally:
+        con.close()
+
+
+@st.fragment
+def _frag_af_capex_sustaining() -> None:
+    con = _conectar()
+    try:
+        if not _base_pronta(con):
+            _aviso_base_nao_processada()
+            return
         permitidos = universos_permitidos()
         opcoes = [c for c in ("OPEX", "CAPEX") if UNIVERSO_POR_CLASSIFICACAO[c] in permitidos]
         if not opcoes:
@@ -655,52 +683,34 @@ def pagina_opex_capex_manutencao() -> None:
         con.close()
 
 
-def pagina_manutencao() -> None:
+def pagina_manutencao_analise_financeira() -> None:
     caminho_db = CFG["caminhos"]["warehouse_db"]
     if not os.path.exists(caminho_db):
         _aviso_base_nao_processada()
         return
-    con = _conectar()
-    try:
-        if not _base_pronta(con):
-            _aviso_base_nao_processada()
-            return
-        renderizar_badge_filtros_ativos()
-        render_visao_manutencao(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
-    finally:
-        con.close()
+    renderizar_badge_filtros_ativos()
 
-
-def pagina_contas() -> None:
-    caminho_db = CFG["caminhos"]["warehouse_db"]
-    if not os.path.exists(caminho_db):
-        _aviso_base_nao_processada()
+    permitidos = universos_permitidos()
+    abas = []
+    if "opex_sustaining" in permitidos:
+        abas += ["Pacotes", "Contas e Centros de Custo"]
+    if {"opex_sustaining", "capex_sustaining"} & permitidos:
+        abas.append("CAPEX Sustaining")
+    if not abas:  # defensivo — a página só entra no menu se algum bate
+        st.error("🚫 Você não tem acesso a nenhuma seção de Análise Financeira.")
         return
-    con = _conectar()
-    try:
-        if not _base_pronta(con):
-            _aviso_base_nao_processada()
-            return
-        renderizar_badge_filtros_ativos()
-        render_nivel4_contas(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
-    finally:
-        con.close()
 
+    escolha = st.segmented_control(
+        "Seção", abas, default=abas[0],
+        key="w_seg_af", label_visibility="collapsed",
+    ) or abas[0]
 
-def pagina_centro_custo() -> None:
-    caminho_db = CFG["caminhos"]["warehouse_db"]
-    if not os.path.exists(caminho_db):
-        _aviso_base_nao_processada()
-        return
-    con = _conectar()
-    try:
-        if not _base_pronta(con):
-            _aviso_base_nao_processada()
-            return
-        renderizar_badge_filtros_ativos()
-        render_nivel5_centro_custo(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
-    finally:
-        con.close()
+    if escolha == "Pacotes":
+        _frag_af_pacotes()
+    elif escolha == "Contas e Centros de Custo":
+        _frag_af_contas_cc()
+    else:
+        _frag_af_capex_sustaining()
 
 
 def pagina_sap() -> None:
@@ -1005,11 +1015,7 @@ def _com_guard_pagina(chave: str, funcao):
 # (upload/administracao) não é escopada por universo.
 _UNIVERSO_DA_PAGINA = {
     "manutencao_resumo": {"opex_sustaining"},
-    "opex_capex_manutencao": {"opex_sustaining", "capex_sustaining"},
-    "visao_manutencao": {"opex_sustaining"},
-    "projecao_opex": {"opex_sustaining"},
-    "contas": {"opex_sustaining"},
-    "centro_custo": {"opex_sustaining"},
+    "manutencao_analise_financeira": {"opex_sustaining", "capex_sustaining"},
     "rastreabilidade_sap": {"opex_sustaining"},
     "obras_resumo": {"capex_obras"},
     "capex_contas": {"capex_obras"},
@@ -1076,17 +1082,11 @@ _paginas_manutencao = _somente_paginas([
         # OPEX" num item só, com `st.segmented_control` interno
         # (Visão Executiva | Desvios e Causas | Projeção).
         _pagina_se_permitida("manutencao_resumo", pagina_manutencao_resumo, "Resumo", "🧭", default=True),
-        # Unificado em 2026-08-29 (a pedido do usuário) — "Visão OPEX" e
-        # "CAPEX Manutenção — Malha" eram a mesma função
-        # (render_visao_classificacao), só trocando o parâmetro; viram 1
-        # item de menu com toggle interno (ver pagina_opex_capex_manutencao).
-        # Base Zero (área "Malha Capex", R$43MM) — só a fatia Malha por
-        # enquanto. Infra (Drenagem/Saneamento Vegetal/pequenas obras)
-        # ainda não tem arquivo carregado.
-        _pagina_se_permitida("opex_capex_manutencao", pagina_opex_capex_manutencao, "OPEX / CAPEX — Manutenção Malha", "🛠️"),
-        _pagina_se_permitida("visao_manutencao", pagina_manutencao, "Visão Manutenção (SP)", "🛠️"),
-        _pagina_se_permitida("contas", pagina_contas, "Nível 4 — Contas", "🧾"),
-        _pagina_se_permitida("centro_custo", pagina_centro_custo, "Nível 5 — Centro de Custo", "🏗️"),
+        # Etapa 5 da Visão Ideal (docs/07 §3.2): "Análise Financeira" funde
+        # "Visão Manutenção (SP)" + "Nível 4 — Contas" + "Nível 5 — Centro
+        # de Custo" + "OPEX / CAPEX — Manutenção Malha" (segmented_control:
+        # Pacotes | Contas e Centros de Custo | CAPEX Sustaining).
+        _pagina_se_permitida("manutencao_analise_financeira", pagina_manutencao_analise_financeira, "Análise Financeira", "🧾"),
         _pagina_se_permitida("rastreabilidade_sap", pagina_sap, "Nível 6 — Rastreabilidade SAP", "🔎"),
 ])
 _paginas_obras = _somente_paginas([

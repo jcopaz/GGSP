@@ -239,6 +239,9 @@ _PAGINAS_ALLOW_EXPLICITO = {"pce_especialista"}
 _JORNADA_HERDA_DENY = {
     "manutencao_resumo": ("resumo_executivo", "painel_executivo", "projecao_opex"),
     "obras_resumo": ("capex_resumo", "capex_painel"),
+    "manutencao_analise_financeira": (
+        "visao_manutencao", "contas", "centro_custo", "opex_capex_manutencao",
+    ),
 }
 
 

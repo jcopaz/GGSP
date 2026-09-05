@@ -4,6 +4,46 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 8.2.0 — 2026-09-05
+
+**Etapa 5 da Visão Ideal (`docs/07` §3.2) — página "Análise Financeira" de
+Plano de Manutenção.** Funde **quatro** itens de menu ("Visão Manutenção
+(SP)", "Nível 4 — Contas", "Nível 5 — Centro de Custo", "OPEX / CAPEX —
+Manutenção Malha") num só — **"Análise Financeira"** — com
+`st.segmented_control` (Pacotes | Contas e Centros de Custo | CAPEX
+Sustaining). "Plano de Manutenção" cai de 6 para **3 itens** (Resumo,
+Análise Financeira, Nível 6). Nenhum gráfico/consulta alterado.
+
+- **`app.py`**: `pagina_manutencao` / `pagina_contas` / `pagina_centro_custo`
+  / `pagina_opex_capex_manutencao` deletados → `pagina_manutencao_analise_financeira`
+  (host) + 3 `@st.fragment`: `_frag_af_pacotes` (`render_visao_manutencao`),
+  `_frag_af_contas_cc` (toggle interno Conta | Centro de Custo →
+  `render_nivel4_contas` / `render_nivel5_centro_custo`),
+  `_frag_af_capex_sustaining` (toggle interno OPEX | CAPEX filtrado por
+  grant → `render_visao_classificacao`). Cada fragment abre conexão DuckDB
+  própria + re-check de `_base_pronta`.
+  - **Filtro de seção por universo**: o `segmented_control` só mostra
+    "Pacotes"/"Contas e Centros de Custo" se o usuário tem `opex_sustaining`;
+    "CAPEX Sustaining" se tem `opex_` ou `capex_sustaining`. Um
+    `capex_sustaining`-only vê só a seção "CAPEX Sustaining".
+  - Chave nova `manutencao_analise_financeira` (`_UNIVERSO_DA_PAGINA` =
+    `{"opex_sustaining","capex_sustaining"}`); `_JORNADA_HERDA_DENY` herda
+    deny de `visao_manutencao`/`contas`/`centro_custo`/`opex_capex_manutencao`.
+  - Limpeza: `_UNIVERSO_DA_PAGINA` tinha um `projecao_opex` órfão da
+    Etapa 3 — removido.
+- **Item em aberto do `docs/07` §3.2** (registrado, não decidido): o lado
+  OPEX da antiga "OPEX / CAPEX — Manutenção Malha"
+  (`render_visao_classificacao("OPEX")`) não tinha destino no doc. Aqui
+  sobrevive como a opção "OPEX" do toggle **dentro** do painel "CAPEX
+  Sustaining". Renomear/remover quando o usuário decidir.
+- **`tests/etapa5_analise_financeira_check.py`**: os 5 `render_*` que os
+  fragments chamam renderizam sem exceção pra admin e pra analista
+  escopado numa Gerência (com a faixa de recorte). `AppTest.from_file`
+  skip-login / admin / `capex_sustaining`-only sobem sem exceção.
+- Validado: `py_compile`; `pytest` (10); `tests.etapa3/4/5_*` +
+  `tests.rbac_navegacao_check` + `tests.rbac_sustaining_check`; regressões
+  `fase4_fase5` e `validacao_rdg_julho` inalteradas.
+
 ## 8.1.0 — 2026-09-05
 
 **Etapa 4 da Visão Ideal (`docs/07`) — página "Resumo" de CAPEX Plano de
