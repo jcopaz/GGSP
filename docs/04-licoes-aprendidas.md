@@ -567,3 +567,37 @@ real que "já funciona" (aqui, o MRS Sentinel) e olhar o que ELA usa de
 diferente é mais rápido que testar seletor por seletor às cegas —
 achar "eles não têm CSS nenhum aqui" é, em si, uma pista forte de que o
 problema não é ausência de CSS.
+
+## 25. `KeyError: 'projecao_ritmo_acumulada'` no Painel Executivo de CAPEX Obras — bug latente pego só ao renderizar a tela de verdade (2026-09-05)
+
+**Sintoma**: ao consolidar "Resumo Executivo" + "Painel Executivo" de
+CAPEX Obras num item de menu só (Etapa 4 da Visão Ideal, `docs/07`), o
+`AppTest` que troca o `st.segmented_control` pro painel "Desvios e
+Evolução" estourou com `KeyError: 'projecao_ritmo_acumulada'` em
+`tendencia.figura_tendencia`, chamada por
+`capex_painel.render_painel_executivo_capex`.
+
+**Causa raiz**: `tendencia.figura_tendencia` é compartilhada entre OPEX
+(`dados_tendencia`) e CAPEX Obras (`capex_dados.dados_tendencia_capex`).
+Em 2026-08-28 a função ganhou o traço "Projeção pelo ritmo realizado", que
+lê `df["projecao_ritmo_acumulada"]` **sem checar se a coluna existe** — e
+`dados_tendencia_capex` nunca cria essa coluna (só `tendencia_acumulada`).
+O bug existia desde 28/08, mas nenhum teste exercitava o Painel Executivo
+de CAPEX Obras: o `AppTest.from_file` só renderiza a página default
+(Manutenção), e os checks de RBAC de CAPEX Obras testavam
+`render_resumo_executivo_capex`, não `render_painel_executivo_capex`.
+
+**Correção**: guarda em `figura_tendencia` —
+`df[df["projecao_ritmo_acumulada"].notna()] if "projecao_ritmo_acumulada"
+in df.columns else df.iloc[0:0]`. Caller cujo DataFrame não tem a coluna
+simplesmente não desenha o traço de ritmo (comportamento correto: CAPEX
+Obras não calcula essa projeção). Zero mudança pro OPEX, que sempre tem a
+coluna.
+
+**Lição**: função de gráfico compartilhada entre dois pipelines de dados
+que produzem DataFrames com colunas diferentes precisa tratar coluna
+opcional com `in df.columns`, não assumir. E: consolidar telas
+(mover render para dentro de `@st.fragment` acionado por seletor) é uma
+boa oportunidade pra finalmente exercitar caminhos que o `AppTest` da
+página default nunca tocava — vários bugs latentes só aparecem quando a
+tela é renderizada de verdade.

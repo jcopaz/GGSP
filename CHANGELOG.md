@@ -4,6 +4,37 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 8.1.0 — 2026-09-05
+
+**Etapa 4 da Visão Ideal (`docs/07`) — página "Resumo" de CAPEX Plano de
+Obras.** Mesmo padrão da Etapa 3: `st.segmented_control` (Visão Executiva
+| Desvios e Evolução) funde "Resumo Executivo" + "Painel Executivo" de
+Obras num item de menu só. "CAPEX Plano de Obras" cai de 5 para 4 itens.
+
+- **`app.py`**: `pagina_capex_resumo` / `pagina_capex_painel` deletados →
+  `pagina_obras_resumo` (host do seletor) + `_frag_obras_visao_executiva`
+  / `_frag_obras_desvios_evolucao` (`@st.fragment`, conexão DuckDB própria
+  + re-check de `_base_pronta`). Chave nova `obras_resumo`
+  (`_UNIVERSO_DA_PAGINA` = `{"capex_obras"}`); `_JORNADA_HERDA_DENY` herda
+  deny de `capex_resumo`/`capex_painel`. `administracao.PAGINAS`
+  atualizado.
+- **Bug latente corrigido — `src/dashboard/tendencia.py`** (ver
+  `docs/04` lição 25): `figura_tendencia` lia `df["projecao_ritmo_acumulada"]`
+  sem checar a coluna; `dados_tendencia_capex` (CAPEX Obras) nunca a cria,
+  então `render_painel_executivo_capex` estourava com
+  `KeyError: 'projecao_ritmo_acumulada'` — latente desde 2026-08-28,
+  nunca exercitado porque nenhum teste renderizava o Painel Executivo de
+  CAPEX Obras. Guarda `if "projecao_ritmo_acumulada" in df.columns`; zero
+  efeito no OPEX.
+- **`tests/etapa4_obras_resumo_check.py`**: usuário de CAPEX Obras cai em
+  "Resumo" → painel "Visão Executiva"; troca pra "Desvios e Evolução"
+  renderiza o Painel Executivo sem exceção.
+- Validado: `py_compile`; `pytest` (`test_rbac_escopo` 9 + `test_projecao_ritmo`
+  1); `tests.etapa3_resumo_check` + `tests.etapa4_obras_resumo_check` +
+  `tests.rbac_navegacao_check` + `tests.rbac_capex_obras_check`;
+  `AppTest.from_file("app.py")` admin/skip-login sem exceção; regressões
+  `fase4_fase5` e `validacao_rdg_julho` inalteradas.
+
 ## 8.0.0 — 2026-09-05
 
 **Etapa 3 da Visão Ideal (`docs/07`) — página "Resumo" de Plano de

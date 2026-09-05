@@ -722,36 +722,53 @@ def pagina_sap() -> None:
         con.close()
 
 
-def pagina_capex_resumo() -> None:
-    caminho_db = CFG["caminhos"]["warehouse_db"]
-    if not os.path.exists(caminho_db):
-        _aviso_base_nao_processada()
-        return
+# ===== Etapa 4 da Visão Ideal (docs/07): página "Resumo" de CAPEX Plano
+# de Obras — funde "Resumo Executivo" + "Painel Executivo" de Obras num
+# item de menu só, `st.segmented_control` (Visão Executiva | Desvios e
+# Evolução), cada painel um `@st.fragment` com conexão DuckDB própria
+# (mesmo padrão da Etapa 3). =====
+_ABAS_OBRAS_RESUMO = ("Visão Executiva", "Desvios e Evolução")
+
+
+@st.fragment
+def _frag_obras_visao_executiva() -> None:
     con = _conectar()
     try:
         if not _base_pronta(con):
             _aviso_base_nao_processada()
             return
-        renderizar_badge_filtros_ativos()
         render_resumo_executivo_capex(con)
     finally:
         con.close()
 
 
-def pagina_capex_painel() -> None:
-    caminho_db = CFG["caminhos"]["warehouse_db"]
-    if not os.path.exists(caminho_db):
-        _aviso_base_nao_processada()
-        return
+@st.fragment
+def _frag_obras_desvios_evolucao() -> None:
     con = _conectar()
     try:
         if not _base_pronta(con):
             _aviso_base_nao_processada()
             return
-        renderizar_badge_filtros_ativos()
         render_painel_executivo_capex(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
     finally:
         con.close()
+
+
+def pagina_obras_resumo() -> None:
+    caminho_db = CFG["caminhos"]["warehouse_db"]
+    if not os.path.exists(caminho_db):
+        _aviso_base_nao_processada()
+        return
+    renderizar_badge_filtros_ativos()
+    escolha = st.segmented_control(
+        "Seção", _ABAS_OBRAS_RESUMO, default=_ABAS_OBRAS_RESUMO[0],
+        key="w_seg_obras_resumo", label_visibility="collapsed",
+    ) or _ABAS_OBRAS_RESUMO[0]
+
+    if escolha == "Visão Executiva":
+        _frag_obras_visao_executiva()
+    else:
+        _frag_obras_desvios_evolucao()
 
 
 def pagina_capex_contas() -> None:
@@ -994,8 +1011,7 @@ _UNIVERSO_DA_PAGINA = {
     "contas": {"opex_sustaining"},
     "centro_custo": {"opex_sustaining"},
     "rastreabilidade_sap": {"opex_sustaining"},
-    "capex_resumo": {"capex_obras"},
-    "capex_painel": {"capex_obras"},
+    "obras_resumo": {"capex_obras"},
     "capex_contas": {"capex_obras"},
     "capex_rastreabilidade": {"capex_obras"},
     "pce_especialista": {"capex_obras"},
@@ -1074,8 +1090,10 @@ _paginas_manutencao = _somente_paginas([
         _pagina_se_permitida("rastreabilidade_sap", pagina_sap, "Nível 6 — Rastreabilidade SAP", "🔎"),
 ])
 _paginas_obras = _somente_paginas([
-        _pagina_se_permitida("capex_resumo", pagina_capex_resumo, "Resumo Executivo", "🧭"),
-        _pagina_se_permitida("capex_painel", pagina_capex_painel, "Painel Executivo", "📊"),
+        # Etapa 4 da Visão Ideal (docs/07): "Resumo" funde "Resumo
+        # Executivo" + "Painel Executivo" de Obras (segmented_control:
+        # Visão Executiva | Desvios e Evolução).
+        _pagina_se_permitida("obras_resumo", pagina_obras_resumo, "Resumo", "🧭"),
         _pagina_se_permitida("capex_contas", pagina_capex_contas, "Nível 4 — Contas", "🧾"),
         _pagina_se_permitida("capex_rastreabilidade", pagina_capex_rastreabilidade, "Nível 6 — Rastreabilidade SAP", "🔎"),
         # Label do Especialista (PCE Base Luiz.xlsx, trazida em 2026-08-19)

@@ -232,7 +232,17 @@ def figura_tendencia(df: pd.DataFrame, titulo: str) -> go.Figure:
     # atual tende a terminar acima ou abaixo do orçamento" — nunca chamar
     # de Forecast (são conceitos diferentes, ver docstring de
     # `dados_tendencia`).
-    df_ritmo = df[df["projecao_ritmo_acumulada"].notna()]
+    #
+    # `dados_tendencia` (OPEX) sempre cria a coluna; `dados_tendencia_capex`
+    # (CAPEX Obras, capex_dados.py) NÃO — só tem `tendencia_acumulada`.
+    # Sem esta guarda, `render_painel_executivo_capex` estourava com
+    # `KeyError: 'projecao_ritmo_acumulada'` (bug latente desde 2026-08-28,
+    # pego ao renderizar a tela de verdade na Etapa 4 da Visão Ideal).
+    df_ritmo = (
+        df[df["projecao_ritmo_acumulada"].notna()]
+        if "projecao_ritmo_acumulada" in df.columns
+        else df.iloc[0:0]
+    )
     if not df_ritmo.empty:
         orcado_anual = float(df["orcado"].sum())
         fechamento_projetado = float(df_ritmo["projecao_ritmo_acumulada"].iloc[-1])
