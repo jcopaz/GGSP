@@ -4,6 +4,17 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 9.0.1 — 2026-09-06 (docs)
+
+- **`docs/09` §4.3-bis** — antes de codar o motor da Fila (Fase 7a.2),
+  conferência do dado real no warehouse: **OPEX Sustaining** fecha nas 2
+  pernas (Orçado R$48,3 MM × Realizado R$23,9 MM, `gerencia_id` 100%
+  preenchido); **CAPEX Sustaining** tem Orçado (R$43,1 MM) mas **nenhum
+  Realizado** em `fact_realizado` (0 linha CAPEX) → o motor roda mas não
+  gera pendência de CAPEX Sustaining até a MRS carregar esse Realizado
+  (mesma pendência Alice/PMO já citada em `visao_classificacao.py`);
+  **Obras** fecha (CJI4 × CJI3). Sem código.
+
 ## 9.0.0 — 2026-09-06
 
 **Fase 7a.1 da Etapa 7 (Pendências e Justificativas, `docs/09`) — schema +

@@ -156,6 +156,21 @@ miúdo. O Micro, por Conta/Projeto, é 100%.)
 + `gerencia_id` + Conta para Sustaining; `fact_cji4/cji3_capex_obras` por
 `e_pep_projeto` para Obras).
 
+### 4.3-bis Realidade do dado hoje (achado 2026-09-06, antes de codar o motor)
+
+Conferido direto no warehouse (`data/warehouse/painel.duckdb`):
+
+| Universo | Orçado | Realizado | Consequência no motor |
+|---|---|---|---|
+| **OPEX Sustaining** | `fact_orcamento` `classificacao_contabil='OPEX'` — R$48,3 MM | `fact_realizado` (100% das linhas são `OPEX`, R$23,9 MM) — `gerencia_id` 100% preenchido | **Funciona.** Delta por Conta × Gerência fecha nas 2 pernas. |
+| **CAPEX Sustaining** | `fact_orcamento` `classificacao_contabil='CAPEX'` — R$43,1 MM | **não existe** em `fact_realizado` (0 linha CAPEX) | O motor roda mas **nunca gera pendência** (sem realizado, todo Delta é economia). Quando a MRS carregar o Realizado CAPEX Malha, acende sozinho. Não é bug — é dado ausente (mesma pendência da Alice/PMO citada em `visao_classificacao.py`). |
+| **Obras** | `fact_cji4_capex_obras` por `e_pep_projeto` | `fact_cji3_capex_obras` por `e_pep_projeto` | **Funciona** (as 2 tabelas têm as mesmas colunas). |
+
+6 Contas aparecem com as duas classificações no Orçado; no Realizado elas
+caem todas em `OPEX`. Efeito irrelevante hoje (não há Realizado CAPEX pra
+disputar), mas registrar: quando houver, a atribuição OPEX/CAPEX de uma
+Conta mista no Realizado não tem De-Para — vai pelo lado que o SAP mandou.
+
 ### 4.3 Regras herdadas de `docs/03` §3.4
 
 **Só mês fechado** (competência < mês corrente); pendência **some
