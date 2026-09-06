@@ -85,11 +85,17 @@ acima:
    `capex_obras`) — mesma taxonomia do `docs/08`, pra a Fila e o motor
    saberem em qual conjunto de fatos calcular o Delta.
 4. **`escopo_temporal`** (texto: `mensal` / `acumulado`) — decisão do
-   usuário 2026-09-06: **cada Conta/Projeto tem DUAS justificativas** —
-   uma do estouro **do mês** e uma do estouro **acumulado** (YTD). São
-   independentes: pode haver estouro só no mês, só no acumulado, ou nos
-   dois. `(ano, mes)` numa linha `mensal` = a competência; numa linha
-   `acumulado` = o mês de fechamento "até o qual" ela vale.
+   usuário 2026-09-06. Onde cada um se aplica:
+
+   | Nível / universo | `mensal` | `acumulado` |
+   |---|---|---|
+   | **Sustaining Micro** (Conta × Gerência) | sim | sim |
+   | **Sustaining Macro** (Pacote) | — | **só acumulado** |
+   | **Obras** (Projeto / Elemento PEP) | — | **só acumulado** |
+
+   `(ano, mes)` numa linha `mensal` = a competência do estouro; numa linha
+   `acumulado` = o mês de fechamento "até o qual" ela vale (a última
+   `versao` carrega o mês mais recente confirmado).
 5. `status_ciclo` (já existe: `rascunho` / `consolidado`) alimenta as abas
    "Em elaboração" (rascunho) e "Consolidadas".
 
@@ -126,26 +132,29 @@ nível Micro. Um item entra na Fila quando, no mês fechado:
 (Pacote)** — a leitura executiva GG/PMO, onde faz sentido filtrar o
 miúdo. O Micro, por Conta/Projeto, é 100%.)
 
-### 4.2 Duas pendências por Conta/Projeto: mês e acumulado
+### 4.2 O que gera pendência, por nível
 
-Para cada (Conta ou Projeto) no recorte de Gerência do usuário:
-
-- **Pendência mensal**: `delta_mes(competência) > 0` e não há linha
-  `micro` `vigente` com `escopo_temporal='mensal'` daquela competência
-  cobrindo o Delta do mês.
-- **Pendência acumulada**: `delta_acum(até a competência) > 0` e não há
-  linha `micro` `vigente` com `escopo_temporal='acumulado'` cobrindo o
-  Delta acumulado. Essa é a que "carrega" (seção 3): se já existe versão
-  de meses anteriores, a Fila mostra "acumulado ainda estourado — revisar
-  a justificativa" em vez de "sem justificativa".
-
-Os quatro casos possíveis (mês sim/não × acumulado sim/não) geram 0, 1 ou
-2 itens na Fila para a mesma Conta.
+- **Sustaining Micro** (Conta × Gerência) — **duas** pendências possíveis:
+  - **mensal**: `delta_mes(competência) > 0` e sem linha `micro` `vigente`
+    `escopo_temporal='mensal'` daquela competência cobrindo o Delta do mês.
+  - **acumulada**: `delta_acum(até a competência) > 0` e sem linha `micro`
+    `vigente` `escopo_temporal='acumulado'` cobrindo o Delta acumulado.
+    Essa "carrega" (seção 3): já existindo versão de meses anteriores, a
+    Fila mostra "acumulado ainda estourado — revisar" em vez de "sem
+    justificativa".
+  - 4 casos possíveis (mês sim/não × acum sim/não) → 0, 1 ou 2 itens.
+- **Sustaining Macro** (Pacote) — **só acumulada**: `delta_acum_pacote > 0`
+  **e** `abs(delta_acum_pacote) >= threshold_macro` (config, `docs/09` §6
+  resposta 1) e sem linha `macro` `vigente` cobrindo. O Macro soma o Micro
+  já lançado + resíduo (regra de `docs/03` §2.3).
+- **Obras** (Projeto / Elemento PEP) — **só acumulada**:
+  `abs(delta_acum_projeto) >= threshold_obras` (config) e sem
+  justificativa `vigente` do Projeto cobrindo.
 
 `delta_mes` e `delta_acum` vêm da mesma fonte de cada universo
 (`fact_orcamento`/`fact_realizado` filtrado por `classificacao_contabil`
 + `gerencia_id` + Conta para Sustaining; `fact_cji4/cji3_capex_obras` por
-Projeto para Obras).
+`e_pep_projeto` para Obras).
 
 ### 4.3 Regras herdadas de `docs/03` §3.4
 
@@ -226,26 +235,23 @@ Consolidadas | Histórico** (mesmo padrão das Etapas 3–5).
    depois pra indexar no controle (fonte de verdade do que já foi
    preenchido). Até lá, `fact_explicacao_log` nasce vazio.
 
-### Refinamento de 2026-09-06 — estouro do mês x acumulado
+### Refinamento de 2026-09-06 — estouro do mês x acumulado (RESPONDIDO)
 
-Aberto para confirmar antes da Fase 7a (ver seções 3–5):
+- **Obras** → **só justificativa acumulada** (Projeto/Elemento PEP).
+- **Macro (Pacote)** → **só acumulada**.
+- **Compensação** → quando o acumulado volta a ≤ 0, a pendência acumulada
+  some e a última `versao` vira histórico (não fica "resolvida" marcada).
+- **`escopo_temporal`** (`mensal`/`acumulado`) → confirmado.
 
-- **Obras**: o par mensal/acumulado vale também para Projeto/Elemento PEP,
-  ou Obras só tem justificativa acumulada (visão de portfólio)?
-- **Macro (Pacote)**: também mês + acumulado, ou o Macro é só acumulado
-  (leitura executiva GG/PMO costuma ser YTD)?
-- **Compensação**: quando o acumulado volta a ≤ 0 (o gestor compensou com
-  outra conta), a pendência acumulada some e a última versão vira
-  histórico — confirmar que é isso, e não "manter registrada como
-  resolvida".
-- **`escopo_temporal`** como coluna `mensal`/`acumulado` no
-  `fact_explicacao_log` — ok esse nome/modelo?
+### Ainda bloqueia a implementação FINAL da Etapa 7
 
-### Ainda bloqueia a Fase 7a
+- Conceito de **"Taxa Bom / Mix"** (CAPEX Sustaining) — não impede a Fase
+  7a (schema + motor): é só uma categoria de dropdown, o motor não
+  precisa da definição. Impede o texto de ajuda do formulário (7b) e o
+  analista saber quando usá-la.
+- **Arquivo de legado** — Fase 7d.
 
-- Conceito de **"Taxa Bom / Mix"** (CAPEX Sustaining).
-- As 4 perguntas do refinamento acima.
-- (Threshold do Micro deixou de bloquear: **é 0** — qualquer estouro.)
+**A Fase 7a (schema + motor da Fila, sem UI) está desbloqueada.**
 
 ---
 

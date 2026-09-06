@@ -115,6 +115,55 @@ create index if not exists idx_explicacao_pacote_periodo
 comment on table app.fact_explicacao_log is
     'Log append-only de justificativa de causa. Nunca fazer UPDATE de valor/descrição numa linha existente — sempre INSERT de nova versão. O motor de cálculo (calcular_explicacao) só soma vigente=true.';
 
+-- Migração 2026-09-06 — Etapa 7 da Visão Ideal (Pendências e
+-- Justificativas, ver docs/09). `fact_explicacao_log` passa a cobrir os 3
+-- universos (Sustaining OPEX/CAPEX + Obras) e a separar estouro mensal x
+-- acumulado. Idempotente (ADD COLUMN IF NOT EXISTS / DROP CONSTRAINT IF
+-- EXISTS) — pode rodar de novo no Neon. Tabela hoje sem escrita pelo app.
+alter table app.fact_explicacao_log alter column pacote_id drop not null;
+alter table app.fact_explicacao_log add column if not exists universo text;
+alter table app.fact_explicacao_log add column if not exists gerencia_id text;      -- Gerência responsável (Sustaining Micro), pra Fila por ponto focal
+alter table app.fact_explicacao_log add column if not exists e_pep_projeto text;    -- universo capex_obras
+alter table app.fact_explicacao_log add column if not exists elemento_pep text;     -- universo capex_obras (detalhe opcional)
+alter table app.fact_explicacao_log add column if not exists escopo_temporal text;  -- 'mensal' | 'acumulado' (docs/09 §3.4)
+
+alter table app.fact_explicacao_log drop constraint if exists chk_explicacao_universo;
+alter table app.fact_explicacao_log add constraint chk_explicacao_universo
+    check (universo is null or universo in ('opex_sustaining', 'capex_sustaining', 'capex_obras'));
+
+alter table app.fact_explicacao_log drop constraint if exists chk_explicacao_escopo_temporal;
+alter table app.fact_explicacao_log add constraint chk_explicacao_escopo_temporal
+    check (escopo_temporal is null or escopo_temporal in ('mensal', 'acumulado'));
+
+-- chk_nivel_campos reescrito: além do caso legado/Sustaining (pacote_id +
+-- conta/cc por nível), aceita o caso Obras (e_pep_projeto, sem
+-- pacote_id/conta/cc). Linha legada (universo NULL) cai na 1ª cláusula.
+alter table app.fact_explicacao_log drop constraint if exists chk_nivel_campos;
+alter table app.fact_explicacao_log add constraint chk_nivel_campos check (
+    (
+        (universo is null or universo in ('opex_sustaining', 'capex_sustaining'))
+        and pacote_id is not null and e_pep_projeto is null
+        and (
+            (nivel = 'macro' and conta_interna_id is null and centro_custo_id is null)
+            or
+            (nivel = 'micro' and (
+                (conta_interna_id is not null and centro_custo_id is null)
+                or (conta_interna_id is null and centro_custo_id is not null)
+            ))
+        )
+    )
+    or
+    (
+        universo = 'capex_obras' and e_pep_projeto is not null
+        and pacote_id is null and conta_interna_id is null and centro_custo_id is null
+    )
+);
+
+-- Índice pra Fila por ponto focal (Gerência) + escopo temporal.
+create index if not exists idx_explicacao_gerencia_escopo
+    on app.fact_explicacao_log (universo, gerencia_id, escopo_temporal, ano, mes)
+    where vigente = true;
+
 -- ---------------------------------------------------------------------------
 -- app.delegacao_justificativa
 -- Preparação para a delegação futura: um Gerente delega a um Especialista/

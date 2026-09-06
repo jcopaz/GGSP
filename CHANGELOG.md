@@ -4,6 +4,39 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 9.0.0 — 2026-09-06
+
+**Fase 7a.1 da Etapa 7 (Pendências e Justificativas, `docs/09`) — schema +
+config, sem UI.** MAJOR porque muda schema (`app.fact_explicacao_log`).
+
+- **`config/schema_postgres.sql`** — bloco de migração idempotente em
+  `app.fact_explicacao_log` (a tabela já existe em produção, ainda sem
+  leitor/escritor no app — o store atual é `data/staging/explicacoes.csv`):
+  - `pacote_id` deixa de ser `not null` (linha de Obras não tem Pacote);
+  - novas colunas `universo`, `gerencia_id`, `e_pep_projeto`,
+    `elemento_pep`, `escopo_temporal`;
+  - `chk_explicacao_universo` (`opex_sustaining` / `capex_sustaining` /
+    `capex_obras`), `chk_explicacao_escopo_temporal` (`mensal` /
+    `acumulado`);
+  - `chk_nivel_campos` reescrito pros 3 universos — linha legada
+    (`universo` NULL) continua caindo na cláusula Sustaining;
+  - índice `idx_explicacao_gerencia_escopo` pra Fila por ponto focal.
+- **`config/settings.yaml`** — bloco `threshold_justificativa`
+  (`macro_pacote: 100000`, `obras_projeto: 500000`), lido por
+  `carregar_config()` → `CFG["threshold_justificativa"]`. Valores de
+  partida do `docs/03` §3.3, marcados **[A VALIDAR com a MRS]**. O Micro
+  (Conta/Projeto) **não** tem threshold — qualquer estouro gera pendência.
+- **`docs/09`** — §3 (tabela de qual nível tem mensal/acumulado: Sustaining
+  Micro = mensal+acumulado; Sustaining Macro = só acumulado; Obras = só
+  acumulado) e §4.2 (regra de pendência por nível) finalizados; §6 fecha
+  com "**A Fase 7a está desbloqueada**".
+- **Sem código de aplicação.** `categorias_causa` **não** foi mexido
+  (renomear "Ajuste Contábil" → "Sistema / Ajuste Contábil" e reclassificar
+  "Realizado Não Contabilizado" afeta a regressão `validacao_rdg_julho_check`
+  — aguarda "ok" do usuário, ver `docs/09` §8).
+- **Ação de deploy**: rodar `config/schema_postgres.sql` no Neon antes de
+  subir a Fase 7a.2 (motor da Fila).
+
 ## 8.3.3 — 2026-09-06 (docs)
 
 - **`docs/09`** — refinamento do usuário: **sem threshold de gatilho no

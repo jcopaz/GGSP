@@ -83,3 +83,12 @@ categorias_causa:
   - "Realizado Não Contabilizado"
   - "Taxa Bom/Mix"
   - "Não Justificado"
+
+# Threshold de obrigatoriedade da justificativa (Etapa 7, ver docs/09 §4.2).
+# O Micro (Conta/Projeto) é sempre 0 — QUALQUER estouro precisa de
+# justificativa. Esses valores só filtram o "miúdo" no nível Macro
+# (Pacote) e no CAPEX de Obras (por Projeto).
+# [A VALIDAR com a MRS] — valores de partida do docs/03 §3.3.
+threshold_justificativa:
+  macro_pacote: 100000            # R$ 100 mil (Macro OPEX; provável igual pra CAPEX Sustaining)
+  obras_projeto: 500000           # R$ 500 mil (por Projeto — confirmar se não é por Elemento PEP)
