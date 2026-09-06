@@ -4,6 +4,18 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 8.3.2 — 2026-09-06 (docs)
+
+- **`docs/09`** atualizado com as respostas da MRS às 6 validações da
+  Etapa 7: ponto focal = 1/Gerência delegado pelo admin; corte do ciclo
+  todo dia 01 p/ o mês anterior; threshold = valor de obrigatoriedade
+  (configurável); taxonomia oficial detalhada (nova seção 8, com a
+  definição de cada causa/estágio); base exportável no formato "planilha
+  do flag" via `fact_explicacao_log` + `app.artefato_exportado` (nova
+  seção 9). **Ainda pendente**: conceito de "Taxa Bom / Mix" (CAPEX
+  Sustaining), valores de threshold por domínio, e o arquivo de legado
+  que o usuário vai fornecer. Sem código.
+
 ## 8.3.1 — 2026-09-06
 
 - **Item em aberto do `docs/07` §3.2 resolvido** (decisão do usuário): o

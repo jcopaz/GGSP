@@ -144,26 +144,38 @@ Consolidadas | Histórico** (mesmo padrão das Etapas 3–5).
 
 ## 6. O que ainda precisa de validação com a MRS (Alice / Jaque / Laís)
 
-Nada aqui deve virar código antes de confirmar:
+### Respostas do usuário — 2026-09-06
 
-1. **Thresholds reais**: CAPEX Sustaining Micro (100%? outro?) e CAPEX
-   Obras por Projeto (R$500 mil confirmado? por Projeto ou por Elemento
-   PEP?). `docs/03` §4 diz "configuráveis, sujeitos a validação".
-2. **"Ponto focal da Gerência"**: 1 pessoa por Gerência? Como é
-   nomeado/mantido — pelo admin na Gestão de Usuários (grant de escopo +
-   flag), ou vem de uma tabela da MRS?
-3. **Data de corte do ciclo**: alinhada a qual data da RDG? Fixa no mês ou
-   variável?
-4. **Taxonomia de causa para CAPEX** (Sustaining e Obras): a lista de
-   `categorias_causa` do OPEX serve? "Taxa Bom/Mix" entra? Há categoria
-   específica de Obras (Rateios / Escalation / Contingência)?
-5. **Escrita concorrente**: hoje o painel roda por sessão Streamlit
-   Cloud; várias pessoas gravando ao mesmo tempo em `fact_explicacao_log`
-   (Neon) — o Neon aguenta, mas confirmar se o fluxo real é "cada ponto
-   focal na sua janela" ou simultâneo.
-6. **Import do legado**: o `explicacoes.csv` atual (e/ou `SP - Flag.xlsx`)
-   entra como "versão 1, origem=importacao_legado"? Qual é a fonte de
-   verdade do que já foi preenchido?
+1. **Threshold** = o valor de R$ a partir do qual justificar vira
+   **obrigatório** (abaixo dele, opcional). Ex.: threshold R$100 mil no
+   Macro OPEX = Pacote com |Delta| < R$100 mil não gera pendência; ≥ R$100
+   mil, sim. Fica **configurável** (não hard-coded). Valores por domínio
+   **ainda a definir** com a MRS — o `docs/03` §3.3 propõe R$100 mil
+   Macro OPEX / 100% Micro OPEX / R$500 mil CAPEX Obras como ponto de
+   partida.
+2. **Ponto focal — CONFIRMADO**: 1 por Gerência, **delegado pelo admin**
+   na Gestão de Usuários (grant de escopo `(universo, gerencia, X)` +
+   `permissao_justificativa_micro`). Não vem de tabela da MRS.
+3. **Data de corte — CONFIRMADO**: **todo dia 01**, corte para o **mês
+   anterior**. No dia 1º, a Fila de Pendências libera o mês que fechou; o
+   ponto focal tem o mês corrente pra preencher/consolidar até o próximo
+   dia 1º.
+4. **Taxonomia — CONFIRMADO** (a lista do OPEX serve) + detalhamento
+   oficial na seção 8. Ajustes vs. `settings.yaml` atual: "Ajuste
+   Contábil" → **"Sistema / Ajuste Contábil"** (rótulo). "Taxa Bom / Mix"
+   existe no **CAPEX Sustaining** — **conceito ainda não definido** pelo
+   usuário (único ponto de taxonomia em aberto).
+5. **Escrita concorrente / base exportável — DIREÇÃO DADA**: precisa de
+   uma base de dados que **exporte no formato da planilha do flag** pra
+   ir pra base oficial da companhia. → `fact_explicacao_log` (Neon) é a
+   base operacional (INSERT append-only, sem contenção de lock — cada
+   ponto focal grava as próprias linhas); uma view/materialização
+   "achatada" (só `vigente=true`, colunas no layout do flag) + botão
+   **"Exportar base de justificativas" (CSV/XLSX)**, reaproveitando
+   `app.artefato_exportado` (cópia auditada, já existe). Ver seção 9.
+6. **Import do legado — PENDENTE**: o usuário vai fornecer **um arquivo**
+   depois pra indexar no controle (fonte de verdade do que já foi
+   preenchido). Até lá, `fact_explicacao_log` nasce vazio.
 
 ---
 
@@ -180,4 +192,63 @@ Nada aqui deve virar código antes de confirmar:
 - **7c — Macro + hover + consolidação mensal**: input Macro (Pacote),
   botão "Consolidar" na data de corte, tooltips de justificativa nos
   gráficos/cards existentes.
-- **7d — import do legado** + aposentar o CSV solto.
+- **7d — import do legado** (arquivo que o usuário vai fornecer) +
+  aposentar o CSV solto.
+
+---
+
+## 8. Taxonomia oficial (detalhamento do usuário — 2026-09-06)
+
+Definições confirmadas de cada classificação. As **causas** compõem o
+waterfall (soma + Não Justificado = Delta); os **estágios de valor** são
+colunas da leitura executiva (Orçado → … → Real Contabilizado).
+
+### 8.1 Estágios de valor
+
+| Estágio | Definição |
+|---|---|
+| **Orçado** | Base Zero até o mês. |
+| **Forecast** | Orçado sem efeito preço (Replan). |
+| **Real Físico** | Real Físico com todas as variações anteriores — soma do realizado em sistema + itens baixados após a virada do mês. |
+| **Real não Contabilizado** | Diferença que ainda não entrou no Real Físico mas já contabilizada — baixas de ordens realizadas após o fechamento do mês / pendentes de baixa. |
+| **Real Contabilizado** | Soma do Realizado no sistema. |
+
+### 8.2 Causas (waterfall)
+
+| Causa | Definição / exemplos |
+|---|---|
+| **Físico** | Realizado + pendências de entrada no sistema (chegada de materiais indiretos, entrada de NF em atraso, mobilização de equipes; GOEV — Brita prevista no plano mas não incluída no orçamento). |
+| **Efeito Preço** | Efeito Preço Brita + Combustível (GOEV). |
+| **Não Previsto** | Escopo não orçado, fora do baseline: hora improdutiva, pagamento de reajuste de contrato, hora extra a mais, atendimentos emergenciais, mobilização de equipe extra, ferramentas não previstas. |
+| **Carry Over** | Pendências de A-1: reajustes do ano anterior, notas não pagas, pagamentos do ano anterior realizados no ano vigente, itens executados em 2025 com pagamento postergado para 2026, custos com retrabalho. |
+| **Sistema / Ajuste Contábil** | Ajuste de componentização (Ordens do OPEX com efeito de economia no CAPEX → positivo no Real OPEX e negativo no Real CAPEX), ajustes contábeis, ajustes de taxa de importação. |
+| **Taxa Bom / Mix** | Só CAPEX Sustaining. **Conceito ainda não definido pelo usuário** — não codificar até ter a regra. |
+| **Não Justificado** | Sempre calculado (`Delta − soma das causas`), nunca digitado. |
+
+> `settings.yaml::categorias_causa` hoje tem "Ajuste Contábil" e
+> "Realizado Não Contabilizado". A partir daqui: renomear para "Sistema /
+> Ajuste Contábil"; e confirmar se "Realizado Não Contabilizado" continua
+> como **causa** ou vira **estágio de valor** ("Real não Contabilizado"
+> em 8.1). Mexer em `categorias_causa` afeta a regressão
+> `validacao_rdg_julho_check` — só com o "ok" do usuário.
+
+---
+
+## 9. Base de dados exportável (formato "planilha do flag")
+
+Requisito do usuário: as justificativas precisam sair numa base no estilo
+da planilha do flag para alimentar a base oficial da companhia.
+
+- **Operacional**: `app.fact_explicacao_log` (Neon) — append-only, uma
+  linha por versão, `vigente=true` = valendo. Escrita concorrente de
+  vários pontos focais é INSERT independente (sem lock).
+- **Camada de exportação**: uma consulta que "achata" o log vigente no
+  layout do flag (1 linha por Conta/Projeto/mês com Categoria, Valor,
+  Descrição, Autor, Gerência, competência, status do ciclo) + botão
+  **"Exportar base de justificativas"** (CSV / XLSX) na página. Cada
+  export grava cópia auditada em `app.artefato_exportado` (infra já
+  existe) — quem exportou, quando, com que filtro, e o conteúdo exato
+  pra re-baixar.
+- **Reconciliação**: a exportação tem que bater com o waterfall exibido
+  (mesma regra de ouro do projeto: exportação reconcilia com o total da
+  tela).
