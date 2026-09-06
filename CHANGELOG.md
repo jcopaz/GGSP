@@ -4,6 +4,20 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 8.3.3 — 2026-09-06 (docs)
+
+- **`docs/09`** — refinamento do usuário: **sem threshold de gatilho no
+  Micro** (qualquer estouro — realizado sem orçado, ou realizado > orçado
+  no mês, ou no acumulado — gera pendência; o threshold configurável fica
+  só pro Macro/Pacote). E **duas justificativas por Conta/Projeto**:
+  estouro **do mês** e estouro **acumulado**, independentes (nova coluna
+  `escopo_temporal` mensal/acumulado no `fact_explicacao_log`). A
+  justificativa acumulada é **"carregada"** — um `explicacao_id` por
+  (Conta, ano) versionado a cada fechamento enquanto o acumulado seguir
+  estourado; some quando o acumulado volta a ≤ 0 (compensado). §3, §4
+  (reescrita) e §5 do `docs/09` atualizados. 4 pontos novos a confirmar
+  antes da Fase 7a. Sem código.
+
 ## 8.3.2 — 2026-09-06 (docs)
 
 - **`docs/09`** atualizado com as respostas da MRS às 6 validações da

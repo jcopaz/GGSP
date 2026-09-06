@@ -84,8 +84,24 @@ acima:
 3. **`universo`** (texto: `opex_sustaining` / `capex_sustaining` /
    `capex_obras`) — mesma taxonomia do `docs/08`, pra a Fila e o motor
    saberem em qual conjunto de fatos calcular o Delta.
-4. `status_ciclo` (já existe: `rascunho` / `consolidado`) alimenta as abas
+4. **`escopo_temporal`** (texto: `mensal` / `acumulado`) — decisão do
+   usuário 2026-09-06: **cada Conta/Projeto tem DUAS justificativas** —
+   uma do estouro **do mês** e uma do estouro **acumulado** (YTD). São
+   independentes: pode haver estouro só no mês, só no acumulado, ou nos
+   dois. `(ano, mes)` numa linha `mensal` = a competência; numa linha
+   `acumulado` = o mês de fechamento "até o qual" ela vale.
+5. `status_ciclo` (já existe: `rascunho` / `consolidado`) alimenta as abas
    "Em elaboração" (rascunho) e "Consolidadas".
+
+**Justificativa acumulada é "carregada" ao longo do tempo** (regra de
+negócio do usuário): a partir do 1º mês em que o acumulado estoura, o
+gestor já sabe e já acionou a hierarquia (compensar com outra conta/
+pacote, pedir forecast). Logo, a justificativa acumulada de uma
+(Conta, ano) é **um único `explicacao_id`** que ganha uma `versao` nova a
+cada fechamento em que o acumulado continua estourado — não é recriada do
+zero todo mês. A narrativa evolui ("desde março estamos +X; ação: …");
+quando o acumulado volta a ≤ 0 (compensado), a pendência acumulada some e
+a última versão vira histórico.
 
 Migração idempotente, mesmo padrão dos ALTERs de `docs/08`.
 
@@ -94,20 +110,49 @@ Migração idempotente, mesmo padrão dos ALTERs de `docs/08`.
 ## 4. Motor da Fila de Pendências (query, não tabela)
 
 Recalculada a cada carga (`build_star_schema`), cruzando o Delta atual x
-`fact_explicacao_log` (`vigente = true`), **por universo**:
+`fact_explicacao_log` (`vigente = true`), **por universo** e **por escopo
+temporal** (mês e acumulado — seção 3, item 4).
 
-- **Sustaining** (`opex_`/`capex_sustaining`): Conta com `delta_total != 0`
-  no recorte de Gerência, sem linha `micro` vigente que cubra 100% do
-  Delta. `delta_total` vem de `fact_orcamento`/`fact_realizado` filtrado
-  por `classificacao_contabil` + `gerencia_id` + Conta (a mesma
-  `calcular_delta` do Nível 4, hoje sem a chamada de causa).
-- **Obras** (`capex_obras`): Projeto (`e_pep_projeto`) com
-  `abs(delta_total) >= threshold` sem justificativa vigente cobrindo o
-  Delta. `delta_total` vem de `fact_cji4/cji3_capex_obras`.
+### 4.1 Sem threshold de gatilho (decisão do usuário 2026-09-06)
 
-Regras de `docs/03` §3.4 mantidas: **só mês fechado**; pendência **some
-sozinha** quando a soma cobre o Delta; **reabre sozinha** quando nova
-carga muda o Delta. Sem "marcar como resolvido" manual.
+**Qualquer estouro precisa de justificativa** — não há valor mínimo no
+nível Micro. Um item entra na Fila quando, no mês fechado:
+
+- foi **realizado sem orçamento** (`orcado = 0` e `realizado != 0`), **ou**
+- **realizado > orçado no mês** (`delta_mes > 0`), **ou**
+- **realizado > orçado no acumulado** (`delta_acum > 0`).
+
+(O threshold configurável de `docs/03` §3.3 fica só para o **Macro
+(Pacote)** — a leitura executiva GG/PMO, onde faz sentido filtrar o
+miúdo. O Micro, por Conta/Projeto, é 100%.)
+
+### 4.2 Duas pendências por Conta/Projeto: mês e acumulado
+
+Para cada (Conta ou Projeto) no recorte de Gerência do usuário:
+
+- **Pendência mensal**: `delta_mes(competência) > 0` e não há linha
+  `micro` `vigente` com `escopo_temporal='mensal'` daquela competência
+  cobrindo o Delta do mês.
+- **Pendência acumulada**: `delta_acum(até a competência) > 0` e não há
+  linha `micro` `vigente` com `escopo_temporal='acumulado'` cobrindo o
+  Delta acumulado. Essa é a que "carrega" (seção 3): se já existe versão
+  de meses anteriores, a Fila mostra "acumulado ainda estourado — revisar
+  a justificativa" em vez de "sem justificativa".
+
+Os quatro casos possíveis (mês sim/não × acumulado sim/não) geram 0, 1 ou
+2 itens na Fila para a mesma Conta.
+
+`delta_mes` e `delta_acum` vêm da mesma fonte de cada universo
+(`fact_orcamento`/`fact_realizado` filtrado por `classificacao_contabil`
++ `gerencia_id` + Conta para Sustaining; `fact_cji4/cji3_capex_obras` por
+Projeto para Obras).
+
+### 4.3 Regras herdadas de `docs/03` §3.4
+
+**Só mês fechado** (competência < mês corrente); pendência **some
+sozinha** quando a soma das justificativas vigentes cobre o Delta; **reabre
+sozinha** quando nova carga muda o Delta. Sem "marcar como resolvido"
+manual.
 
 **Recorte por usuário**: a Fila que cada ponto focal vê já é filtrada
 pelo grant de escopo dele (`clausula_escopo` / `clausula_escopo_obras` do
@@ -121,15 +166,19 @@ pelo grant de escopo dele (`clausula_escopo` / `clausula_escopo_obras` do
 Consolidadas | Histórico** (mesmo padrão das Etapas 3–5).
 
 - **Fila de Pendências**: lista calculada (seção 4), recortada pelo escopo
-  do usuário, ordenável por Delta / Gerência / Competência. Cada item →
-  botão "Justificar" que abre o formulário certo (Conta ou Projeto),
-  condicionado a `permissao_justificativa_micro` / `_macro`.
-- **Formulário** (`st.form`): Categoria (taxonomia fechada de
-  `categorias_causa`; "Taxa Bom/Mix" só em CAPEX), Valor explicado (sinal
-  validado contra o sinal do Delta), Descrição (obrigatória acima do
-  threshold), Autor/Gerência (do usuário logado, não texto livre — o
-  RBAC já identifica). Grava linha nova em `fact_explicacao_log`
-  (`status_ciclo='rascunho'`), nunca UPDATE.
+  do usuário, ordenável por Delta / Gerência / Competência. Cada linha
+  diz se é pendência **do mês** ou **acumulada** (coluna/badge). Botão
+  "Justificar" abre o formulário certo (Conta ou Projeto; mês ou
+  acumulado), condicionado a `permissao_justificativa_micro` / `_macro`.
+- **Formulário** (`st.form`): escopo (mês da competência **ou** acumulado
+  até M — pré-selecionado pela linha da Fila), Categoria (taxonomia
+  fechada de `categorias_causa`; "Taxa Bom/Mix" só em CAPEX), Valor
+  explicado (sinal validado contra o sinal do Delta correspondente),
+  Descrição, Autor/Gerência (do usuário logado, não texto livre — o RBAC
+  já identifica). Grava linha nova em `fact_explicacao_log`
+  (`status_ciclo='rascunho'`), nunca UPDATE. No escopo `acumulado`, se já
+  existe `explicacao_id` da (Conta, ano), o formulário abre com a última
+  narrativa carregada e grava `versao+1`.
 - **Em elaboração**: linhas `rascunho` do ciclo corrente do usuário.
 - **Consolidadas**: linhas `consolidado` — enviadas ao fechamento mensal.
 - **Histórico**: todas as versões (autor, data/hora, diff, motivo da
@@ -176,6 +225,27 @@ Consolidadas | Histórico** (mesmo padrão das Etapas 3–5).
 6. **Import do legado — PENDENTE**: o usuário vai fornecer **um arquivo**
    depois pra indexar no controle (fonte de verdade do que já foi
    preenchido). Até lá, `fact_explicacao_log` nasce vazio.
+
+### Refinamento de 2026-09-06 — estouro do mês x acumulado
+
+Aberto para confirmar antes da Fase 7a (ver seções 3–5):
+
+- **Obras**: o par mensal/acumulado vale também para Projeto/Elemento PEP,
+  ou Obras só tem justificativa acumulada (visão de portfólio)?
+- **Macro (Pacote)**: também mês + acumulado, ou o Macro é só acumulado
+  (leitura executiva GG/PMO costuma ser YTD)?
+- **Compensação**: quando o acumulado volta a ≤ 0 (o gestor compensou com
+  outra conta), a pendência acumulada some e a última versão vira
+  histórico — confirmar que é isso, e não "manter registrada como
+  resolvida".
+- **`escopo_temporal`** como coluna `mensal`/`acumulado` no
+  `fact_explicacao_log` — ok esse nome/modelo?
+
+### Ainda bloqueia a Fase 7a
+
+- Conceito de **"Taxa Bom / Mix"** (CAPEX Sustaining).
+- As 4 perguntas do refinamento acima.
+- (Threshold do Micro deixou de bloquear: **é 0** — qualquer estouro.)
 
 ---
 
