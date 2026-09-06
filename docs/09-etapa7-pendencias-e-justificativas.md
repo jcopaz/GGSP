@@ -274,9 +274,18 @@ Consolidadas | Histórico** (mesmo padrão das Etapas 3–5).
 
 - **7a — schema + motor da Fila (sem UI)**: ALTERs em
   `fact_explicacao_log` (`gerencia_id`, `universo`, `e_pep_projeto`,
-  `elemento_pep`); função da Fila de Pendências por universo, recortada
-  pelo escopo; teste numérico ("ponto focal de SP tem N pendências = N
-  Contas de SP com Delta sem justificativa").
+  `elemento_pep`, `escopo_temporal`); função da Fila de Pendências por
+  universo, recortada pelo escopo; teste numérico ("ponto focal de SP tem
+  N pendências = N Contas de SP com Delta sem justificativa").
+  - **7a.1 ✅ (v9.0.0)** — schema (`config/schema_postgres.sql`, idempotente)
+    + `threshold_justificativa` no `settings.yaml`. **Rodar o SQL no Neon.**
+  - **7a.2 ✅ (v9.1.0)** — `src/engine/fila_pendencias.py` +
+    `tests/fase7a_fila_pendencias_check.py` (8 checagens vs SQL direto).
+    Hoje: OPEX Sustaining 654 pendências (517 mensais / 134 acum. micro /
+    3 Macro ≥ R$100 mil); CAPEX Sustaining 0 (sem Realizado, §4.3-bis);
+    Obras 35 (|Δ acum| ≥ R$500 mil). **Em aberto**: Obras usa `abs(Δ)` →
+    25 dos 35 são underspend; confirmar com a MRS se a Fila de Obras é só
+    estouro (`Δ > 0`) ou variação nos 2 sentidos.
 - **7b — página "Pendências e Justificativas"**: Fila + formulário Micro
   (Conta / Projeto) + Em elaboração + Consolidadas + Histórico. Grava no
   log. Recorte por escopo.

@@ -4,6 +4,40 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 9.1.0 — 2026-09-06
+
+**Fase 7a.2 da Etapa 7 — motor da Fila de Pendências (`docs/09` §4). Sem UI.**
+
+- **`src/engine/fila_pendencias.py`** (novo) — `calcular_fila_pendencias(con,
+  universo, df_justificativas, ano_fiscal, threshold_macro, threshold_obras,
+  escopo_sustaining, escopo_obras, ate_mes)`. A Fila é **query, não tabela**:
+  cruza o Delta atual (DuckDB) com as justificativas vigentes (frame injetado
+  — ou `carregar_justificativas_vigentes()`, que lê `app.fact_explicacao_log`
+  do Neon com **falha-soft**: banco fora → frame vazio → tudo pendente, nunca
+  esconde pendência). Regras do `docs/09` §4:
+  - **Sustaining Micro** (Conta × Gerência): sem threshold; pendência
+    `mensal` por competência (`delta_mes > 0` não coberto) + pendência
+    `acumulada` avaliada no último mês fechado (`delta_acum > 0` não coberto,
+    com flag `tem_versao_anterior` = "carrega, revisar").
+  - **Sustaining Macro** (Pacote): só `acumulada`, e só `delta_acum >= threshold`.
+  - **Obras** (`e_pep_projeto`): só `acumulada`, e só `abs(delta_acum) >=
+    threshold` (Obras usa `abs` — `docs/09` §4.2; **ponto em aberto**: isso
+    inclui economia grande na Fila — 25 dos 35 itens hoje são underspend —
+    confirmar com a MRS se é só estouro ou os 2 lados).
+  - "Só mês fechado": competência ≤ `ate_mes` (default = último mês com
+    Realizado ≠ 0 no ano; a página 7b passa o mês de referência da carga).
+  - Some/reabre sozinha; sem "resolver" manual.
+  - Recorte por usuário = cláusula de escopo (`docs/08`) injetada por
+    parâmetro; em script/teste sem sessão vem vazia (vê tudo).
+- **`tests/fase7a_fila_pendencias_check.py`** (novo) — 8 checagens contra SQL
+  direto no warehouse. Números de hoje (`ate_mes=7`): OPEX Sustaining **654
+  pendências** (517 mensais [297 estouro de mês + 220 realizado sem orçado],
+  134 acumuladas micro, 3 Macro de Pacote ≥ R$100 mil); CAPEX Sustaining
+  **0** (sem Realizado); Obras **35** (|Delta acum| ≥ R$500 mil). Cobertura
+  total remove a pendência, cobertura parcial reduz `delta_pendente`; recorte
+  por Gerência filtra; `ate_mes` corta a competência.
+- **Nenhuma alteração em página, consulta ou gráfico existente.**
+
 ## 9.0.1 — 2026-09-06 (docs)
 
 - **`docs/09` §4.3-bis** — antes de codar o motor da Fila (Fase 7a.2),
