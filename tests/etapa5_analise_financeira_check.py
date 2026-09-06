@@ -37,7 +37,7 @@ def _script_paineis():
         render_nivel4_contas(con, ano_fiscal=2026)
         st.header("Centro de Custo")
         render_nivel5_centro_custo(con, ano_fiscal=2026)
-        st.header("CAPEX Sustaining")
+        st.header("OPEX / CAPEX Sustaining (lado CAPEX)")
         render_visao_classificacao(con, "CAPEX")
         st.header("OPEX (lado do toggle)")
         render_visao_classificacao(con, "OPEX")

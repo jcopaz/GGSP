@@ -623,9 +623,10 @@ def pagina_manutencao_resumo() -> None:
 # Nota (item em aberto do docs/07 §3.2): o lado OPEX da antiga tela
 # "OPEX / CAPEX — Manutenção Malha" (`render_visao_classificacao("OPEX")`)
 # não tinha destino definido no doc. Aqui ele sobrevive como a opção
-# "OPEX" do toggle DENTRO do painel "CAPEX Sustaining" (o toggle já
-# filtra por grant de universo). Renomear/remover quando o usuário decidir.
-_ABAS_AF = ("Pacotes", "Contas e Centros de Custo", "CAPEX Sustaining")
+# "OPEX" do toggle DENTRO do painel "OPEX / CAPEX Sustaining" — decisão do
+# usuário 2026-09-06: manter os dois lados, painel renomeado (era só
+# "CAPEX Sustaining"). O toggle já filtra por grant de universo.
+_ABA_SUSTAINING = "OPEX / CAPEX Sustaining"
 
 # Etapa 6b da Visão Ideal (docs/07 §3.4): links contextuais entre "Análise
 # Financeira" e "Evidências SAP". Como a árvore do Nível 4/5 é HTML
@@ -711,7 +712,7 @@ def pagina_manutencao_analise_financeira() -> None:
     if "opex_sustaining" in permitidos:
         abas += ["Pacotes", "Contas e Centros de Custo"]
     if {"opex_sustaining", "capex_sustaining"} & permitidos:
-        abas.append("CAPEX Sustaining")
+        abas.append(_ABA_SUSTAINING)
     if not abas:  # defensivo — a página só entra no menu se algum bate
         st.error("🚫 Você não tem acesso a nenhuma seção de Análise Financeira.")
         return

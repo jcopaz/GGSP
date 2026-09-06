@@ -4,6 +4,21 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 8.3.1 — 2026-09-06
+
+- **Item em aberto do `docs/07` §3.2 resolvido** (decisão do usuário): o
+  painel de Análise Financeira "CAPEX Sustaining" vira **"OPEX / CAPEX
+  Sustaining"** — mantém os dois lados, o toggle interno (filtrado por
+  grant) escolhe. Só label (`_ABA_SUSTAINING` em `app.py`); constante
+  morta `_ABAS_AF` removida.
+- **`docs/09-etapa7-pendencias-e-justificativas.md`** criado — desenho da
+  Etapa 7 consolidando `docs/03` + as decisões de negócio de 2026-09-06
+  (Sustaining: justificativa por Conta × Gerência, dono = ponto focal da
+  Gerência; Obras: por Projeto / Elemento PEP) + o mapeamento pro estado
+  atual (`fact_explicacao_log` já existe, RBAC de escopo pronto) + 6
+  pontos que ainda precisam de validação com a MRS antes de codar.
+  **Nenhum código de Etapa 7 nesta versão.**
+
 ## 8.3.0 — 2026-09-06
 
 **Etapa 6b da Visão Ideal (`docs/07` §3.4) — links contextuais Análise
