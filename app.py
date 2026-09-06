@@ -627,6 +627,21 @@ def pagina_manutencao_resumo() -> None:
 # filtra por grant de universo). Renomear/remover quando o usuário decidir.
 _ABAS_AF = ("Pacotes", "Contas e Centros de Custo", "CAPEX Sustaining")
 
+# Etapa 6b da Visão Ideal (docs/07 §3.4): links contextuais entre "Análise
+# Financeira" e "Evidências SAP". Como a árvore do Nível 4/5 é HTML
+# estático (sem botão por linha possível), o link é a nível de painel:
+# leva à página "Evidências SAP", que já lê os MESMOS filtros globais da
+# sidebar (Pacote/Centro de Custo/Coordenação/Período) — o recorte do
+# drill-down é preservado sem injetar nada. Os `st.Page` são guardados
+# depois de montar a navegação (`_PG_*`, mais abaixo).
+_PG_EVIDENCIAS_SAP = None
+_PG_ANALISE_FIN = None
+
+
+def _link_para(pg, label: str, icon: str) -> None:
+    if pg is not None:  # usuário sem acesso àquela página
+        st.page_link(pg, label=label, icon=icon)
+
 
 @st.fragment
 def _frag_af_pacotes() -> None:
@@ -646,6 +661,7 @@ def _frag_af_contas_cc() -> None:
         "Analisar por", ("Conta", "Centro de Custo"), default="Conta",
         key="w_seg_af_contas_cc", label_visibility="collapsed",
     ) or "Conta"
+    _link_para(_PG_EVIDENCIAS_SAP, "Evidências SAP — lançamentos deste recorte", "🔎")
     con = _conectar()
     try:
         if not _base_pronta(con):
@@ -727,6 +743,9 @@ def pagina_sap() -> None:
             _aviso_base_nao_processada()
             return
         renderizar_badge_filtros_ativos()
+        # Etapa 6b: retorno à análise sem perder o recorte (os filtros da
+        # sidebar não mudaram ao navegar pra cá).
+        _link_para(_PG_ANALISE_FIN, "Voltar à Análise Financeira", "↩️")
         render_nivel6_sap(con)
     finally:
         con.close()
@@ -1076,24 +1095,21 @@ if is_admin():
 # usuário só de CAPEX Obras não vê "Plano de Manutenção"; só de Sustaining
 # não vê "Plano de Obras".
 _secoes: dict[str, list] = {}
-_paginas_manutencao = _somente_paginas([
-        # Etapa 3 da Visão Ideal (docs/07): "Resumo" funde as antigas
-        # "Visão Resumo Executivo — GGSP" + "Painel Executivo" + "Projeção
-        # OPEX" num item só, com `st.segmented_control` interno
-        # (Visão Executiva | Desvios e Causas | Projeção).
-        _pagina_se_permitida("manutencao_resumo", pagina_manutencao_resumo, "Resumo", "🧭", default=True),
-        # Etapa 5 da Visão Ideal (docs/07 §3.2): "Análise Financeira" funde
-        # "Visão Manutenção (SP)" + "Nível 4 — Contas" + "Nível 5 — Centro
-        # de Custo" + "OPEX / CAPEX — Manutenção Malha" (segmented_control:
-        # Pacotes | Contas e Centros de Custo | CAPEX Sustaining).
-        _pagina_se_permitida("manutencao_analise_financeira", pagina_manutencao_analise_financeira, "Análise Financeira", "🧾"),
-        # Etapa 6 da Visão Ideal (docs/07 §3.4): "Nível 6 — Rastreabilidade
-        # SAP" renomeado pra "Evidências SAP" (rótulo de negócio). Chave
-        # `rastreabilidade_sap` mantida — é rename puro de 1 página, não
-        # fusão, então não vale criar chave nova + órfãs. Links contextuais
-        # Pacote/Conta/CC → Evidências ficam pra uma entrega própria (6b).
-        _pagina_se_permitida("rastreabilidade_sap", pagina_sap, "Evidências SAP", "🔎"),
-])
+
+# Etapa 3: "Resumo" funde "Visão Resumo Executivo — GGSP" + "Painel
+# Executivo" + "Projeção OPEX" (segmented_control interno).
+_pg_manut_resumo = _pagina_se_permitida("manutencao_resumo", pagina_manutencao_resumo, "Resumo", "🧭", default=True)
+# Etapa 5 (docs/07 §3.2): "Análise Financeira" funde "Visão Manutenção
+# (SP)" + "Nível 4 — Contas" + "Nível 5 — Centro de Custo" + "OPEX / CAPEX
+# — Manutenção Malha" (segmented_control: Pacotes | Contas e Centros de
+# Custo | CAPEX Sustaining).
+_PG_ANALISE_FIN = _pagina_se_permitida("manutencao_analise_financeira", pagina_manutencao_analise_financeira, "Análise Financeira", "🧾")
+# Etapa 6a (docs/07 §3.4): "Nível 6 — Rastreabilidade SAP" → "Evidências
+# SAP" (rótulo). Chave `rastreabilidade_sap` mantida (rename puro de 1
+# página). Etapa 6b: links contextuais Análise Financeira ⇄ Evidências SAP
+# (ver `_link_para` / `_PG_*` acima).
+_PG_EVIDENCIAS_SAP = _pagina_se_permitida("rastreabilidade_sap", pagina_sap, "Evidências SAP", "🔎")
+_paginas_manutencao = _somente_paginas([_pg_manut_resumo, _PG_ANALISE_FIN, _PG_EVIDENCIAS_SAP])
 _paginas_obras = _somente_paginas([
         # Etapa 4 da Visão Ideal (docs/07): "Resumo" funde "Resumo
         # Executivo" + "Painel Executivo" de Obras (segmented_control:

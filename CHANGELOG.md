@@ -4,6 +4,32 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 8.3.0 — 2026-09-06
+
+**Etapa 6b da Visão Ideal (`docs/07` §3.4) — links contextuais Análise
+Financeira ⇄ Evidências SAP.** Sem mudança de consulta/gráfico.
+
+- **Contexto**: a árvore do Nível 4/5 é HTML estático (`<details>`), então
+  não dá pra ter botão "ver evidências" por linha. O link é a **nível de
+  painel**: leva à página "Evidências SAP", que já lê os **mesmos** filtros
+  globais da sidebar (Pacote / Centro de Custo / Coordenação / Período) —
+  o recorte do drill-down é preservado **sem injetar nada** no estado.
+- **`app.py`**: `_link_para(pg, label, icon)` (`st.page_link`, no-op se o
+  usuário não tem acesso à página-alvo). O painel "Contas e Centros de
+  Custo" da Análise Financeira ganha "🔎 Evidências SAP — lançamentos
+  deste recorte"; a página "Evidências SAP" ganha "↩️ Voltar à Análise
+  Financeira". Os `st.Page` são capturados na montagem da navegação
+  (`_PG_EVIDENCIAS_SAP`, `_PG_ANALISE_FIN`).
+- **`tests/etapa6b_links_check.py`**: o link aparece no painel Contas/CC,
+  some quando a página-alvo não está disponível, e o link de volta aparece
+  na Evidências SAP.
+- Validado: `py_compile`; `pytest` (10); `tests.etapa3/4/5/6b` +
+  `tests.rbac_navegacao_check`; `AppTest.from_file` skip-login/admin sem
+  exceção; regressões `fase4_fase5` e `validacao_rdg_julho` inalteradas.
+- **Fecha o grosso da Visão Ideal.** Restam: item em aberto do §3.2 (lado
+  OPEX de `visao_classificacao`) e a Etapa 7 (Pendências e Justificativas),
+  que precisa de validação de negócio com a MRS.
+
 ## 8.2.1 — 2026-09-05
 
 **Etapa 6a da Visão Ideal (`docs/07` §3.4) — rótulos "Evidências SAP" /
