@@ -15,12 +15,21 @@ from src.auth.queries import (
     inserir_log_acesso,
     trocar_senha_primeiro_login,
 )
+from src.auth.ratelimit import (
+    checar_bloqueio,
+    ip_do_cliente,
+    registrar_tentativa,
+)
 from src.auth.senha import gerar_hash, verificar_senha
 from src.auth.session import get_usuario, set_usuario
 from src.branding import render_logo_video
 from src.versao import APP_VERSION
 
 _MSG_CREDENCIAIS_INVALIDAS = "Matrícula/e-mail ou senha incorretos."
+_MSG_BLOQUEADO = (
+    "Muitas tentativas de login sem sucesso. Aguarde alguns minutos e "
+    "tente de novo."
+)
 
 
 def _inject_login_css() -> None:
@@ -81,12 +90,27 @@ def _autenticar(identificador: str, senha: str) -> tuple[bool, str]:
     if not identificador.strip() or not senha:
         return False, _MSG_CREDENCIAIS_INVALIDAS
 
-    usuario = buscar_usuario_por_identificador(identificador)
-    if not usuario or not usuario.get("ativo", False):
-        # Mesma mensagem para "não existe" e "inativo" — não revela status da conta.
-        return False, _MSG_CREDENCIAIS_INVALIDAS
+    # Rate limit / lockout (docs/10 A1). Chave normalizada (minúsculas) por
+    # identificador digitado + IP (X-Forwarded-For, quando atrás de proxy).
+    ident = identificador.strip().lower()
+    ip = ip_do_cliente()
+    bloqueado, _faltam = checar_bloqueio(ident, ip)
+    if bloqueado:
+        # Mensagem neutra — não confirma se a conta existe.
+        registrar_tentativa(ident, ip, False)
+        return False, _MSG_BLOQUEADO
 
-    if not verificar_senha(senha, usuario["senha_hash"]):
+    usuario = buscar_usuario_por_identificador(identificador)
+    autenticou = bool(
+        usuario
+        and usuario.get("ativo", False)
+        and verificar_senha(senha, usuario["senha_hash"])
+    )
+    # Registra ANTES de sair — sucesso zera o contador, falha alimenta o lockout.
+    registrar_tentativa(ident, ip, autenticou)
+
+    if not autenticou:
+        # Mesma mensagem para "não existe" / "inativo" / "senha errada".
         return False, _MSG_CREDENCIAIS_INVALIDAS
 
     set_usuario(usuario)

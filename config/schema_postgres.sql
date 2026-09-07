@@ -375,3 +375,29 @@ create index if not exists idx_arquivo_bruto_versao_tipo
 
 comment on table app.arquivo_bruto_versao is
     'Histórico versionado de uploads — cada envio soma uma linha, nunca sobrescreve. app.arquivo_bruto continua guardando só a última versão (auto-restore de reboot); esta tabela é pra reversão manual pela Administração.';
+
+-- ---------------------------------------------------------------------------
+-- app.tentativa_login
+-- Rate limit / lockout de login (revisão de cibersegurança 2026-09-07,
+-- docs/10 achado A1). Uma linha por tentativa (sucesso ou falha). A regra
+-- (5 falhas em 15 min → bloqueia 15 min, contadas depois do último sucesso)
+-- mora em src/auth/ratelimit.py::avaliar_bloqueio — o banco só guarda o
+-- histórico. `identificador` = matrícula/e-mail digitado, em minúsculas.
+-- `ip` = X-Forwarded-For quando atrás de proxy (Streamlit Cloud), senão NULL.
+-- Migração idempotente.
+-- ---------------------------------------------------------------------------
+create table if not exists app.tentativa_login (
+    id bigint generated always as identity primary key,
+    identificador text not null,
+    ip text,
+    sucesso boolean not null,
+    ocorrido_em timestamptz not null default now()
+);
+
+create index if not exists idx_tentativa_login_identificador
+    on app.tentativa_login (identificador, ocorrido_em desc);
+create index if not exists idx_tentativa_login_ip
+    on app.tentativa_login (ip, ocorrido_em desc) where ip is not null;
+
+comment on table app.tentativa_login is
+    'Histórico de tentativas de login para rate limit / lockout (docs/10 A1). A decisão de bloquear é de src/auth/ratelimit.py; limpar linhas > 30 dias num job de manutenção.';

@@ -85,3 +85,13 @@ Quando isso estiver feito, me avise para eu criar o primeiro usuário Admin
 - **Reset de senha**: gera senha temporária no servidor, grava o hash bcrypt
   direto no Postgres, envia por e-mail via SMTP da Brevo — nunca revela se
   um e-mail/matrícula existe na mensagem de erro.
+- **Rate limit / lockout de login** (2026-09-07, `docs/10` A1): 5 falhas em
+  15 min → bloqueia 15 min, por `identificador` e por `ip`
+  (`src/auth/ratelimit.py` + `app.tentativa_login`).
+
+## Revisão de cibersegurança
+
+Revisão completa (SAST, segredos, dependências, superfície de ataque) e
+plano de hardening priorizado em
+[`docs/10-revisao-ciberseguranca.md`](10-revisao-ciberseguranca.md)
+(2026-09-07). Rodar a bateria: `docs/10` §7.

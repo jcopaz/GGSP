@@ -1,0 +1,13 @@
+# Ferramentas de dev/CI — NÃO vão pro runtime (ver requirements.txt pra isso).
+# Instale com:  pip install -r requirements-dev.txt
+
+-r requirements.txt
+
+# Testes
+pytest
+
+# Segurança (ver docs/10-revisao-ciberseguranca.md §7)
+bandit                 # SAST — gate: 0 High
+detect-secrets         # varredura de segredo no working tree / git
+pip-audit              # CVE de dependência — roda em CI (o proxy TLS da MRS
+                       # bloqueia no ambiente de dev local)

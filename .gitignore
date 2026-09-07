@@ -46,6 +46,8 @@ Fin360_projeto_completo_reenvio.zip
 Backup.zip
 *.TXT
 .streamlit/*.txt
+# ...menos este: é config de dev/CI de verdade (Windows casa *.TXT com .txt).
+!requirements-dev.txt
 
 # Python
 __pycache__/

@@ -4,6 +4,36 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 10.0.0 — 2026-09-07
+
+**Revisão de cibersegurança (`docs/10`) + correção do achado A1 (rate limit
+de login).** MAJOR = schema novo + segurança.
+
+- **`docs/10-revisao-ciberseguranca.md`** (novo) — revisão completa de
+  `src/auth/*`, gate de sessão, upload e dependências. Ferramentas:
+  `bandit` (0 High; 70 B608 falso-positivo do query-builder + 6 B110
+  best-effort), `detect-secrets` (histórico do git limpo — só
+  `secrets.toml.example` placeholder), `pip list --outdated` + revisão
+  manual de CVE (`pip-audit` **não roda** no ambiente — proxy TLS da MRS;
+  precisa de CI). 11 achados, nenhum ALTO/crítico; plano priorizado P0–P3.
+- **Correção A1 — rate limit / lockout de login:**
+  - `app.tentativa_login` (nova tabela, idempotente) — 1 linha por
+    tentativa (sucesso/falha), índices por `identificador` e por `ip`.
+  - `src/auth/ratelimit.py` (novo) — `avaliar_bloqueio(tentativas, agora)`
+    **puro** (5 falhas em 15 min, contadas depois do último sucesso →
+    bloqueia 15 min); `checar_bloqueio`/`registrar_tentativa` (invólucros
+    Neon, checagem falha-aberta se o banco cair); `ip_do_cliente()`
+    (X-Forwarded-For quando atrás de proxy).
+  - `src/auth/login.py::_autenticar` — checa bloqueio por `identificador`
+    **e** por `ip` antes do `verificar_senha`; registra toda tentativa;
+    mensagem de bloqueio neutra (não confirma se a conta existe); mesma
+    mensagem genérica para "não existe" / "inativo" / "senha errada".
+  - `tests/rate_limit_check.py` (novo) — 9 testes da função pura (janela,
+    reset por sucesso, expiração, ordem, IP × identificador).
+- **`config/schema_postgres.sql`** — bloco `app.tentativa_login` no fim.
+  **Deploy: rodar o script no Neon.**
+- Nenhuma alteração em página, consulta ou gráfico.
+
 ## 9.1.0 — 2026-09-06
 
 **Fase 7a.2 da Etapa 7 — motor da Fila de Pendências (`docs/09` §4). Sem UI.**
