@@ -620,13 +620,18 @@ def pagina_manutencao_resumo() -> None:
 # Custo | CAPEX Sustaining). Cada painel é um `@st.fragment` com conexão
 # DuckDB própria.
 #
-# Nota (item em aberto do docs/07 §3.2): o lado OPEX da antiga tela
-# "OPEX / CAPEX — Manutenção Malha" (`render_visao_classificacao("OPEX")`)
-# não tinha destino definido no doc. Aqui ele sobrevive como a opção
-# "OPEX" do toggle DENTRO do painel "OPEX / CAPEX Sustaining" — decisão do
-# usuário 2026-09-06: manter os dois lados, painel renomeado (era só
-# "CAPEX Sustaining"). O toggle já filtra por grant de universo.
-_ABA_SUSTAINING = "OPEX / CAPEX Sustaining"
+# Reestruturação 2026-09-08 (docs/07 §3.2, pedido do usuário):
+# - "Pacotes" ganhou um `segmented_control` interno por família:
+#   Manutenção (PM) | Despesas Gerais (PD) | Pessoal (PP) — mesmo modelo,
+#   `render_visao_manutencao(con, familia=...)`. Cada sub-aba é OPEX puro
+#   e trouxe o gráfico "Orçado por Conta" da ex-aba OPEX Sustaining
+#   (ordem macro→micro: Pacote depois Conta).
+# - A aba "OPEX / CAPEX Sustaining" virou só "CAPEX Sustaining": o lado
+#   OPEX foi distribuído nas 3 sub-abas acima; o lado CAPEX passou a ser
+#   fatiado por Elemento PEP (não por Pacote — é tudo PM03), nomeado pelo
+#   catálogo `dim_pep_sustaining`. Sem Realizado/Projeção de CAPEX
+#   (não existe a fonte — Regra de Ouro).
+_ABA_SUSTAINING = "CAPEX Sustaining"
 
 # Etapa 6b da Visão Ideal (docs/07 §3.4): links contextuais entre "Análise
 # Financeira" e "Evidências SAP". Como a árvore do Nível 4/5 é HTML
@@ -644,14 +649,29 @@ def _link_para(pg, label: str, icon: str) -> None:
         st.page_link(pg, label=label, icon=icon)
 
 
+_FAMILIAS_PACOTES = {
+    "Manutenção (PM)": "PM",
+    "Despesas Gerais (PD)": "PD",
+    "Pessoal (PP)": "PP",
+}
+
+
 @st.fragment
 def _frag_af_pacotes() -> None:
+    rotulo = st.segmented_control(
+        "Família de Pacote", tuple(_FAMILIAS_PACOTES),
+        default="Manutenção (PM)", key="w_seg_af_pacotes_familia",
+        label_visibility="collapsed",
+    ) or "Manutenção (PM)"
     con = _conectar()
     try:
         if not _base_pronta(con):
             _aviso_base_nao_processada()
             return
-        render_visao_manutencao(con, ano_fiscal=CFG["ano_fiscal_orcamento"])
+        render_visao_manutencao(
+            con, ano_fiscal=CFG["ano_fiscal_orcamento"],
+            familia=_FAMILIAS_PACOTES[rotulo],
+        )
     finally:
         con.close()
 
@@ -683,19 +703,13 @@ def _frag_af_capex_sustaining() -> None:
         if not _base_pronta(con):
             _aviso_base_nao_processada()
             return
-        permitidos = universos_permitidos()
-        opcoes = [c for c in ("OPEX", "CAPEX") if UNIVERSO_POR_CLASSIFICACAO[c] in permitidos]
-        if not opcoes:
+        if UNIVERSO_POR_CLASSIFICACAO["CAPEX"] not in universos_permitidos():
             st.error(
-                "🚫 Você não tem acesso ao OPEX nem ao CAPEX de Manutenção. "
+                "🚫 Você não tem acesso ao CAPEX Sustaining. "
                 "Fale com o administrador para liberar."
             )
             return
-        escolha = st.segmented_control(
-            "Classificação Contábil", opcoes,
-            default=opcoes[0], key="w_toggle_opex_capex_manutencao",
-        )
-        render_visao_classificacao(con, escolha or opcoes[0])
+        render_visao_classificacao(con, "CAPEX")
     finally:
         con.close()
 
@@ -711,7 +725,7 @@ def pagina_manutencao_analise_financeira() -> None:
     abas = []
     if "opex_sustaining" in permitidos:
         abas += ["Pacotes", "Contas e Centros de Custo"]
-    if {"opex_sustaining", "capex_sustaining"} & permitidos:
+    if "capex_sustaining" in permitidos:
         abas.append(_ABA_SUSTAINING)
     if not abas:  # defensivo — a página só entra no menu se algum bate
         st.error("🚫 Você não tem acesso a nenhuma seção de Análise Financeira.")

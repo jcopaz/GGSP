@@ -90,6 +90,7 @@ from src.ingestion.loaders import (
     carregar_catalogo_objeto_classificacao,
     load_base_zero,
     load_catalogo_capex_obras,
+    load_catalogo_capex_sustaining,
     load_catalogo_contas,
     load_cji3_capex_obras_realizado,
     load_cji4_capex_obras,
@@ -696,6 +697,13 @@ def build_star_schema() -> str:
     if caminho_catalogo_capex_obras and os.path.exists(caminho_catalogo_capex_obras):
         df_catalogo_capex_obras = load_catalogo_capex_obras(caminho_catalogo_capex_obras)
 
+    # Catálogo de Elemento PEP do CAPEX Sustaining (só dimensão — nomeia o
+    # gráfico "Orçado por Elemento PEP" da aba CAPEX Sustaining). Opcional.
+    caminho_catalogo_capex_sustaining = cfg["caminhos"].get("catalogo_capex_sustaining")
+    df_catalogo_capex_sustaining = None
+    if caminho_catalogo_capex_sustaining and os.path.exists(caminho_catalogo_capex_sustaining):
+        df_catalogo_capex_sustaining = load_catalogo_capex_sustaining(caminho_catalogo_capex_sustaining)
+
     caminho_cji4 = cfg["caminhos"].get("cji4_capex_obras")
     df_cji4_capex_obras = None
     if caminho_cji4 and os.path.exists(caminho_cji4):
@@ -849,6 +857,11 @@ def build_star_schema() -> str:
             con.execute(
                 "CREATE OR REPLACE TABLE dim_catalogo_capex_obras AS "
                 "SELECT * FROM df_catalogo_capex_obras"
+            )
+        if df_catalogo_capex_sustaining is not None:
+            con.execute(
+                "CREATE OR REPLACE TABLE dim_pep_sustaining AS "
+                "SELECT * FROM df_catalogo_capex_sustaining"
             )
         con.execute("CREATE OR REPLACE TABLE fact_orcamento AS SELECT * FROM df_fact_orcamento")
         con.execute("CREATE OR REPLACE TABLE fact_realizado AS SELECT * FROM df_fact_realizado")

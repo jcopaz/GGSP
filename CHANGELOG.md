@@ -4,6 +4,53 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.0 — 2026-09-08
+
+**Reestruturação da "Análise Financeira" (docs/07 §3.2) + novo `dim_pep_
+sustaining`.** MAJOR = estrutura de abas nova + tabela nova no warehouse.
+
+- **Aba "Pacotes" ganhou `segmented_control` interno por família:
+  Manutenção (PM) | Despesas Gerais (PD) | Pessoal (PP)**.
+  `visao_manutencao.render_visao_manutencao` foi generalizada
+  (`familia=...`) — `resumo_manutencao` / `_dados_por_pacote` /
+  `_dados_mensal` / `_dados_por_conta` / `_grafico_escopo` / `_grafico_tipo`
+  aceitam `familia`. Cada sub-aba: Card → Orçado x Real por Pacote →
+  **Orçado por Conta – top 10** (novo aqui — veio da ex-aba OPEX Sustaining,
+  ordem macro→micro) → Tendência → Mensal → (só PM: Escopo/Tipo) → Árvore
+  N4 → N5. Banner/rótulos e `key=` de gráfico por família.
+- **Aba "OPEX / CAPEX Sustaining" → "CAPEX Sustaining"** (só o lado CAPEX).
+  O lado OPEX (gráficos "Orçado por Pacote"/"Orçado por Conta") foi
+  distribuído nas 3 sub-abas acima. O CAPEX passou a ser fatiado por
+  **Elemento PEP** (não por Pacote — é tudo PM03), nomeado pelo catálogo.
+  `visao_classificacao`: `_dados_por_pep` + `_grafico_por_pep` +
+  `_catalogo_pep_disponivel`; box informando que **não há Realizado nem
+  Projeção de CAPEX Sustaining** (fonte inexistente — Regra de Ouro). O
+  toggle OPEX/CAPEX de `_frag_af_capex_sustaining` saiu; RBAC da aba agora
+  é só `capex_sustaining`.
+- **`Catalago CAPEX Sustaining.xlsx`** (aba `Catalogo_PEP`) ingerido como
+  `dim_pep_sustaining` (só dimensão: PEP → Disciplina / Gerência / Região /
+  Projeto-Nome / Escopo). `load_catalogo_capex_sustaining` em
+  `ingestion/loaders.py`; wiring em `build_star_schema.py`;
+  `config/settings.yaml` ganhou a chave `catalogo_capex_sustaining`.
+  Cobertura: 10 dos 11 PEPs do Orçado CAPEX (o coarse `ME/22001`, ~86% do
+  valor, fica "(sem catálogo)" — não inventar).
+- **Fix de caminho no `settings.yaml`**: `consulta_contas` apontava pra
+  `data/raw/Consulta de Contas.xlsx`, que foi renomeado no disco pra
+  `data/raw/Orçado x Realizado.xlsx` (mesmo export). Sem o fix, o próximo
+  rebuild zerava TODO o OPEX do warehouse (`fact_orcamento` OPEX e
+  `fact_realizado` saem dessa fonte). Rebuild com o caminho certo bateu
+  100% com o backup `painel.duckdb.TXT` (2026-08-29) em todos os fatos.
+- **`tests/etapa5_analise_financeira_check.py`** atualizado (PM/PD/PP +
+  CAPEX por PEP; não exercita mais o lado OPEX de `render_visao_classificacao`,
+  que saiu do app).
+- **Ação de deploy**: reprocessar o warehouse (`python -m
+  src.model.build_star_schema`) — cria `dim_pep_sustaining`.
+- **Achado NÃO corrigido (aguarda decisão)**: o card/gráficos da sub-aba
+  **PM** somam OPEX **+** CAPEX no Orçado (R$83,97 MM = R$40,9 OPEX +
+  R$43,1 CAPEX), então a Aderência do PM fica ~23%. É comportamento
+  pré-existente ("está excelente", disse o usuário) — mantido igual. PD/PP
+  não têm CAPEX, então já são OPEX puro. Ver docs/07 §3.2.
+
 ## 10.0.2 — 2026-09-07
 
 - **`src/branding.py`** — chip/tag do multiselect da sidebar volta a

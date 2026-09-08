@@ -150,6 +150,64 @@ def _grafico_por_conta(df: pd.DataFrame, cor: str, top_n: int) -> go.Figure | No
     return fig
 
 
+# --------------------------------------------------------------------------- #
+# Lado CAPEX: quebra por Elemento PEP / Disciplina / Tipo (2026-09-08).
+# A aba "OPEX / CAPEX Sustaining" virou só "CAPEX Sustaining" — o lado OPEX
+# foi distribuído nas sub-abas PM/PD/PP da aba "Pacotes" (ver docs/07 §3.2 e
+# visao_manutencao.py). Aqui o CAPEX passa a ser fatiado por Elemento PEP
+# (não por Pacote — é tudo PM03), nomeado pelo catálogo `dim_pep_sustaining`.
+# NÃO tem Realizado nem Projeção: não existe execução de CAPEX Sustaining em
+# fonte nenhuma (SAP não carrega classificação contábil) — inventar violaria
+# a Regra de Ouro. `grupo_disciplina`/`tipo_item` só existem nas linhas de
+# CAPEX da Base Zero, por isso essas quebras vivem aqui, não na aba Pacotes.
+# --------------------------------------------------------------------------- #
+def _catalogo_pep_disponivel(con: duckdb.DuckDBPyConnection) -> bool:
+    try:
+        con.execute("SELECT 1 FROM dim_pep_sustaining LIMIT 1")
+        return True
+    except Exception:
+        return False
+
+
+def _dados_por_pep(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    """Orçado CAPEX por Elemento PEP, com nome/disciplina do catálogo quando
+    houver (o item coarse `ME/22001`, ~86% do total, não tem linha no
+    catálogo — fica sem disciplina, mostrado como '(sem catálogo)')."""
+    esc, esc_p = _escopo("CAPEX")
+    if _catalogo_pep_disponivel(con):
+        sql = (
+            "SELECT f.pep_id AS pep, "
+            "COALESCE(NULLIF(d.projeto_nome, ''), NULLIF(f.pep_nome, ''), '') AS nome, "
+            "COALESCE(NULLIF(d.disciplina, ''), '(sem catálogo)') AS disciplina, "
+            "SUM(f.valor_orcado) AS orcado "
+            "FROM fact_orcamento f LEFT JOIN dim_pep_sustaining d ON f.pep_id = d.elemento_pep "
+            f"WHERE f.classificacao_contabil = 'CAPEX'{esc} GROUP BY f.pep_id, nome, disciplina "
+            "ORDER BY orcado DESC"
+        )
+    else:
+        sql = (
+            "SELECT pep_id AS pep, NULLIF(pep_nome, '') AS nome, "
+            "'(sem catálogo)' AS disciplina, SUM(valor_orcado) AS orcado "
+            f"FROM fact_orcamento WHERE classificacao_contabil = 'CAPEX'{esc} "
+            "GROUP BY pep_id, nome ORDER BY orcado DESC"
+        )
+    return con.execute(sql, esc_p).df()
+
+
+def _grafico_por_pep(df: pd.DataFrame, cor: str, top_n: int = 15) -> go.Figure | None:
+    if df.empty:
+        return None
+    df = df.head(top_n).iloc[::-1].copy()
+    df["rotulo"] = df.apply(lambda r: f'{r["pep"]} — {r["nome"]}' if r["nome"] else r["pep"], axis=1)
+    fig = go.Figure(go.Bar(
+        x=df["orcado"], y=df["rotulo"], orientation="h", marker_color=cor,
+        text=[fmt_reais_abrev(v) for v in df["orcado"]], textposition="outside", cliponaxis=False,
+        hovertemplate="<b>%{y}</b><br>Orçado: %{text}<extra></extra>",
+    ))
+    fig.update_layout(title="Orçado por Elemento PEP", margin={"t": 60, "b": 40, "r": 140})
+    return fig
+
+
 def _render_card_classificacao(classificacao: str, resumo: dict) -> None:
     linhas_extra = ""
     if classificacao == "OPEX" and resumo["fora_plano"]:
@@ -169,6 +227,7 @@ def _render_card_classificacao(classificacao: str, resumo: dict) -> None:
 
 def render_visao_classificacao(con: duckdb.DuckDBPyConnection, classificacao: str) -> None:
     cor = _COR_CLASSIFICACAO[classificacao]
+    eh_capex = classificacao == "CAPEX"
     render_page_banner(
         _ICONE[classificacao], _TITULO[classificacao],
         "Só o Orçado é fatiado por Classificação Contábil — Realizado aparece como referência de Malha (SP) inteira.",
@@ -176,20 +235,33 @@ def render_visao_classificacao(con: duckdb.DuckDBPyConnection, classificacao: st
     guardar_e_faixa_universo(con, UNIVERSO_POR_CLASSIFICACAO[classificacao])  # RBAC de escopo (docs/08)
     _badges_dominio()
 
+    if eh_capex:
+        st.info(
+            "**Só Orçado.** Não existe Realizado de CAPEX Sustaining em fonte "
+            "nenhuma — o SAP não carrega classificação contábil e cai 100% "
+            "como OPEX (ver docs/07 §3.2). Por isso não há Orçado × Realizado "
+            "nem Projeção aqui; o Realizado abaixo é a referência de Malha "
+            "inteira (não fatiada), como no card."
+        )
+
     resumo = resumo_classificacao(con, classificacao)
     nomes_pacote = mapa_nomes_pacote(con)
 
-    # Card-resumo | divisória | gráfico por Pacote — mesmo padrão do Painel
-    # Executivo (Nível 1 | Nível 2), pedido do usuário em 2026-08-10.
-    # Layout compartilhado desde 6.4.0 (ver src/dashboard/layout.py).
-    def _visual_pacote() -> None:
-        fig_pacote = _grafico_por_pacote(_dados_por_pacote(con, classificacao), cor, nomes_pacote)
-        if fig_pacote:
-            st.plotly_chart(fig_pacote, use_container_width=True, key=f"vc-{classificacao}-pacote", config=CONFIG_PLOTLY)
+    # Card-resumo | divisória | gráfico macro. CAPEX -> por Elemento PEP
+    # (tudo PM03, nomeado pelo catálogo); OPEX -> por Pacote (legado).
+    def _visual_macro() -> None:
+        if eh_capex:
+            fig = _grafico_por_pep(_dados_por_pep(con), cor)
+            chave = f"vc-{classificacao}-pep"
+        else:
+            fig = _grafico_por_pacote(_dados_por_pacote(con, classificacao), cor, nomes_pacote)
+            chave = f"vc-{classificacao}-pacote"
+        if fig:
+            st.plotly_chart(fig, use_container_width=True, key=chave, config=CONFIG_PLOTLY)
 
     bloco_resumo_visual(
         lambda: _render_card_classificacao(classificacao, resumo),
-        _visual_pacote,
+        _visual_macro,
         key=f"vc-{classificacao}",
     )
 

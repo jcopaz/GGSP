@@ -10,7 +10,11 @@ caminhos:
   # Fonte trazida em 2026-08-10: Orçado OPEX x Realizado já cruzados por
   # Pacote+Conta, cobrindo os 5 GGs. Opcional — se o arquivo não existir,
   # build_star_schema.py pula essa tabela sem erro.
-  consulta_contas: "data/raw/Consulta de Contas.xlsx"
+  # Renomeado no disco para "Orçado x Realizado.xlsx" (mesmo export: aba
+  # "Export", colunas VersãoComparativo1/2/3). É a fonte PRIMÁRIA do OPEX
+  # hoje — `fact_orcamento` (OPEX) e `fact_realizado` saem daqui, não mais
+  # da Base Zero/SAP direto. Sem este arquivo, OPEX fica vazio no warehouse.
+  consulta_contas: "data/raw/Orçado x Realizado.xlsx"
   # De/para mestre entre código de conta e "conta interna" (COD_CG_SAP) —
   # une Orçamento (Base Zero) e Realizado (SAP) numa conta só no Nível 4.
   # Opcional — sem ele, conta_interna_id/nome caem de volta pro código
@@ -25,6 +29,13 @@ caminhos:
   cji4_capex_obras: "data/raw/CJI4.xlsx"
   catalogo_capex_obras: "data/raw/Catalago CAPEX Obras.xlsx"
   cji3_capex_obras: "data/raw/CJI3 2026 EXPORT_20260811_152541.xlsx"
+  # Catálogo de Elemento PEP do CAPEX Sustaining (Manutenção Corrente —
+  # Malha), trazido em 2026-09-08. É só dimensão (PEP -> Disciplina /
+  # Gerência Responsável / Região / Projeto-Nome / Escopo) — NÃO tem valor.
+  # Enriquece o gráfico "Orçado por Elemento PEP" da aba CAPEX Sustaining
+  # (não existe Realizado de CAPEX Sustaining em fonte nenhuma — ver
+  # docs/07 §3.2 e visao_classificacao.py). Opcional.
+  catalogo_capex_sustaining: "data/raw/Catalago CAPEX Sustaining.xlsx"
   # De/para do PCM (trazido em 2026-08-17) pra redistribuir o Combustível
   # Terceiros que chega do SAP com GERENCIA="#GERENCIA INEXISTENTE" (CC
   # CGG050). Opcional — sem ele, essa fatia continua em "Não atribuído".

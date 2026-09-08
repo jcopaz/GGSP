@@ -2,12 +2,15 @@
 Plano de Manutenção: `st.segmented_control` (Pacotes | Contas e Centros de
 Custo | CAPEX Sustaining), cada painel um `@st.fragment`.
 
+Atualizado 2026-09-08 pra reestruturação: "Pacotes" tem sub-abas por
+família (PM/PD/PP via `render_visao_manutencao(familia=...)`), e "CAPEX
+Sustaining" é só o lado CAPEX de `render_visao_classificacao`, fatiado por
+Elemento PEP. O lado OPEX de `render_visao_classificacao` saiu do app —
+não é mais exercitado aqui.
+
 `AppTest` não navega bem entre páginas de `st.navigation` (ver
-docs `feedback_orcamento_apptest_harness`), então aqui os `render_*` que
-os fragments chamam são exercitados direto, dentro de uma sessão — que é
-o que a Etapa 5 muda de risco (nenhum deles é novo, só passam a ser
-chamados de dentro de fragments aninhados). O load de `app.py` inteiro
-(nav monta, sem refs mortas) é coberto pelos AppTest de skip-login/admin.
+docs `feedback_orcamento_apptest_harness`), então os `render_*` que os
+fragments chamam são exercitados direto, dentro de uma sessão.
 
 Uso: python -m tests.etapa5_analise_financeira_check
 """
@@ -19,8 +22,9 @@ from streamlit.testing.v1 import AppTest
 
 
 def _script_paineis():
-    """Roda os 5 render_* que compõem os painéis da Análise Financeira,
-    um após o outro, na mesma sessão."""
+    """Roda os render_* que compõem os painéis da Análise Financeira, um
+    após o outro, na mesma sessão: Pacotes PM/PD/PP + Contas + Centro de
+    Custo + CAPEX Sustaining (por Elemento PEP)."""
     import streamlit as st
     import duckdb
 
@@ -31,16 +35,15 @@ def _script_paineis():
 
     con = duckdb.connect("data/warehouse/painel.duckdb", read_only=True)
     try:
-        st.header("Pacotes")
-        render_visao_manutencao(con, ano_fiscal=2026)
+        for fam in ("PM", "PD", "PP"):
+            st.header(f"Pacotes — {fam}")
+            render_visao_manutencao(con, ano_fiscal=2026, familia=fam)
         st.header("Contas")
         render_nivel4_contas(con, ano_fiscal=2026)
         st.header("Centro de Custo")
         render_nivel5_centro_custo(con, ano_fiscal=2026)
-        st.header("OPEX / CAPEX Sustaining (lado CAPEX)")
+        st.header("CAPEX Sustaining (por Elemento PEP)")
         render_visao_classificacao(con, "CAPEX")
-        st.header("OPEX (lado do toggle)")
-        render_visao_classificacao(con, "OPEX")
         st.write("RESULT ok")
     finally:
         con.close()
@@ -63,7 +66,7 @@ def main() -> None:
         raise SystemExit(f"admin: exceção num painel -> {list(at.exception)}")
     if not any(m.value == "RESULT ok" for m in at.markdown):
         raise SystemExit("admin: algum painel não chegou ao fim (sem 'RESULT ok').")
-    print("admin: 5 painéis renderizaram sem exceção -> OK")
+    print("admin: painéis renderizaram sem exceção -> OK")
 
     # analista escopado numa Gerência — mesmos painéis, recortados
     at2 = _run({
@@ -78,7 +81,7 @@ def main() -> None:
     if not any(m.value == "RESULT ok" for m in at2.markdown):
         raise SystemExit("escopado: algum painel não chegou ao fim.")
     tem_faixa = any("Recorte do seu acesso" in c.value for c in at2.caption)
-    print(f"escopado GGE_0025: 5 painéis sem exceção, faixa de recorte presente: {tem_faixa} -> OK")
+    print(f"escopado GGE_0025: painéis sem exceção, faixa de recorte presente: {tem_faixa} -> OK")
     if not tem_faixa:
         raise SystemExit("escopado: nenhum painel mostrou a faixa 'Recorte do seu acesso'.")
 

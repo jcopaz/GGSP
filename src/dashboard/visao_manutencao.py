@@ -1,7 +1,18 @@
-"""Visão Manutenção (SP) — réplica parcial da página "Visão Opex -
-Manutenção MALHA E GIV" do Power BI de referência (PDF trazido pelo
-usuário em 2026-08-06), recortada para os dados que realmente temos hoje:
-só GG = SP, família de pacote PM (Manutenção Malha — PM01/PM02/PM03/PM05).
+"""Visão por família de Pacote (OPEX de Manutenção Corrente) — réplica
+parcial da página "Visão Opex - Manutenção MALHA E GIV" do Power BI de
+referência (PDF trazido pelo usuário em 2026-08-06).
+
+Genérica por `familia` desde 2026-09-08 (pedido do usuário: replicar o
+modelo da aba "Pacotes" para Despesas Gerais e Pessoal — ver docs/07
+§3.2). `render_visao_manutencao(con, ano_fiscal, familia=...)`:
+- **PM** — Manutenção Malha (PM01/PM02/PM03/PM05). Único com as colunas
+  Grupo/Disciplina e Tipo na Base Zero → só PM mostra "Orçado por
+  Escopo/Tipo".
+- **PD** — Despesas Gerais.
+- **PP** — Pessoal.
+Todas as 3 famílias têm Orçado e Realizado (OPEX), então card, gráfico por
+Pacote (Orçado x Real), Tendência, Mensal, "Orçado por Conta" e as árvores
+N4/N5 funcionam para as 3.
 
 O que NÃO foi reproduzido, de propósito (não inventar dado/mapeamento):
 - Quebra "Classificação" (Opex Via / Opex EE / Indiretos) por conta: no
@@ -11,14 +22,11 @@ O que NÃO foi reproduzido, de propósito (não inventar dado/mapeamento):
   Grupo/Disciplina, Sub-Grupo/Escopo e Tipo — o Realizado (SAP) não carrega
   essas colunas, então os gráficos de Escopo/Tipo abaixo só têm Orçado.
 
-Árvores de Contas (Nível 4) e Centro de Custo (Nível 5), recortadas em
-familia_pacote="PM", adicionadas em 2026-08-06 a pedido do usuário ("Na
-visão Manutenção Malha é importante ter tudo isso também dentro da aba") —
-reaproveitam `render_arvore_contas`/`render_arvore_centro_custo` dos
-próprios módulos de Nível 4/5, sem duplicar a consulta nem o HTML da
-árvore. Os gráficos/queries que já existiam aqui passaram a respeitar
-também o filtro global de Período (Ano/Trimestre/Mês) da sidebar, pela
-mesma razão.
+Árvores de Contas (Nível 4) e Centro de Custo (Nível 5) reaproveitam
+`render_arvore_contas`/`render_arvore_centro_custo` dos próprios módulos de
+Nível 4/5 (que já aceitam `familia`), sem duplicar consulta nem o HTML da
+árvore. Todos os gráficos/queries respeitam o filtro global de Período
+(Ano/Trimestre/Mês) da sidebar.
 """
 from __future__ import annotations
 
@@ -38,6 +46,14 @@ from src.dashboard.paleta import COR_ORCADO, COR_REALIZADO
 from src.dashboard.tendencia import dados_tendencia, figura_tendencia
 
 FAMILIA_MANUTENCAO = "PM"
+
+# Metadados de exibição por família (banner + rótulos). A família é sempre
+# validada contra estas chaves antes de ir pra query.
+_FAMILIAS = {
+    "PM": {"icone": "🛠️", "titulo": "Manutenção (SP)", "sub": "família PM — Manutenção Malha", "curto": "Manutenção"},
+    "PD": {"icone": "📋", "titulo": "Despesas Gerais (SP)", "sub": "família PD — Despesas Gerais", "curto": "Despesas Gerais"},
+    "PP": {"icone": "👥", "titulo": "Pessoal (SP)", "sub": "família PP — Pessoal", "curto": "Pessoal"},
+}
 _NOMES_MES = {1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
               7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"}
 
@@ -53,15 +69,15 @@ def _where_recorte() -> tuple[str, list]:
     return where_p + where_e, [*params_p, *params_e]
 
 
-def resumo_manutencao(con: duckdb.DuckDBPyConnection) -> dict:
+def resumo_manutencao(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO) -> dict:
     where_periodo, params_periodo = _where_recorte()
     (orcado,) = con.execute(
         f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE familia_pacote = ?{where_periodo}",
-        [FAMILIA_MANUTENCAO, *params_periodo],
+        [familia, *params_periodo],
     ).fetchone()
     (realizado,) = con.execute(
         f"SELECT SUM(valor_realizado) FROM fact_realizado WHERE familia_pacote = ?{where_periodo}",
-        [FAMILIA_MANUTENCAO, *params_periodo],
+        [familia, *params_periodo],
     ).fetchone()
     orcado = orcado or 0.0
     realizado = realizado or 0.0
@@ -70,7 +86,7 @@ def resumo_manutencao(con: duckdb.DuckDBPyConnection) -> dict:
     return {"orcado": orcado, "realizado": realizado, "delta": delta, "aderencia": aderencia}
 
 
-def _dados_por_pacote(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+def _dados_por_pacote(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO) -> pd.DataFrame:
     where_periodo, params_periodo = _where_recorte()
     return con.execute(
         f"""
@@ -86,7 +102,7 @@ def _dados_por_pacote(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         FROM orc FULL OUTER JOIN real USING (pacote_id)
         ORDER BY pacote_id
         """,
-        [FAMILIA_MANUTENCAO, *params_periodo, FAMILIA_MANUTENCAO, *params_periodo],
+        [familia, *params_periodo, familia, *params_periodo],
     ).df()
 
 
@@ -110,7 +126,7 @@ def _grafico_por_pacote(df: pd.DataFrame, nomes_pacote: dict[str, str]) -> go.Fi
     return fig
 
 
-def _dados_mensal(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+def _dados_mensal(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO) -> pd.DataFrame:
     where_periodo, params_periodo = _where_recorte()
     df = con.execute(
         f"""
@@ -126,7 +142,7 @@ def _dados_mensal(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         FROM orc FULL OUTER JOIN real USING (mes)
         ORDER BY mes
         """,
-        [FAMILIA_MANUTENCAO, *params_periodo, FAMILIA_MANUTENCAO, *params_periodo],
+        [familia, *params_periodo, familia, *params_periodo],
     ).df()
     df["aderencia"] = df.apply(
         lambda r: (r["realizado"] / r["orcado"]) if r["orcado"] else None, axis=1
@@ -168,8 +184,10 @@ def _grafico_mensal(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def _grafico_escopo(con: duckdb.DuckDBPyConnection, top_n: int = 10) -> go.Figure | None:
-    """Só Orçado — Realizado (SAP) não carrega Grupo/Disciplina."""
+def _grafico_escopo(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO, top_n: int = 10) -> go.Figure | None:
+    """Só Orçado — Realizado (SAP) não carrega Grupo/Disciplina. Só a
+    família PM tem essa coluna preenchida na Base Zero (PD/PP vêm vazias),
+    então retorna None pras outras — o `render_*` nem monta a linha."""
     where_periodo, params_periodo = _where_recorte()
     df = con.execute(
         f"""
@@ -180,7 +198,7 @@ def _grafico_escopo(con: duckdb.DuckDBPyConnection, top_n: int = 10) -> go.Figur
         ORDER BY orcado DESC
         LIMIT ?
         """,
-        [FAMILIA_MANUTENCAO, *params_periodo, top_n],
+        [familia, *params_periodo, top_n],
     ).df()
     if df.empty:
         return None
@@ -197,8 +215,9 @@ def _grafico_escopo(con: duckdb.DuckDBPyConnection, top_n: int = 10) -> go.Figur
     return fig
 
 
-def _grafico_tipo(con: duckdb.DuckDBPyConnection) -> go.Figure | None:
-    """Só Orçado — Realizado (SAP) não carrega Tipo (Material/Serviço)."""
+def _grafico_tipo(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO) -> go.Figure | None:
+    """Só Orçado — Realizado (SAP) não carrega Tipo (Material/Serviço). Só
+    PM tem a coluna preenchida → None pras outras famílias."""
     where_periodo, params_periodo = _where_recorte()
     df = con.execute(
         f"""
@@ -206,7 +225,7 @@ def _grafico_tipo(con: duckdb.DuckDBPyConnection) -> go.Figure | None:
         FROM fact_orcamento WHERE familia_pacote = ? AND tipo_item != ''{where_periodo}
         GROUP BY tipo_item ORDER BY orcado DESC
         """,
-        [FAMILIA_MANUTENCAO, *params_periodo],
+        [familia, *params_periodo],
     ).df()
     if df.empty:
         return None
@@ -219,11 +238,44 @@ def _grafico_tipo(con: duckdb.DuckDBPyConnection) -> go.Figure | None:
     return fig
 
 
-def _render_card_manutencao(resumo: dict) -> None:
+def _dados_por_conta(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO, top_n: int = 10) -> pd.DataFrame:
+    """Orçado por `conta_interna_id` (mesma chave unificada do Nível 4 — pra
+    não mostrar código sem nome). Trazido pra cá em 2026-09-08: era o
+    gráfico "Orçado por Conta" da aba "OPEX / CAPEX Sustaining", que o
+    usuário pediu pra indexar aqui na ordem macro (Pacote) → micro (Conta)."""
+    where_periodo, params_periodo = _where_recorte()
+    return con.execute(
+        f"""
+        SELECT conta_interna_id AS conta, MAX(NULLIF(conta_interna_nome, '')) AS nome,
+               SUM(valor_orcado) AS orcado
+        FROM fact_orcamento
+        WHERE familia_pacote = ?{where_periodo}
+        GROUP BY conta_interna_id ORDER BY orcado DESC LIMIT ?
+        """,
+        [familia, *params_periodo, top_n],
+    ).df()
+
+
+def _grafico_por_conta(df: pd.DataFrame, top_n: int = 10) -> go.Figure | None:
+    if df.empty:
+        return None
+    df = df.iloc[::-1].copy()
+    df["rotulo"] = df.apply(lambda r: f'{r["conta"]} — {r["nome"]}' if r["nome"] else r["conta"], axis=1)
+    fig = go.Figure(go.Bar(
+        x=df["orcado"], y=df["rotulo"], orientation="h", marker_color=COR_ORCADO,
+        text=[fmt_reais_abrev(v) for v in df["orcado"]], textposition="outside", cliponaxis=False,
+        hovertemplate="<b>%{y}</b><br>Orçado: %{text}<extra></extra>",
+    ))
+    fig.update_layout(title=f"Orçado por Conta — {top_n} Principais", margin={"t": 60, "b": 40, "r": 120})
+    return fig
+
+
+def _render_card_manutencao(resumo: dict, familia: str = FAMILIA_MANUTENCAO) -> None:
+    meta = _FAMILIAS[familia]
     delta = resumo["delta"]
     cor_delta = "red" if delta > 0 else "green" if delta < 0 else "gray"
     with st.container(border=True):
-        st.markdown("**🛠️ Manutenção (SP)**")
+        st.markdown(f"**{meta['icone']} {meta['titulo']}**")
         st.markdown(
             escapar_cifrao_md(f"""
             | | |
@@ -236,71 +288,89 @@ def _render_card_manutencao(resumo: dict) -> None:
         )
 
 
-def render_visao_manutencao(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> None:
-    render_page_banner("🛠️", "Manutenção (SP)", "Recorte da família de pacote PM (Manutenção Malha).")
+def render_visao_manutencao(
+    con: duckdb.DuckDBPyConnection, ano_fiscal: int, familia: str = FAMILIA_MANUTENCAO,
+) -> None:
+    if familia not in _FAMILIAS:
+        raise ValueError(f"família desconhecida: {familia!r} (esperado: {list(_FAMILIAS)})")
+    meta = _FAMILIAS[familia]
+    k = familia.lower()  # prefixo único de key por família (fragmentos coexistem no mesmo run)
+
+    render_page_banner(meta["icone"], meta["titulo"], f"Recorte da {meta['sub']}.")
     guardar_e_faixa_universo(con, "opex_sustaining")  # RBAC de escopo (docs/08)
 
-    resumo = resumo_manutencao(con)
+    resumo = resumo_manutencao(con, familia)
     nomes_pacote = mapa_nomes_pacote(con)
 
     # Card-resumo | divisória | gráfico por Pacote — mesmo padrão das demais
     # abas. Layout compartilhado desde 6.4.0 (ver src/dashboard/layout.py).
     bloco_resumo_visual(
-        lambda: _render_card_manutencao(resumo),
+        lambda: _render_card_manutencao(resumo, familia),
         lambda: st.plotly_chart(
-            _grafico_por_pacote(_dados_por_pacote(con), nomes_pacote),
-            use_container_width=True, key="manut-por-pacote", config=CONFIG_PLOTLY,
+            _grafico_por_pacote(_dados_por_pacote(con, familia), nomes_pacote),
+            use_container_width=True, key=f"{k}-por-pacote", config=CONFIG_PLOTLY,
         ),
-        key="manut",
+        key=k,
     )
+
+    # Macro (Pacote) -> micro (Conta): "Orçado por Conta" logo abaixo do
+    # gráfico por Pacote (pedido do usuário 2026-09-08, ex-aba OPEX Sustaining).
+    fig_conta = _grafico_por_conta(_dados_por_conta(con, familia))
+    if fig_conta:
+        st.plotly_chart(fig_conta, use_container_width=True, key=f"{k}-por-conta", config=CONFIG_PLOTLY)
 
     st.divider()
     # Tendência com o mesmo recorte de escopo das demais consultas da
     # página (o default de `dados_tendencia` já força OPEX no Orçado).
     _frag_esc, _params_esc = clausula_escopo("opex_sustaining")
     df_tend = dados_tendencia(
-        con, ano_fiscal, familia=FAMILIA_MANUTENCAO,
+        con, ano_fiscal, familia=familia,
         filtro_orcado=(" AND classificacao_contabil = 'OPEX'" + _frag_esc, list(_params_esc)),
         filtro_realizado=(_frag_esc, list(_params_esc)) if _frag_esc else None,
     )
     st.plotly_chart(
-        figura_tendencia(df_tend, "Tendência do ano — Manutenção (SP)"),
-        use_container_width=True, key="manut-tendencia", config=CONFIG_PLOTLY,
+        figura_tendencia(df_tend, f"Tendência do ano — {meta['curto']} (SP)"),
+        use_container_width=True, key=f"{k}-tendencia", config=CONFIG_PLOTLY,
     )
     nota_forecast()
 
-    st.plotly_chart(_grafico_mensal(_dados_mensal(con)), use_container_width=True, key="manut-mensal", config=CONFIG_PLOTLY)
+    st.plotly_chart(_grafico_mensal(_dados_mensal(con, familia)), use_container_width=True, key=f"{k}-mensal", config=CONFIG_PLOTLY)
 
-    col_esc, col_tipo = st.columns(2)
-    with col_esc:
-        fig_escopo = _grafico_escopo(con)
-        if fig_escopo:
-            st.plotly_chart(fig_escopo, use_container_width=True, key="manut-escopo", config=CONFIG_PLOTLY)
-    with col_tipo:
-        fig_tipo = _grafico_tipo(con)
-        if fig_tipo:
-            st.plotly_chart(fig_tipo, use_container_width=True, key="manut-tipo", config=CONFIG_PLOTLY)
+    # Escopo (Grupo/Disciplina) e Tipo: só a Base Zero PM carrega essas
+    # colunas — pras outras famílias os helpers retornam None e o bloco
+    # nem aparece.
+    fig_escopo = _grafico_escopo(con, familia)
+    fig_tipo = _grafico_tipo(con, familia)
+    if fig_escopo or fig_tipo:
+        col_esc, col_tipo = st.columns(2)
+        with col_esc:
+            if fig_escopo:
+                st.plotly_chart(fig_escopo, use_container_width=True, key=f"{k}-escopo", config=CONFIG_PLOTLY)
+        with col_tipo:
+            if fig_tipo:
+                st.plotly_chart(fig_tipo, use_container_width=True, key=f"{k}-tipo", config=CONFIG_PLOTLY)
 
     st.divider()
-    st.subheader("Nível 4 — Contas (Manutenção)")
+    st.subheader(f"Nível 4 — Contas ({meta['curto']})")
     st.caption(
-        "Orçado/Realizado/Delta e Tendência da família PM já estão no "
+        f"Orçado/Realizado/Delta e Tendência da família {familia} já estão no "
         "resumo acima — aqui só o detalhe novo: quais Contas puxam o desvio."
     )
-    render_arvore_contas(con, familia=FAMILIA_MANUTENCAO, key_prefix="manut-n4", mostrar_resumo=False)
+    render_arvore_contas(con, familia=familia, key_prefix=f"af-{k}-n4", mostrar_resumo=False)
 
     st.divider()
-    st.subheader("Nível 5 — Centro de Custo (Manutenção)")
+    st.subheader(f"Nível 5 — Centro de Custo ({meta['curto']})")
     st.caption(
         "Mesmo raciocínio: resumo já está acima, aqui só o detalhe de "
         "quais Centros de Custo puxam o desvio."
     )
-    render_arvore_centro_custo(con, familia=FAMILIA_MANUTENCAO, key_prefix="manut-n5", mostrar_resumo=False)
+    render_arvore_centro_custo(con, familia=familia, key_prefix=f"af-{k}-n5", mostrar_resumo=False)
 
-    st.info(
-        "Não reproduzido aqui: quebra por 'Classificação' (Opex Via / Opex "
-        "EE / Indiretos) do Power BI de referência — exigiria uma tabela "
-        "Conta → Classificação que não temos, e eu não ia inventar esse "
-        "mapeamento. E os gráficos de Escopo/Tipo acima só têm barra de "
-        "Orçado porque o Realizado (SAP) não carrega essas colunas."
-    )
+    if familia == FAMILIA_MANUTENCAO:
+        st.info(
+            "Não reproduzido aqui: quebra por 'Classificação' (Opex Via / Opex "
+            "EE / Indiretos) do Power BI de referência — exigiria uma tabela "
+            "Conta → Classificação que não temos, e eu não ia inventar esse "
+            "mapeamento. E os gráficos de Escopo/Tipo acima só têm barra de "
+            "Orçado porque o Realizado (SAP) não carrega essas colunas."
+        )

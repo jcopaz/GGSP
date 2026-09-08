@@ -479,6 +479,37 @@ def load_catalogo_capex_obras(path: str) -> pd.DataFrame:
     })
 
 
+def load_catalogo_capex_sustaining(path: str) -> pd.DataFrame:
+    """Carrega "Catalago CAPEX Sustaining.xlsx", aba `Catalogo_PEP` (trazido
+    em 2026-09-08). É **só dimensão** — mapeia cada `Elemento PEP` do CAPEX
+    de Manutenção Corrente (Malha) para Disciplina (Eletroeletrônica / Via
+    Permanente / Infraestrutura), Gerência Responsável, Região, Projeto/Nome
+    e Escopo. NÃO tem valor: não existe Realizado de CAPEX Sustaining em
+    fonte nenhuma (ver docs/07 §3.2). Serve só pra nomear/agrupar o gráfico
+    "Orçado por Elemento PEP" da aba CAPEX Sustaining.
+
+    Chave `elemento_pep` casa com `fact_orcamento.pep_id` (linhas
+    `classificacao_contabil = 'CAPEX'`). Cobertura parcial esperada: os PEPs
+    granulares `MC/24004C-04-*` / `MC/24005C-04-*` batem direto; o item
+    coarse `ME/22001` (Base Zero, ~86% do Orçado CAPEX) não tem linha
+    própria aqui — fica sem Disciplina, mostrado como tal (não inventar).
+    """
+    df = pd.read_excel(path, sheet_name="Catalogo_PEP")
+    saida = pd.DataFrame({
+        "elemento_pep": df["Elemento PEP"].astype(str).str.strip(),
+        "prefixo_regra": df["Prefixo Regra"].astype(str).str.strip(),
+        "regiao": df["Regiao"].astype(str).str.strip(),
+        "gerencia_responsavel": df["Gerencia Responsavel"].astype(str).str.strip(),
+        "disciplina": df["Disciplina"].astype(str).str.strip(),
+        "classe_familia": df["Classe/Familia"].astype(str).str.strip(),
+        "projeto_nome": df["Projeto/Nome"].astype(str).str.strip(),
+        "escopo": df["Escopo"].astype(str).str.strip(),
+        "coordenacao": df["Coordenacao"].astype(str).str.strip(),
+        "centro_trecho_custo": df["Centro/Trecho de Custo"].astype(str).str.strip(),
+    })
+    return saida[saida["elemento_pep"] != ""].drop_duplicates(subset="elemento_pep").reset_index(drop=True)
+
+
 # Reclassificação Descrição -> Grupo (PCE Base Luiz.xlsx, trazida em
 # 2026-08-19). A coluna "Grupo" bruta da fonte é inconsistente entre
 # versões — confirmado em FC06+06, onde SERVIÇOS/MATERIAIS/ENGENHARIA/
