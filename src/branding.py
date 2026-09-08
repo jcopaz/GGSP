@@ -449,7 +449,121 @@ def inject_shell_css() -> None:
             background: var(--f360-gold);
             border-radius: 0 3px 3px 0;
         }
-        [data-testid="stSidebar"] a { position: relative; }
+        [data-testid="stSidebar"] a {
+            position: relative;
+        }
+
+        /* =========================================================
+        OVERRIDE FINAL DE CONTRASTE
+        Chips do multiselect e botão Aplicar filtros
+        Deve permanecer no FINAL do style
+        ========================================================= */
+
+        /*
+        O fundo navy já está correto.
+
+        O filtro abaixo transforma visualmente qualquer cor interna dos
+        textos e ícones dos chips em branco, mesmo quando o BaseWeb aplica
+        a cor por uma classe dinâmica do Emotion.
+        */
+        [data-testid="stSidebar"]
+        [data-baseweb="select"]
+        [data-baseweb="tag"] > *,
+
+        [data-testid="stSidebar"]
+        [data-baseweb="select"]
+        [data-baseweb="tag"] span,
+
+        [data-testid="stSidebar"]
+        [data-baseweb="select"]
+        [data-baseweb="tag"] span[title],
+
+        [data-testid="stSidebar"]
+        [data-baseweb="select"]
+        [data-baseweb="tag"] p,
+
+        [data-testid="stSidebar"]
+        [data-baseweb="select"]
+        [data-baseweb="tag"] svg {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            stroke: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+            filter: brightness(0) invert(1) !important;
+        }
+
+        /*
+        Algumas versões do Streamlit não mantêm data-baseweb="tag"
+        no elemento externo. Por isso existe este fallback usando
+        diretamente o componente stMultiSelect.
+        */
+        [data-testid="stSidebar"]
+        [data-testid="stMultiSelect"]
+        [data-baseweb="tag"] > *,
+
+        [data-testid="stSidebar"]
+        [data-testid="stMultiSelect"]
+        [data-baseweb="tag"] * {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            stroke: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+            filter: brightness(0) invert(1) !important;
+        }
+
+        /* Mantém o fundo navy somente no chip externo */
+        [data-testid="stSidebar"]
+        [data-baseweb="select"]
+        [data-baseweb="tag"],
+
+        [data-testid="stSidebar"]
+        [data-testid="stMultiSelect"]
+        [data-baseweb="tag"] {
+            background: #1e3a5f !important;
+            background-color: #1e3a5f !important;
+            background-image: none !important;
+            border-color: #1e3a5f !important;
+            opacity: 1 !important;
+            filter: none !important;
+        }
+
+        /* Texto e ícones internos do botão Aplicar filtros */
+        [data-testid="stSidebar"]
+        button[kind="primary"] > *,
+
+        [data-testid="stSidebar"]
+        button[kind="primary"] p,
+
+        [data-testid="stSidebar"]
+        button[kind="primary"] span,
+
+        [data-testid="stSidebar"]
+        [data-testid="stBaseButton-primary"] > *,
+
+        [data-testid="stSidebar"]
+        [data-testid="stBaseButton-primary"] p,
+
+        [data-testid="stSidebar"]
+        [data-testid="stBaseButton-primary"] span {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+            filter: brightness(0) invert(1) !important;
+        }
+
+        /* Não aplica filtro no fundo do botão */
+        [data-testid="stSidebar"]
+        button[kind="primary"],
+
+        [data-testid="stSidebar"]
+        [data-testid="stBaseButton-primary"] {
+            color: #ffffff !important;
+            filter: none !important;
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
