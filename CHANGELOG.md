@@ -4,6 +4,16 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.1 — 2026-09-08
+
+- **`app.py::TIPOS_ARQUIVO`** ganhou `catalogo_capex_sustaining` — zona de
+  upload própria em "Gestão › Dados e Qualidade" pro `Catalago CAPEX
+  Sustaining.xlsx`. Sem isso o catálogo só existia se o arquivo estivesse
+  solto em `data/raw/` (o que funciona local, mas no Streamlit Cloud o
+  `data/raw/` é reconstruído do `app.arquivo_bruto` no Neon — e o catálogo
+  não tinha como chegar lá). `dim_pep_sustaining` continua opcional: sem o
+  arquivo, o gráfico "Orçado por Elemento PEP" cai no `pep_nome` bruto.
+
 ## 11.0.0 — 2026-09-08
 
 **Reestruturação da "Análise Financeira" (docs/07 §3.2) + novo `dim_pep_

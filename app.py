@@ -243,6 +243,12 @@ TIPOS_ARQUIVO = {
         "caminho": CFG["caminhos"].get("catalogo_capex_obras", ""),
         "grupo": "Sob demanda",
     },
+    "catalogo_capex_sustaining": {
+        "titulo": "Catálogo de Elemento PEP (CAPEX Sustaining)",
+        "extensoes": (".xlsx",),
+        "caminho": CFG["caminhos"].get("catalogo_capex_sustaining", ""),
+        "grupo": "Sob demanda",
+    },
     "explicacoes": {
         "titulo": "Explicações de Causa (CSV de apoio)",
         "extensoes": (".csv",),
