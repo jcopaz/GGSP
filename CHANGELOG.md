@@ -4,6 +4,19 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.3 — 2026-09-08
+
+- **`src/branding.py`** — 3ª tentativa no chip do multiselect da sidebar
+  (screenshot do usuário: ainda navy-on-navy). Endurecido: hex literal
+  `#c9932f` no lugar de `var(--f360-gold)`; seletor de especificidade alta
+  `[data-baseweb="select"] [data-baseweb="tag"]` (3 atributos, ganha de
+  classe emotion sem `!important`); **`-webkit-text-fill-color: #fff`**
+  além de `color` (BaseWeb/emotion às vezes fixa o `-webkit-text-fill-color`
+  do texto, que sobrepõe `color` no render — provável causa de "letra
+  continua azul mesmo com `color:#fff !important`"); branco no `span[title]`
+  interno (onde o BaseWeb 1.57 põe o texto). Se persistir navy, o deploy
+  não subiu — conferir a versão na tela de login (tem que ser **v11.0.3**).
+
 ## 11.0.2 — 2026-09-08
 
 Ajustes na aba **CAPEX Sustaining** (feedback do usuário):

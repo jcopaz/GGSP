@@ -268,26 +268,27 @@ def inject_shell_css() -> None:
 
         /* ===== Tag / chip do multiselect (sidebar): dourado SÓLIDO,
         texto + "×" brancos =====
-        Pedido do usuário 2026-09-01 ("fundo do texto dos filtros dourado,
-        letras brancas"), reconfirmado 2026-09-07 — os chips tinham voltado
-        a herdar o azul-marinho do `primaryColor` (config.toml). O seletor
-        antigo só pegava `[data-baseweb="tag"]`; o Streamlit 1.57 passou a
-        injetar `overrides` no BaseWeb Tag e a árvore do chip variou entre
-        versões. Aqui: lista de seletores larga (data-baseweb + wrapper
-        `.stMultiSelect` + container do valor), `background-color`
-        EXPLÍCITO além do shorthand, `background-image: none` pra ganhar de
-        qualquer gradiente/tema herdado, e a cor branca aplicada em `*`
-        (não elemento por elemento — o BaseWeb aninha spans/divs que mudam
-        de release). É o único ponto em que --f360-gold vira fundo cheio,
-        e continua num elemento pequeno (o valor selecionado). */
+        Pedido do usuário 2026-09-01, reconfirmado 2026-09-07 e de novo
+        2026-09-08 (screenshot: chip ainda navy-on-navy). Endurecido:
+        - HEX LITERAL (#c9932f), não `var(--f360-gold)` — remove qualquer
+          risco de a variável não resolver naquele nó do DOM;
+        - especificidade alta: `[data-baseweb="select"] [data-baseweb="tag"]`
+          = 3 seletores de atributo, ganha de qualquer classe emotion do
+          BaseWeb/Streamlit (que não usa !important nas classes geradas);
+        - `background-color` explícito + `background-image: none`;
+        - branco no chip inteiro (`*`) E no `<span title>` interno (onde o
+          BaseWeb 1.57 põe o texto — confirmado no bundle).
+        Se MESMO ASSIM continuar navy: o deploy não subiu o código novo —
+        conferir a versão na tela de login. */
         [data-testid="stSidebar"] [data-baseweb="tag"],
         [data-testid="stSidebar"] span[data-baseweb="tag"],
-        [data-testid="stSidebar"] [data-testid="stMultiSelect"] span[data-baseweb="tag"],
-        [data-testid="stSidebar"] .stMultiSelect [data-baseweb="tag"] {
-            background: var(--f360-gold) !important;
-            background-color: var(--f360-gold) !important;
+        [data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"],
+        [data-testid="stSidebar"] [data-baseweb="popover"] [data-baseweb="tag"],
+        [data-testid="stSidebar"] [data-testid="stMultiSelect"] [data-baseweb="tag"] {
+            background: #c9932f !important;
+            background-color: #c9932f !important;
             background-image: none !important;
-            border: 1px solid var(--f360-gold) !important;
+            border: 1px solid #c9932f !important;
             border-radius: 7px !important;
             color: #ffffff !important;
             font-size: 0.78rem !important;
@@ -296,10 +297,15 @@ def inject_shell_css() -> None:
             padding: 1px 4px 1px 7px !important;
             box-shadow: none !important;
         }
-        /* Texto e qualquer filho do chip: branco. Regra `*` de propósito. */
-        [data-testid="stSidebar"] [data-baseweb="tag"] * {
+        /* Texto e qualquer filho do chip: branco. `*` + o span do texto do
+        BaseWeb explícito, com especificidade alta. */
+        [data-testid="stSidebar"] [data-baseweb="tag"] *,
+        [data-testid="stSidebar"] [data-baseweb="tag"] > span,
+        [data-testid="stSidebar"] [data-baseweb="tag"] span[title],
+        [data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"] span {
             color: #ffffff !important;
             fill: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
         }
 
         /* Reset dos botõezinhos internos do BaseWeb (× da tag, limpar-tudo,
