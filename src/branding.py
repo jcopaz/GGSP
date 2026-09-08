@@ -266,46 +266,38 @@ def inject_shell_css() -> None:
             font-size: 0.82rem !important;
         }
 
-        /* ===== Tag / chip do multiselect (sidebar): dourado SÓLIDO,
-        texto + "×" brancos =====
-        Pedido do usuário 2026-09-01, reconfirmado 2026-09-07 e de novo
-        2026-09-08 (screenshot: chip ainda navy-on-navy). Endurecido:
-        - HEX LITERAL (#c9932f), não `var(--f360-gold)` — remove qualquer
-          risco de a variável não resolver naquele nó do DOM;
-        - especificidade alta: `[data-baseweb="select"] [data-baseweb="tag"]`
-          = 3 seletores de atributo, ganha de qualquer classe emotion do
-          BaseWeb/Streamlit (que não usa !important nas classes geradas);
-        - `background-color` explícito + `background-image: none`;
-        - branco no chip inteiro (`*`) E no `<span title>` interno (onde o
-          BaseWeb 1.57 põe o texto — confirmado no bundle).
-        Se MESMO ASSIM continuar navy: o deploy não subiu o código novo —
-        conferir a versão na tela de login. */
-        [data-testid="stSidebar"] [data-baseweb="tag"],
-        [data-testid="stSidebar"] span[data-baseweb="tag"],
-        [data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"],
-        [data-testid="stSidebar"] [data-baseweb="popover"] [data-baseweb="tag"],
-        [data-testid="stSidebar"] [data-testid="stMultiSelect"] [data-baseweb="tag"] {
-            background: #c9932f !important;
-            background-color: #c9932f !important;
-            background-image: none !important;
-            border: 1px solid #c9932f !important;
-            border-radius: 7px !important;
-            color: #ffffff !important;
-            font-size: 0.78rem !important;
-            font-weight: 500 !important;
-            margin: 2px !important;
-            padding: 1px 4px 1px 7px !important;
-            box-shadow: none !important;
-        }
-        /* Texto e qualquer filho do chip: branco. `*` + o span do texto do
-        BaseWeb explícito, com especificidade alta. */
-        [data-testid="stSidebar"] [data-baseweb="tag"] *,
-        [data-testid="stSidebar"] [data-baseweb="tag"] > span,
-        [data-testid="stSidebar"] [data-baseweb="tag"] span[title],
-        [data-testid="stSidebar"] [data-baseweb="select"] [data-baseweb="tag"] span {
+        /* ===== Chip do multiselect da sidebar — TEXTO BRANCO =====
+        Histórico: 3 tentativas (v10.0.2 / v11.0.2 / v11.0.3) com seletores
+        escopados em `[data-testid="stSidebar"]` NÃO surtiram efeito — nem no
+        fundo nem no texto, mesmo em janela anônima com o deploy novo (então
+        não é cache). O usuário aceitou 2026-09-08 manter o fundo azul-marinho
+        (do `primaryColor`) e só pediu a LETRA BRANCA.
+        Aqui a regra é GLOBAL (sem escopo de sidebar) — o único uso de
+        `[data-baseweb="tag"]` no app é o chip do multiselect da sidebar,
+        então não há colateral — e usa `-webkit-text-fill-color` (que o
+        BaseWeb/emotion fixa e sobrepõe `color` no render do Chromium) +
+        `color` + `opacity:1`. Se ISTO não pegar, o `<style>` global não está
+        alcançando o nó — aí a injeção tem que mudar de lugar (ver
+        `filtros.py`). */
+        [data-baseweb="tag"],
+        [data-baseweb="tag"] *,
+        [data-baseweb="tag"] > span,
+        [data-baseweb="tag"] span[title],
+        [data-baseweb="select"] [data-baseweb="tag"] span {
             color: #ffffff !important;
             fill: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+        }
+        /* Fundo do chip: mantém o navy do tema, só fixa explícito pra não
+        depender do cálculo do BaseWeb. */
+        [data-baseweb="tag"],
+        [data-testid="stSidebar"] [data-baseweb="tag"] {
+            background: #1e3a5f !important;
+            background-color: #1e3a5f !important;
+            background-image: none !important;
+            border-color: #1e3a5f !important;
+            border-radius: 7px !important;
         }
 
         /* Reset dos botõezinhos internos do BaseWeb (× da tag, limpar-tudo,

@@ -235,6 +235,27 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
     4. Tempo (quando) — Período (Ano/Trimestre/Mês), estático (fora de
        expander desde 2026-08-28, a pedido do usuário).
     """
+    # Reforço do estilo do chip do multiselect: LETRA BRANCA no chip navy.
+    # branding.py::inject_shell_css já injeta isso, mas 3 tentativas não
+    # pegaram no deploy (2026-09-08) — injetar aqui de novo, no fim da árvore
+    # da sidebar, garante que este `<style>` é o ÚLTIMO do documento e ganha
+    # qualquer empate de `!important` por ordem de cascata. `-webkit-text-
+    # fill-color` porque o BaseWeb/emotion fixa essa prop e ela sobrepõe
+    # `color` no Chromium.
+    st.sidebar.markdown(
+        """
+        <style>
+        [data-baseweb="tag"], [data-baseweb="tag"] *,
+        [data-baseweb="select"] [data-baseweb="tag"] span {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.sidebar.divider()
     st.sidebar.caption("Ajuste os filtros e clique em **Aplicar filtros** no fim.")
 

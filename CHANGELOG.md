@@ -4,6 +4,24 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.4 — 2026-09-08
+
+**Chip do multiselect — 4ª tentativa (usuário aceitou fundo navy, só quer
+letra branca).** As 3 anteriores não pegaram nem em janela anônima com o
+deploy novo.
+
+- **`src/branding.py`** — regra do chip agora **global** (sem escopo
+  `[data-testid="stSidebar"]`; o único `[data-baseweb="tag"]` do app é o
+  chip da sidebar) + `-webkit-text-fill-color: #fff` + `opacity: 1`.
+- **`src/dashboard/filtros.py`** — o MESMO `<style>` de letra branca é
+  reinjetado no topo de `renderizar_filtros_sidebar`, pra ser o **último**
+  `<style>` do documento e vencer qualquer empate de `!important` por
+  ordem de cascata (hipótese: uma regra emotion do BaseWeb com `!important`
+  e mesma especificidade estava ganhando por vir depois).
+- Se ainda assim não pegar: preciso do **F12 → Inspecionar o chip** (nome
+  da tag, `class`, `data-*`, e o mesmo do `<span>` do texto) pra acertar o
+  seletor de uma vez.
+
 ## 11.0.3 — 2026-09-08
 
 - **`src/branding.py`** — 3ª tentativa no chip do multiselect da sidebar
