@@ -4,6 +4,19 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 10.0.2 — 2026-09-07
+
+- **`src/branding.py`** — chip/tag do multiselect da sidebar volta a
+  ficar **dourado sólido (`--f360-gold`) + texto e "×" brancos**. Tinha
+  regredido pro azul-marinho do `primaryColor` (o Streamlit 1.57 passou a
+  injetar `overrides` no BaseWeb Tag e a árvore do chip mudou). Correção:
+  lista de seletores mais larga (`[data-baseweb="tag"]` + `.stMultiSelect`
+  + `[data-testid="stMultiSelect"]`), `background-color` explícito +
+  `background-image: none`, cor branca aplicada em `*` dentro do chip, e o
+  "×" cobrindo também `[data-testid="stMultiSelectDeleteIcon"]`. Só CSS da
+  sidebar — nenhuma paleta de gráfico tocada. Validação visual pendente
+  (sem navegador no ambiente).
+
 ## 10.0.1 — 2026-09-07 (docs)
 
 - **`FIN360_VISAO_IDEAL.md`** passa a ser versionado (estava solto no

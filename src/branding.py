@@ -266,13 +266,27 @@ def inject_shell_css() -> None:
             font-size: 0.82rem !important;
         }
 
-        /* Tag / chip: dourado SÓLIDO com texto e "×" brancos (pedido do
-        usuário 2026-09-01 — "fundo do texto dos filtros dourado, letras
-        brancas"). É o único ponto em que --f360-gold vira fundo cheio;
-        continua sendo um elemento pequeno (o valor selecionado), não uma
-        superfície grande. */
-        [data-testid="stSidebar"] [data-baseweb="tag"] {
+        /* ===== Tag / chip do multiselect (sidebar): dourado SÓLIDO,
+        texto + "×" brancos =====
+        Pedido do usuário 2026-09-01 ("fundo do texto dos filtros dourado,
+        letras brancas"), reconfirmado 2026-09-07 — os chips tinham voltado
+        a herdar o azul-marinho do `primaryColor` (config.toml). O seletor
+        antigo só pegava `[data-baseweb="tag"]`; o Streamlit 1.57 passou a
+        injetar `overrides` no BaseWeb Tag e a árvore do chip variou entre
+        versões. Aqui: lista de seletores larga (data-baseweb + wrapper
+        `.stMultiSelect` + container do valor), `background-color`
+        EXPLÍCITO além do shorthand, `background-image: none` pra ganhar de
+        qualquer gradiente/tema herdado, e a cor branca aplicada em `*`
+        (não elemento por elemento — o BaseWeb aninha spans/divs que mudam
+        de release). É o único ponto em que --f360-gold vira fundo cheio,
+        e continua num elemento pequeno (o valor selecionado). */
+        [data-testid="stSidebar"] [data-baseweb="tag"],
+        [data-testid="stSidebar"] span[data-baseweb="tag"],
+        [data-testid="stSidebar"] [data-testid="stMultiSelect"] span[data-baseweb="tag"],
+        [data-testid="stSidebar"] .stMultiSelect [data-baseweb="tag"] {
             background: var(--f360-gold) !important;
+            background-color: var(--f360-gold) !important;
+            background-image: none !important;
             border: 1px solid var(--f360-gold) !important;
             border-radius: 7px !important;
             color: #ffffff !important;
@@ -282,7 +296,11 @@ def inject_shell_css() -> None:
             padding: 1px 4px 1px 7px !important;
             box-shadow: none !important;
         }
-        [data-testid="stSidebar"] [data-baseweb="tag"] span { color: #ffffff !important; }
+        /* Texto e qualquer filho do chip: branco. Regra `*` de propósito. */
+        [data-testid="stSidebar"] [data-baseweb="tag"] * {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+        }
 
         /* Reset dos botõezinhos internos do BaseWeb (× da tag, limpar-tudo,
         seta) — sem fundo/borda/caixa; deixa o BaseWeb só desenhar o ícone.
@@ -302,15 +320,13 @@ def inject_shell_css() -> None:
             background: rgba(255, 255, 255, 0.25) !important;
             border-radius: 4px !important;
         }
-        /* "×" da tag: branco sobre o dourado sólido. */
-        [data-testid="stSidebar"] [data-baseweb="tag"] svg {
-            fill: rgba(255, 255, 255, 0.9) !important;
-            color: rgba(255, 255, 255, 0.9) !important;
-            width: 13px !important; height: 13px !important;
-        }
-        [data-testid="stSidebar"] [data-baseweb="tag"]:hover svg {
+        /* "×" da tag: branco sobre o dourado (cobre o <svg> e o testid do
+        ícone de remover do Streamlit). */
+        [data-testid="stSidebar"] [data-baseweb="tag"] svg,
+        [data-testid="stSidebar"] [data-testid="stMultiSelectDeleteIcon"] {
             fill: #ffffff !important;
             color: #ffffff !important;
+            width: 13px !important; height: 13px !important;
         }
         /* Seta ⌄ / limpar-tudo do select: legível (não miniatura). */
         [data-testid="stSidebar"] [data-baseweb="select"] > div > div:last-child svg {
