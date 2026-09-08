@@ -54,17 +54,6 @@ _TITULO = {"CAPEX": "CAPEX Manutenção — Malha", "OPEX": "Visão OPEX (Manute
 _ICONE = {"CAPEX": "🏗️", "OPEX": "🛠️"}
 
 
-def _badges_dominio() -> None:
-    """3 domínios do universo "Manutenção Corrente" (ver diagrama do
-    usuário, 2026-08-11) — "Obras" deixou de ser "sem dado carregado" (tem
-    fonte própria agora, CJI4/CJI3, seção "CAPEX Projetos") mas continua
-    fora desta página específica, que é só Manutenção Corrente."""
-    c1, c2, c3 = st.columns(3)
-    c1.success("✅ Malha — dado carregado")
-    c2.markdown(":gray[⬜ Infra — sem dado carregado (pendência com a Alice/PMO)]")
-    c3.markdown(":blue[↗️ Obras — carregado, ver seção **CAPEX Projetos (Obras)**]")
-
-
 def _escopo(classificacao: str) -> tuple[str, list]:
     """Fragmento de recorte por Gerência (RBAC de escopo — docs/08), no
     universo do lado escolhido (OPEX -> opex_sustaining, CAPEX ->
@@ -169,42 +158,79 @@ def _catalogo_pep_disponivel(con: duckdb.DuckDBPyConnection) -> bool:
         return False
 
 
+# fact `gerencia_raw` no CAPEX vem só como 'SP'/'VP'; o catálogo usa
+# 'SP'/'Vale do Paraiba'/'RAIF' em `regiao`. De/para pro join por prefixo.
+_REGIAO_FACT_PARA_CATALOGO = {"SP": "SP", "VP": "Vale do Paraiba"}
+
+
 def _dados_por_pep(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
-    """Orçado CAPEX por Elemento PEP, com nome/disciplina do catálogo quando
-    houver (o item coarse `ME/22001`, ~86% do total, não tem linha no
-    catálogo — fica sem disciplina, mostrado como '(sem catálogo)')."""
+    """Orçado CAPEX por Elemento PEP × Região.
+
+    O item coarse `ME/22001` (~86% do Orçado CAPEX) não tem linha própria no
+    catálogo, mas o `fact_orcamento` já o divide por `gerencia_raw`
+    (SP R$13,7 MM / VP R$23,2 MM — divisão real do dado, não rateio) e o
+    catálogo tem as 3 linhas de prefixo `ME/22001` (ME/22001C-04-04 SP,
+    -05 VP, -06 RAIF — RAIF sem orçado). Nome/disciplina vêm: 1º do match
+    exato (`elemento_pep = pep_id`), 2º do match por prefixo + região.
+    Colunas: pep, regiao, nome, disciplina, orcado.
+    """
     esc, esc_p = _escopo("CAPEX")
-    if _catalogo_pep_disponivel(con):
-        sql = (
-            "SELECT f.pep_id AS pep, "
-            "COALESCE(NULLIF(d.projeto_nome, ''), NULLIF(f.pep_nome, ''), '') AS nome, "
-            "COALESCE(NULLIF(d.disciplina, ''), '(sem catálogo)') AS disciplina, "
-            "SUM(f.valor_orcado) AS orcado "
-            "FROM fact_orcamento f LEFT JOIN dim_pep_sustaining d ON f.pep_id = d.elemento_pep "
-            f"WHERE f.classificacao_contabil = 'CAPEX'{esc} GROUP BY f.pep_id, nome, disciplina "
-            "ORDER BY orcado DESC"
-        )
-    else:
-        sql = (
-            "SELECT pep_id AS pep, NULLIF(pep_nome, '') AS nome, "
-            "'(sem catálogo)' AS disciplina, SUM(valor_orcado) AS orcado "
+    if not _catalogo_pep_disponivel(con):
+        df = con.execute(
+            "SELECT pep_id AS pep, gerencia_raw AS regiao, NULLIF(pep_nome, '') AS nome, "
+            "'' AS disciplina, SUM(valor_orcado) AS orcado "
             f"FROM fact_orcamento WHERE classificacao_contabil = 'CAPEX'{esc} "
-            "GROUP BY pep_id, nome ORDER BY orcado DESC"
+            "GROUP BY pep_id, gerencia_raw, nome ORDER BY orcado DESC",
+            esc_p,
+        ).df()
+        return df
+
+    df = con.execute(
+        """
+        WITH base AS (
+            SELECT pep_id AS pep, gerencia_raw AS regiao, SUM(valor_orcado) AS orcado
+            FROM fact_orcamento
+            WHERE classificacao_contabil = 'CAPEX'""" + esc + """
+            GROUP BY pep_id, gerencia_raw
+        ),
+        pref AS (  -- catálogo agregado por (prefixo, região) — nome/disciplina são iguais dentro do prefixo
+            SELECT prefixo_regra, regiao, MAX(NULLIF(projeto_nome, '')) AS nome,
+                   MAX(NULLIF(disciplina, '')) AS disciplina
+            FROM dim_pep_sustaining GROUP BY prefixo_regra, regiao
         )
-    return con.execute(sql, esc_p).df()
+        SELECT b.pep, b.regiao, b.orcado,
+               COALESCE(NULLIF(dx.projeto_nome, ''), p.nome, '') AS nome,
+               COALESCE(NULLIF(dx.disciplina, ''), p.disciplina, '') AS disciplina
+        FROM base b
+        LEFT JOIN dim_pep_sustaining dx ON dx.elemento_pep = b.pep
+        LEFT JOIN pref p ON p.prefixo_regra = b.pep
+             AND p.regiao = CASE b.regiao WHEN 'VP' THEN 'Vale do Paraiba' ELSE b.regiao END
+        ORDER BY b.orcado DESC
+        """,
+        esc_p,
+    ).df()
+    return df
 
 
 def _grafico_por_pep(df: pd.DataFrame, cor: str, top_n: int = 15) -> go.Figure | None:
     if df.empty:
         return None
     df = df.head(top_n).iloc[::-1].copy()
-    df["rotulo"] = df.apply(lambda r: f'{r["pep"]} — {r["nome"]}' if r["nome"] else r["pep"], axis=1)
+    # Só sufixa a região quando o mesmo PEP aparece em mais de uma (hoje só
+    # `ME/22001`, dividido SP/VP) — os PEPs granulares ficam sem poluição.
+    multi = df["pep"].duplicated(keep=False)
+
+    def _rotulo(r: pd.Series, tem_regiao: bool) -> str:
+        base = f'{r["pep"]} · {r["regiao"]}' if tem_regiao else r["pep"]
+        return f'{base} — {r["nome"]}' if r.get("nome") else base
+
+    df["rotulo"] = [_rotulo(r, m) for (_, r), m in zip(df.iterrows(), multi)]
     fig = go.Figure(go.Bar(
         x=df["orcado"], y=df["rotulo"], orientation="h", marker_color=cor,
         text=[fmt_reais_abrev(v) for v in df["orcado"]], textposition="outside", cliponaxis=False,
         hovertemplate="<b>%{y}</b><br>Orçado: %{text}<extra></extra>",
     ))
-    fig.update_layout(title="Orçado por Elemento PEP", margin={"t": 60, "b": 40, "r": 140})
+    fig.update_layout(title="Orçado por Elemento PEP", margin={"t": 60, "b": 40, "r": 150})
     return fig
 
 
@@ -233,7 +259,6 @@ def render_visao_classificacao(con: duckdb.DuckDBPyConnection, classificacao: st
         "Só o Orçado é fatiado por Classificação Contábil — Realizado aparece como referência de Malha (SP) inteira.",
     )
     guardar_e_faixa_universo(con, UNIVERSO_POR_CLASSIFICACAO[classificacao])  # RBAC de escopo (docs/08)
-    _badges_dominio()
 
     if eh_capex:
         st.info(

@@ -4,6 +4,25 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.2 — 2026-09-08
+
+Ajustes na aba **CAPEX Sustaining** (feedback do usuário):
+
+- **Removidos os badges de domínio** ("✅ Malha / ⬜ Infra sem dado /
+  ↗️ Obras — ver CAPEX Projetos") — eram do enquadramento antigo Malha ×
+  Infra × Obras; não fazem sentido na visão por Elemento PEP.
+  `_badges_dominio()` deletada.
+- **`ME/22001` agora aparece dividido por Região** no gráfico "Orçado por
+  Elemento PEP": `ME/22001 · SP` (R$13,74 MM) e `ME/22001 · VP`
+  (R$23,16 MM). É divisão **real** do `fact_orcamento` por `gerencia_raw`,
+  não rateio. Nome/disciplina ("MC Via - Manutenção corrente", Via
+  Permanente) vêm do catálogo por match de prefixo + região
+  (`dim_pep_sustaining.prefixo_regra` + `regiao`, de/para SP→SP / VP→Vale
+  do Paraíba). PEPs granulares seguem sem sufixo de região (só sufixa
+  quando o mesmo PEP tem >1 região — hoje só o `ME/22001`).
+- **Ainda sem Orçado × Realizado / Projeção** — continua não existindo
+  fonte de Realizado de CAPEX Sustaining (ver nota na tela e docs/07 §3.2).
+
 ## 11.0.1 — 2026-09-08
 
 - **`app.py::TIPOS_ARQUIVO`** ganhou `catalogo_capex_sustaining` — zona de
