@@ -6,6 +6,12 @@
 > 2. `docs/01-plano-de-build-mvp.md` — em que ordem construir (fases/tarefas)
 > 3. `docs/02-perguntas-em-aberto.md` — o que NÃO está resolvido ainda (não
 >    tente adivinhar essas respostas; trate como TODO explícito no código)
+> 4. `C:\Users\30028203\Documents\PADRAO-DE-ENGENHARIA.md` — padrão de
+>    engenharia comum a todos os apps do Julio (versionamento, arquitetura,
+>    modelagem, RBAC, auth/segredos, testes, deps, observabilidade,
+>    hardening, pentest). Ponto zero; toda lição nova volta pra lá. O
+>    `docs/08` (RBAC de escopo) e o `docs/10` (revisão de cibersegurança)
+>    deste projeto são os modelos de referência citados por ele.
 
 ## O que é este projeto
 

@@ -4,6 +4,17 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 10.0.1 — 2026-09-07 (docs)
+
+- **`FIN360_VISAO_IDEAL.md`** passa a ser versionado (estava solto no
+  working tree) — é a referência funcional que orienta as Etapas 1–7
+  (`docs/07`) e o desenho da Etapa 7 (`docs/09`).
+- **`CLAUDE.md`** aponta pro padrão de engenharia comum
+  (`C:\Users\30028203\Documents\PADRAO-DE-ENGENHARIA.md`) — arquivo único
+  de referência entre SGO Workforce / Gestão_OS / MRS Sentinel / Fin360;
+  `docs/08` e `docs/10` deste projeto são os modelos citados por ele.
+- Sem código.
+
 ## 10.0.0 — 2026-09-07
 
 **Revisão de cibersegurança (`docs/10`) + correção do achado A1 (rate limit
