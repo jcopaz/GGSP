@@ -266,38 +266,73 @@ def inject_shell_css() -> None:
             font-size: 0.82rem !important;
         }
 
-        /* ===== Chip do multiselect da sidebar — TEXTO BRANCO =====
-        Histórico: 3 tentativas (v10.0.2 / v11.0.2 / v11.0.3) com seletores
-        escopados em `[data-testid="stSidebar"]` NÃO surtiram efeito — nem no
-        fundo nem no texto, mesmo em janela anônima com o deploy novo (então
-        não é cache). O usuário aceitou 2026-09-08 manter o fundo azul-marinho
-        (do `primaryColor`) e só pediu a LETRA BRANCA.
-        Aqui a regra é GLOBAL (sem escopo de sidebar) — o único uso de
-        `[data-baseweb="tag"]` no app é o chip do multiselect da sidebar,
-        então não há colateral — e usa `-webkit-text-fill-color` (que o
-        BaseWeb/emotion fixa e sobrepõe `color` no render do Chromium) +
-        `color` + `opacity:1`. Se ISTO não pegar, o `<style>` global não está
-        alcançando o nó — aí a injeção tem que mudar de lugar (ver
-        `filtros.py`). */
-        [data-baseweb="tag"],
-        [data-baseweb="tag"] *,
-        [data-baseweb="tag"] > span,
-        [data-baseweb="tag"] span[title],
-        [data-baseweb="select"] [data-baseweb="tag"] span {
-            color: #ffffff !important;
-            fill: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
-            opacity: 1 !important;
-        }
-        /* Fundo do chip: mantém o navy do tema, só fixa explícito pra não
-        depender do cálculo do BaseWeb. */
-        [data-baseweb="tag"],
-        [data-testid="stSidebar"] [data-baseweb="tag"] {
+        /* ===== Chip do multiselect da sidebar ===== */
+
+        /* Fundo navy do chip selecionado */
+        [data-testid="stSidebar"] [data-baseweb="tag"],
+        [data-baseweb="tag"] {
             background: #1e3a5f !important;
             background-color: #1e3a5f !important;
             background-image: none !important;
-            border-color: #1e3a5f !important;
+            border: 1px solid #1e3a5f !important;
             border-radius: 7px !important;
+            opacity: 1 !important;
+        }
+
+        /* Texto do valor selecionado: 2026, T1, Abr etc. */
+        [data-testid="stSidebar"] [data-baseweb="tag"],
+        [data-testid="stSidebar"] [data-baseweb="tag"] *,
+        [data-testid="stSidebar"] [data-baseweb="tag"] span,
+        [data-testid="stSidebar"] [data-baseweb="tag"] span[title],
+        [data-testid="stSidebar"] [data-baseweb="tag"] div,
+        [data-testid="stSidebar"] [data-baseweb="tag"] p,
+        [data-baseweb="tag"],
+        [data-baseweb="tag"] *,
+        [data-baseweb="tag"] span,
+        [data-baseweb="tag"] span[title] {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            fill: #ffffff !important;
+            opacity: 1 !important;
+        }
+
+        /* X individual dentro de cada chip */
+        [data-testid="stSidebar"] [data-baseweb="tag"] svg,
+        [data-testid="stSidebar"] [data-baseweb="tag"] svg *,
+        [data-testid="stSidebar"] [data-baseweb="tag"] svg path,
+        [data-testid="stSidebar"] [data-testid="stMultiSelectDeleteIcon"],
+        [data-testid="stSidebar"] [data-testid="stMultiSelectDeleteIcon"] path {
+            color: #ffffff !important;
+            fill: #ffffff !important;
+            stroke: #ffffff !important;
+            opacity: 1 !important;
+        }
+
+        /* ===== Botão Aplicar filtros ===== */
+
+        /* Mantém o gradiente navy */
+        [data-testid="stSidebar"] .stButton > button[kind="primary"],
+        [data-testid="stSidebar"] button[kind="primary"],
+        [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
+            background: linear-gradient(
+                135deg,
+                var(--f360-navy-a) 0%,
+                var(--f360-navy-b) 100%
+            ) !important;
+            border: none !important;
+            color: #ffffff !important;
+        }
+
+        /* Força branco no texto interno criado pelo Streamlit */
+        [data-testid="stSidebar"] .stButton > button[kind="primary"] *,
+        [data-testid="stSidebar"] button[kind="primary"] *,
+        [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] *,
+        [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] p,
+        [data-testid="stSidebar"] [data-testid="stBaseButton-primary"] span {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            fill: #ffffff !important;
+            opacity: 1 !important;
         }
 
         /* Reset dos botõezinhos internos do BaseWeb (× da tag, limpar-tudo,
