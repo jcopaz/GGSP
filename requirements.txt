@@ -1,10 +1,25 @@
-pandas
-numpy
-duckdb
-streamlit
-plotly
-pyyaml
-openpyxl
-pyxlsb
-psycopg2-binary
-bcrypt
+# Versões FIXAS — o Streamlit Community Cloud instala exatamente isto.
+#
+# Por que pinar (2026-09-09): o requirements.txt estava sem versão nenhuma,
+# então cada deploy resolvia pro MAIS NOVO — a prod subiu com
+# streamlit==1.63.0 / plotly==7.0.0 / pandas==3.0.5 enquanto o
+# desenvolvimento e os testes rodam em streamlit==1.57.0 / plotly==6.7.0.
+# Resultado: 6 rodadas de CSS pro chip do multiselect não pegaram porque a
+# árvore de DOM do widget mudou entre 1.57 e 1.63 (o Streamlit vem tirando
+# o BaseWeb dos widgets). Pinar = prod idêntica ao que eu testo.
+#
+# Ao subir uma versão nova de qualquer pacote: testar local ANTES
+# (py_compile + pytest + AppTest) e só então mexer aqui.
+
+streamlit==1.57.0
+pandas==3.0.3
+numpy==2.4.6
+duckdb==1.5.5
+plotly==6.7.0
+pyarrow==24.0.0
+altair==6.1.0
+pyyaml==6.0.3
+openpyxl==3.1.5
+pyxlsb==1.0.10
+psycopg2-binary==2.9.12
+bcrypt==5.0.0

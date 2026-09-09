@@ -4,6 +4,28 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.6 — 2026-09-09 — **CAUSA RAIZ do chip achada**
+
+**O `requirements.txt` estava SEM versão nenhuma.** O log de deploy mostrou:
+a prod subiu com **`streamlit==1.63.0`** / `plotly==7.0.0` / `pandas==3.0.5`,
+enquanto o desenvolvimento e TODOS os testes rodam em **`streamlit==1.57.0`**
+/ `plotly==6.7.0`. As 6 rodadas de CSS pro chip do multiselect (v10.0.2 →
+v11.0.5) foram escritas e validadas contra a árvore de DOM do widget no
+**1.57** — no **1.63** o Streamlit já tirou o BaseWeb do multiselect, então
+`[data-baseweb="tag"]` nem existe mais lá. Por isso nada mudava, nem o fundo.
+Provável origem do `TypeError ...toLowerCase` no bundle do Streamlit que
+aparecia no console também.
+
+- **`requirements.txt`** — pinado exato pro conjunto testado localmente
+  (`streamlit==1.57.0`, `pandas==3.0.3`, `numpy==2.4.6`, `duckdb==1.5.5`,
+  `plotly==6.7.0`, `pyarrow==24.0.0`, `altair==6.1.0`, + os diretos). Prod
+  passa a ser idêntica ao que se testa.
+- **Ação de deploy**: no Streamlit Cloud, **Reboot app** (vai reinstalar as
+  deps pinadas — o build demora um pouco mais nessa primeira vez). Depois
+  o chip deve responder ao CSS que já está no código (v11.0.5 + este).
+- Se depois disso o chip AINDA vier navy-on-navy, aí sim vale o F12 do
+  elemento — mas agora batendo com o DOM do 1.57 que eu testo aqui.
+
 ## 11.0.5 — 2026-09-08
 
 **Chip do multiselect — 6ª tentativa, mudando o MECANISMO.** 6 rodadas de
