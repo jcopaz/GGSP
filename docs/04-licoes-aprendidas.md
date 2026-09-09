@@ -601,3 +601,43 @@ opcional com `in df.columns`, não assumir. E: consolidar telas
 boa oportunidade pra finalmente exercitar caminhos que o `AppTest` da
 página default nunca tocava — vários bugs latentes só aparecem quando a
 tela é renderizada de verdade.
+
+## 26. `requirements.txt` sem versão → prod em Streamlit 1.63, dev em 1.57 — 6 rodadas de CSS pro chip do multiselect que não podiam funcionar (2026-09-09)
+
+**Sintoma**: o chip (pílula) de valor selecionado do `st.multiselect` da
+sidebar aparecia azul-marinho com texto azul-marinho (ilegível). Seis
+tentativas de CSS ao longo de v10.0.2 → v11.0.5 — seletores cada vez mais
+agressivos (`[data-baseweb="tag"]`, `-webkit-text-fill-color`, regra
+global, injeção do `<style>` no `<head>` do pai via `components.html`) —
+**não mudaram nada**, nem o fundo, nem em janela anônima com deploy novo.
+O usuário e o Copilot também tentaram, 2 commits, sem efeito.
+
+**Causa raiz**: `requirements.txt` estava **sem versão em nenhuma linha**.
+O Streamlit Community Cloud roda `uv pip install` e, sem `==`, resolve pro
+mais novo: a prod subiu com **`streamlit==1.63.0`** / `plotly==7.0.0` /
+`pandas==3.0.5`, enquanto o desenvolvimento e **todos** os testes locais
+rodam em **`streamlit==1.57.0`** / `plotly==6.7.0`. Entre 1.57 e 1.63 o
+Streamlit removeu o BaseWeb do `multiselect` — o elemento
+`[data-baseweb="tag"]` que todo o CSS mirava **não existe** no 1.63. Logo
+nenhum seletor podia pegar. O `TypeError ...toLowerCase` no
+`index.*.js` que aparecia no console do navegador também era do bundle do
+1.63.
+
+**O que entregou a causa**: o **log de build do Streamlit Cloud**, linha
+`+ streamlit==1.63.0` / `Found Streamlit version 1.63.0 in the
+environment`. 10 segundos de log resolveram o que ~6 rodadas de F12/CSS
+não acharam.
+
+**Correção** (v11.0.6): `requirements.txt` pinado **exato** pro conjunto
+testado localmente — `streamlit==1.57.0`, `pandas==3.0.3`, `numpy==2.4.6`,
+`duckdb==1.5.5`, `plotly==6.7.0`, `pyarrow==24.0.0`, `altair==6.1.0` + os
+diretos. Comentário no topo do arquivo explicando por quê. Prod passa a
+ser idêntica ao ambiente de teste.
+
+**Lição**: **`requirements.txt` pinado exato (`==`) desde o commit 1, sem
+exceção** — "pinado o suficiente" não basta no Streamlit Cloud. E: quando
+um seletor de CSS "não faz efeito NENHUM" no deploy (nem no fundo), a 1ª
+hipótese é **versão de framework na prod ≠ local** — conferir o log de
+build ANTES de mexer no CSS. Já tinha um caso irmão disso no item 24
+("não era CSS, era a cor de marca"); agora virou regra no arquivo central
+`C:\Users\30028203\Documents\PADRAO-DE-ENGENHARIA.md` §8.

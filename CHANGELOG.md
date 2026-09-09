@@ -4,6 +4,15 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.7 — 2026-09-09 (docs)
+
+- **`docs/04-licoes-aprendidas.md`** — item 26: o incidente do
+  `requirements.txt` sem pin (prod streamlit 1.63 × dev 1.57 → 6 rodadas
+  de CSS pro chip que não podiam funcionar). Causa/correção/lição.
+- Registrado também no arquivo central de engenharia do Julio
+  (`C:\Users\30028203\Documents\PADRAO-DE-ENGENHARIA.md` §8/§14/§15) —
+  "`requirements.txt` pinado exato desde o commit 1" virou regra.
+
 ## 11.0.6 — 2026-09-09 — **CAUSA RAIZ do chip achada**
 
 **O `requirements.txt` estava SEM versão nenhuma.** O log de deploy mostrou:
