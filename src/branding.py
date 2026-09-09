@@ -31,6 +31,7 @@ import base64
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 LOGO_VIDEO_URL = "app/static/fin360.mp4"
 
@@ -574,6 +575,46 @@ def inject_shell_css() -> None:
         'family=IBM+Plex+Sans:wght@400;500;600;700&'
         'family=IBM+Plex+Mono:wght@400;500;600&display=swap">',
         unsafe_allow_html=True,
+    )
+    _forcar_contraste_chip_js()
+
+
+def _forcar_contraste_chip_js() -> None:
+    """Letra branca no chip do multiselect da sidebar — 6 tentativas de CSS
+    via `st.markdown(<style>)` NÃO surtiram efeito no deploy (nem em janela
+    anônima), o que aponta pra um problema de aplicação do `<style>` do
+    markdown no Streamlit 1.57, não de conteúdo/especificidade do seletor.
+
+    Este injeta o `<style>` direto no `<head>` do documento PAI, via um
+    mini-componente HTML (iframe same-origin no Streamlit Cloud e local),
+    o que é imune a sanitização/ordem de cascata do `st.markdown`. O
+    `<head>` não é repintado entre reruns, então persiste. `height=0` =
+    invisível. Se ISTO não pegar, o deploy está servindo código antigo —
+    o problema é do Streamlit Cloud (Reboot / limite de recurso), não daqui.
+    """
+    components.html(
+        """
+        <script>
+        (function () {
+          try {
+            var doc = window.parent.document;
+            var ID = "f360-chip-contraste";
+            var el = doc.getElementById(ID);
+            if (!el) {
+              el = doc.createElement("style");
+              el.id = ID;
+              doc.head.appendChild(el);
+            }
+            el.textContent =
+              '[data-baseweb="tag"]{background:#1e3a5f !important;border-color:#1e3a5f !important;}' +
+              '[data-baseweb="tag"],[data-baseweb="tag"] *{' +
+              'color:#fff !important;-webkit-text-fill-color:#fff !important;' +
+              'fill:#fff !important;opacity:1 !important;}';
+          } catch (e) { /* iframe cross-origin — não deve ocorrer no Cloud */ }
+        })();
+        </script>
+        """,
+        height=0,
     )
 
 

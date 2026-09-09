@@ -4,6 +4,23 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.5 — 2026-09-08
+
+**Chip do multiselect — 6ª tentativa, mudando o MECANISMO.** 6 rodadas de
+CSS via `st.markdown(<style>)` (minhas + 2 do usuário/Copilot) não pegaram
+nem em janela anônima com deploy novo → o problema é a aplicação do
+`<style>` do markdown no Streamlit 1.57, não o seletor.
+
+- **`src/branding.py::_forcar_contraste_chip_js()`** — injeta o `<style>`
+  (letra branca no `[data-baseweb="tag"]`) **direto no `<head>` do
+  documento pai**, via `components.html` (iframe same-origin). Imune à
+  sanitização/ordem de cascata do `st.markdown`; persiste entre reruns
+  (o `<head>` não é repintado). Chamado no fim de `inject_shell_css()`.
+- Se ISTO não pegar: o deploy está servindo código antigo — problema do
+  Streamlit Cloud (Reboot / limite de recurso do Neon Free, mesma
+  assinatura do incidente do Gestão_OS em 08/09), não do código.
+  Confirmar pela versão na tela de login (tem que ser **v11.0.5**).
+
 ## 11.0.4 — 2026-09-08
 
 **Chip do multiselect — 4ª tentativa (usuário aceitou fundo navy, só quer
