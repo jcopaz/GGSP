@@ -4,6 +4,19 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.8 — 2026-09-11 (docs)
+
+- **`docs/11-referencia-capex-control-center.md`** (novo) — regras de negócio
+  extraídas do projeto "CAPEX Control Center" (pitch de Sprint 0 pro gerente
+  Douglas Ito, jul/2026, nunca virou app separado — o conceito foi absorvido
+  pelo módulo CAPEX Obras daqui). Preserva o que ainda **não está
+  implementado**: semáforo CAPEX por faixa de aderência, motor de "motivo
+  provável" (Antecipação/Postergação/Atraso/Divergência/Saving com condição
+  explícita), classificação CAPEX (Pré-Obra/Obra/Contingência/Escalation/Mão
+  de Obra/Rateio/Capitalização), regra de responsabilidade sugerida por tipo
+  de delta. Referência, não implementado — nada vira código sem passar pelo
+  fluxo normal. Pasta de origem arquivada/removida pelo Julio.
+
 ## 11.0.7 — 2026-09-09 (docs)
 
 - **`docs/04-licoes-aprendidas.md`** — item 26: o incidente do
