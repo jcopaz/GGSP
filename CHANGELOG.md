@@ -4,6 +4,39 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.9 — 2026-09-14 (incidente)
+
+- **Incidente real: app dormindo desde 04/09 porque o keep-awake estava
+  falhando 100% das vezes.** Conferido na API de execuções do GitHub
+  (`workflows/keep-awake.yml/runs`): última execução com sucesso foi
+  04/09/2026 13:42; a partir daí, **todas** as execuções (140+, até
+  14/09) falharam com `curl` saindo em código 47 (excesso de
+  redirecionamentos).
+  - **Causa raiz**: `fin360.streamlit.app` passou a redirecionar pra
+    tela de login do próprio Streamlit Community Cloud
+    (`share.streamlit.io/-/auth/app` → `fin360.streamlit.app/-/login`).
+    Ou seja, a visibilidade do app em Settings → Sharing saiu de
+    "público" e passou a exigir login — provavelmente efeito colateral
+    de manipulação durante o trabalho de autenticação unificada do
+    HubSP (não intencional, confirmado com o usuário). Não é bug no
+    repositório: confirmado pela API do GitHub que `jcopaz/GGSP`
+    continua público (`private: false`).
+  - Como o ping do Action nunca completa (cai no loop de
+    autenticação em vez de bater no app), ele nunca conta como visita
+    real — por isso o app voltou a dormir mesmo com o Action rodando a
+    cada ~10 min.
+  - **Correção**: fora do alcance de código/repositório — só o dono da
+    conta consegue reverter em `share.streamlit.io`, no app `fin360`,
+    Settings → Sharing → "Who can view this app" de volta pra público.
+  - `.github/workflows/keep-awake.yml` **enrobustecido**: em vez de só
+    `--fail` (que dava um `exit 47` opaco), agora inspeciona a URL
+    final do redirecionamento e, se cair em `share.streamlit.io` ou em
+    `/-/login`/`/-/auth`, a execução falha com uma mensagem explícita
+    apontando a causa (ajuste de visibilidade no Streamlit Cloud) em
+    vez de só um código de erro do curl — pra a próxima vez que isso
+    acontecer o diagnóstico ser imediato no log do Actions, sem precisar
+    repetir esta investigação manual.
+
 ## 11.0.8 — 2026-09-11 (docs)
 
 - **`docs/11-referencia-capex-control-center.md`** (novo) — regras de negócio

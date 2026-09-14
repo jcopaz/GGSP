@@ -16,6 +16,17 @@
 # mesmo assim, considerar um pinger
 # externo (ex. UptimeRobot/cron-job.org), que não sofre esse atraso por
 # rodar fora da fila do GitHub Actions.
+#
+# Incidente 2026-09-14: app dormindo desde 04/09 porque este ping
+# passou a cair num loop de redirecionamento pra tela de login do
+# próprio Streamlit Community Cloud (share.streamlit.io/-/auth/app ->
+# fin360.streamlit.app/-/login) — a visibilidade do app em Settings ->
+# Sharing tinha saído de "público" (efeito colateral não intencional
+# do trabalho de auth unificado do HubSP). Com --fail isso só aparecia
+# como "curl: exit 47", sem dizer o porquê. Agora o step checa a URL
+# final e aponta a causa explicitamente. A correção em si é fora do
+# repositório: só o dono da conta resolve em share.streamlit.io,
+# Settings -> Sharing -> "Who can view this app" de volta pra público.
 name: Keep Fin360 awake
 
 on:
@@ -29,9 +40,21 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Ping fin360.streamlit.app
-        run: >-
-          curl --fail --silent --show-error --location
-          --retry 3 --retry-delay 5 --connect-timeout 15 --max-time 60
-          --user-agent "Fin360-keep-awake/1.0"
-          --write-out "HTTP %{http_code}\n"
-          "https://fin360.streamlit.app/?keepalive=$(date +%s)"
+        run: |
+          SAIDA=$(curl --silent --show-error --location --max-redirs 8 \
+            --retry 3 --retry-delay 5 --connect-timeout 15 --max-time 60 \
+            --user-agent "Fin360-keep-awake/1.0" \
+            --output /dev/null \
+            --write-out "%{http_code}|%{url_effective}" \
+            "https://fin360.streamlit.app/?keepalive=$(date +%s)")
+          CODIGO_HTTP="${SAIDA%%|*}"
+          URL_FINAL="${SAIDA#*|}"
+          echo "HTTP $CODIGO_HTTP -> $URL_FINAL"
+          if [[ "$URL_FINAL" == *"share.streamlit.io"* || "$URL_FINAL" == *"/-/login"* || "$URL_FINAL" == *"/-/auth"* ]]; then
+            echo "::error::Ping caiu na tela de login do Streamlit Community Cloud ($URL_FINAL) em vez do app. NAO eh problema de rede/curl: em share.streamlit.io, no app fin360, Settings > Sharing, 'Who can view this app' saiu de 'public' e passou a exigir login -- por isso o keep-awake nunca conta como visita real e o app volta a dormir. So o dono da conta corrige isso no painel do Streamlit Cloud."
+            exit 1
+          fi
+          if [[ "$CODIGO_HTTP" != "200" ]]; then
+            echo "::error::HTTP $CODIGO_HTTP inesperado (url final: $URL_FINAL)."
+            exit 1
+          fi
