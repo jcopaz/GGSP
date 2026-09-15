@@ -929,26 +929,15 @@ def _renderizar_usuario_logado() -> None:
     não revertida sozinha aqui.
 
     Precisa ficar fora de `with st.sidebar:` (não é sensível a container
-    ambiente). Versão/assinatura ficam no rodapé
-    (`_renderizar_rodape_sidebar`, chamado depois de `pg.run()`), não
-    repetidas aqui.
+    ambiente). Versão/assinatura ficam logo abaixo do logotipo, dentro do
+    bloco — usuário relatou (2026-09-15) que a assinatura no rodapé (fim
+    da sidebar, depois de `pg.run()`) ficava fora da vista, abaixo de toda
+    a navegação; movida pra cá, que é sempre visível.
     """
     caminho_logo = str(_RAIZ_PROJETO / "src" / "dashboard" / "static" / "fin360_logo.gif")
     caminho_icone = str(_RAIZ_PROJETO / "src" / "dashboard" / "static" / "fin360_logo.png")
     st.logo(caminho_logo, icon_image=caminho_icone, size="large")
 
-    with st.sidebar:
-        st.caption(f"👤 {get_nome()} · {get_papel()}")
-        if st.button("Sair", use_container_width=True):
-            clear_session()
-            st.rerun()
-        st.divider()
-
-
-def _renderizar_rodape_sidebar() -> None:
-    """Rodapé fixo no fim da sidebar (versão + assinatura) — chamado
-    depois de `pg.run()` de propósito, pra ficar sempre abaixo de toda a
-    navegação, não só do bloco de marca do topo."""
     with st.sidebar:
         st.markdown(
             f"""
@@ -959,6 +948,11 @@ def _renderizar_rodape_sidebar() -> None:
             """,
             unsafe_allow_html=True,
         )
+        st.caption(f"👤 {get_nome()} · {get_papel()}")
+        if st.button("Sair", use_container_width=True):
+            clear_session()
+            st.rerun()
+        st.divider()
 
 
 def _preparar_modo_simulacao() -> None:
@@ -1170,4 +1164,3 @@ if not _secoes:
 
 pg = st.navigation(_secoes)
 pg.run()
-_renderizar_rodape_sidebar()

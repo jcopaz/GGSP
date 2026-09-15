@@ -4,6 +4,20 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 11.0.10 — 2026-09-15
+
+- **Assinatura movida pra debaixo do logotipo.** Usuário relatou não ver
+  "Desenvolvido por Julio Paz" no app — a assinatura + versão estavam
+  certas no código (confirmado com `AppTest`, HTML renderizando
+  normalmente), mas ficavam no rodapé, depois de toda a navegação
+  (grupos OPEX Sustaining/CAPEX Sustaining/CAPEX Plano de
+  Obras/GESTÃO + filtros) — fora da vista sem rolar a sidebar até o
+  fim. Movida pra `_renderizar_usuario_logado()`
+  ([app.py:899](app.py#L899)), logo abaixo do `st.logo()`, mesmo
+  estilo centralizado — posição sempre visível, não depende de rolar
+  nada. Função antiga `_renderizar_rodape_sidebar()` removida (ficaria
+  vazia/duplicada).
+
 ## 11.0.9 — 2026-09-14 (incidente)
 
 - **Incidente real: app dormindo desde 04/09 porque o keep-awake estava
