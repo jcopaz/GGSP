@@ -30,7 +30,7 @@ de conta), segredos fora do git.
 | A7 | `bandit` B608 x70 (f-string em SQL) — falso-positivo do padrão de query-builder | Baixa (informativo) | documentar convenção |
 | A8 | `bandit` B110 x6 (`try/except/pass` em auditoria best-effort) | Baixa | aceitável, estreitar exceção |
 | A9 | `psycopg2-binary` em produção (bundla libpq/OpenSSL própria, pode atrasar patch) | Baixa | avaliar `psycopg2` fonte |
-| A10 | `Fin360_projeto_completo_reenvio/` = clone do projeto no working tree (gitignored) | Baixa | apagar quando não precisar mais |
+| A10 | `Fin360_projeto_completo_reenvio/` = clone do projeto no working tree (gitignored) | Baixa | **quase causou edição perdida em 2026-09-17** (agente implementou a feature de reset/exclusão de usuário nessa cópia por engano, sem `git status` mostrar nada — revertido a tempo) — apagar |
 | A11 | `enableStaticServing = true` — qualquer arquivo em `static/` é público sem auth | Baixa | manter `static/` só com asset de marca |
 
 ---
@@ -61,6 +61,15 @@ de conta), segredos fora do git.
   (`secrets.choice`), mínimo 8 caracteres.
 - **Fail-closed:** usuário `ativo=false` não acessa nada; sem permissão
   explícita = sem acesso, checado em Python antes de renderizar.
+- **Exclusão de usuário fail-closed no próprio banco (2026-09-17):**
+  Administração ganhou "Excluir usuário" (`excluir_usuario()`,
+  `admin_queries.py`), mas nenhuma FK de `app.usuario` pras tabelas
+  dependentes (`log_auditoria`, `artefato_exportado`,
+  `arquivo_bruto_versao`, `fact_explicacao_log`,
+  `delegacao_justificativa`) tem `ON DELETE CASCADE` — o Postgres
+  recusa a exclusão (`ForeignKeyViolation`) se houver qualquer rastro
+  de auditoria/justificativa vinculado, sem depender do código Python
+  lembrar de checar. Ver `docs/06`.
 
 ---
 

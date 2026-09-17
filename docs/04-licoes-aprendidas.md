@@ -641,3 +641,38 @@ hipótese é **versão de framework na prod ≠ local** — conferir o log de
 build ANTES de mexer no CSS. Já tinha um caso irmão disso no item 24
 ("não era CSS, era a cor de marca"); agora virou regra no arquivo central
 `C:\Users\30028203\Documents\PADRAO-DE-ENGENHARIA.md` §8.
+
+## 27. Agente implementou a feature inteira na cópia de comparação gitignorada, não no projeto real (2026-09-17)
+
+**Sintoma**: pedido do usuário — resetar a senha da Sandra Benvenuto e
+adicionar botão de excluir usuário na Administração. O agente achou
+`Fin360_projeto_completo_reenvio/src/dashboard/administracao.py`,
+implementou as duas features ali, validou com `py_compile` — tudo
+verde. Só ao tentar comitar é que `git status` voltou **"nothing to
+commit, working tree clean"**, mesmo com os dois arquivos claramente
+editados.
+
+**Causa raiz**: `Fin360_projeto_completo_reenvio/` é uma cópia inteira
+do projeto (mesma árvore `src/auth/`, `src/dashboard/`, etc.) que o
+Copilot devolveu ao "reorganizar" o projeto em 2026-09-01 — listada no
+`.gitignore` da raiz como "material de comparação, não sobe pro git"
+(ver achado A10 em `docs/10-revisao-ciberseguranca.md`). Ela é
+estruturalmente idêntica ao projeto real o suficiente para parecer o
+lugar certo — só o `.gitignore`/`git status` denuncia que não é.
+
+**O que entregou a causa**: `git status`/`git diff --stat` limpo
+depois de uma edição que deveria aparecer. `git check-ignore -v`
+confirmou a regra exata do `.gitignore` que capturava o caminho.
+
+**Correção**: revertidas as duas edições na cópia de comparação
+(voltou ao estado original) e reimplementada a mesma feature no lugar
+certo — raiz de `Desktop/Orçamento` (`app.py`, `src/`, `docs/` ficam
+direto ali, não numa subpasta). Commit real: `e5dab24`.
+
+**Lição**: depois de editar um arquivo num projeto com working tree
+potencialmente ambíguo (mais de uma pasta com a mesma estrutura de
+código), **conferir `git status`/`git diff --stat` mostra a mudança
+antes de seguir** — working tree limpo depois de uma edição real é
+sinal de arquivo errado ou pasta ignorada, nunca "nada mudou". Regra
+geral (não só deste projeto) registrada em
+`C:\Users\30028203\Documents\PADRAO-DE-ENGENHARIA.md`.

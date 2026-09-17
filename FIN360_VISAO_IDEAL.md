@@ -536,6 +536,8 @@ Concentra:
 - permissões;
 - escopos;
 - ativação e inativação;
+- redefinição de senha pelo administrador (senha temporária, exibida uma única vez);
+- exclusão de usuário (bloqueada pelo banco quando há histórico de auditoria vinculado);
 - troca obrigatória de senha;
 - auditoria administrativa;
 - configurações autorizadas.

@@ -35,10 +35,11 @@ nesta rodada.
 Página nova, exclusiva do papel `admin` (`src/dashboard/administracao.py`,
 `require_admin()` logo no início — revalida mesmo se alguém chegar direto
 na função). Reúne 4 abas: Usuários (criar/editar, papel, ativo,
-permissões operacionais), Permissões e escopos (visão de página por
-usuário + cadastro de escopo de dado), Auditoria (histórico de atividade),
-Uploads e exportações (histórico versionado + reversão + cópias
-auditadas de exportação).
+permissões operacionais, redefinir senha, excluir — ver seção própria
+abaixo), Permissões e escopos (visão de página por usuário + cadastro de
+escopo de dado), Auditoria (histórico de atividade), Uploads e
+exportações (histórico versionado + reversão + cópias auditadas de
+exportação).
 
 **Escopos de dado (Projeto/Elemento PEP/PEP Filho/Gerência/Coordenação/
 Centro de Custo/Pacote) são só cadastro e consulta** — nenhuma página do
@@ -140,6 +141,48 @@ Default Password" (uma senha vazada expõe todas as contas ainda não
 trocadas, e o literal fica visível pra qualquer um com acesso ao
 repositório). Substituída por senha temporária única por usuário no mesmo
 dia, antes de qualquer deploy com a versão fixa.
+
+## Redefinir senha e excluir usuário (2026-09-17)
+
+Faltavam os dois botões na aba Usuários — pedido real (usuário não achou
+como resetar a senha de uma pessoa nem excluí-la pela tela).
+
+**Redefinir senha** (`resetar_senha_admin()` em `admin_queries.py`):
+gera uma nova senha temporária aleatória (mesma
+`gerar_senha_temporaria()` da criação de usuário), grava o hash e liga
+`precisa_trocar_senha` — a pessoa é forçada a trocar no próximo login,
+igual ao fluxo de criação. Um checkbox ("Forçar troca de senha no
+próximo login", marcado por padrão) deixa o admin desligar essa
+obrigatoriedade caso não queira. A senha nova é mostrada **uma única
+vez** (`st.code`), mesmo padrão de "Criar usuário" — nunca fica
+gravada em texto plano.
+
+Difere de `atualizar_senha_hash()` (`src/auth/queries.py`, usado no
+reset autoatendido de "Esqueci minha senha") porque ali a flag de troca
+obrigatória **não** é tocada de propósito — no reset manual do admin, a
+pessoa não escolheu trocar de senha, então forçar a troca no próximo
+login é o comportamento seguro por padrão.
+
+**Excluir usuário** (`excluir_usuario()` em `admin_queries.py`): dentro
+de um expander de aviso ("⚠️ Excluir usuário"), exige marcar uma caixa
+de confirmação com o nome da pessoa antes do botão habilitar. É
+exclusão **física** (`delete`, não `ativo=false`) — a rota preferida
+pra desativar alguém continua sendo desmarcar "Ativo" no formulário de
+edição, que não perde nada e é reversível.
+
+**Por que a exclusão física raramente funciona na prática**: nenhuma
+FK de `app.usuario` para as tabelas que dependem dele
+(`log_auditoria`, `artefato_exportado`, `arquivo_bruto_versao`,
+`fact_explicacao_log`, `delegacao_justificativa`) tem `ON DELETE
+CASCADE` — de propósito, pra nunca apagar rastro de auditoria ou
+justificativa junto com o usuário (ver `config/schema_postgres.sql`).
+O Postgres bloqueia (fail closed) a exclusão nesse caso, com
+`psycopg2.errors.ForeignKeyViolation`, capturada na tela e traduzida
+numa mensagem sugerindo desativar em vez de excluir. Como
+`registrar_visualizacao_pagina` grava uma linha em `log_auditoria` a
+cada acesso a qualquer página, **qualquer usuário que já logou ao
+menos uma vez não pode ser excluído de verdade** — só um usuário criado
+e nunca usado.
 
 ## Campos selecionáveis (Gerência/Escopos) (2026-08-28, ampliado 2026-08-29)
 
