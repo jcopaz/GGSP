@@ -12,6 +12,20 @@ def atualizar_usuario(usuario_id, **campos):
     if not itens: return
     sql=", ".join(f"{k}=%s" for k,_ in itens)+", atualizado_em=now()"
     executar(f"update app.usuario set {sql} where id=%s", tuple(v for _,v in itens)+(usuario_id,))
+def resetar_senha_admin(usuario_id, senha_hash, forcar_troca=True):
+    """Reset manual pela Administração — sempre grava um hash novo (nunca
+    reaproveita o `atualizar_senha_hash` do reset autoatendido porque aqui
+    o admin decide se força a troca no próximo login, default True pra
+    ficar consistente com `criar_usuario`)."""
+    executar("update app.usuario set senha_hash=%s, precisa_trocar_senha=%s, atualizado_em=now() where id=%s", (senha_hash, forcar_troca, usuario_id))
+def excluir_usuario(usuario_id):
+    """Exclusão física (não `ativo=false`). O Postgres bloqueia (fail
+    closed) se o usuário tiver qualquer linha vinculada em log_auditoria,
+    artefato_exportado, arquivo_bruto_versao, fact_explicacao_log ou
+    delegacao_justificativa — nenhuma dessas FKs tem ON DELETE CASCADE de
+    propósito, pra nunca apagar rastro de auditoria/justificativa junto
+    com o usuário. Chamador deve tratar a violação e sugerir desativar."""
+    executar("delete from app.usuario where id=%s", (usuario_id,))
 def listar_permissoes(usuario_id):
     return buscar_todos("select pagina, permitido from app.permissao_pagina where usuario_id=%s order by pagina",(usuario_id,))
 def salvar_permissao(usuario_id,pagina,permitido):

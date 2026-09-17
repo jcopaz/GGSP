@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import duckdb
 import pandas as pd
+import psycopg2
 import streamlit as st
 
 from src.branding import render_page_banner
@@ -388,6 +389,43 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
                     atualizar_usuario(u["id"], ativo=ativo, papel=papel, permissao_upload=up, permissao_exportacao=ex, permissao_justificativa_macro=ma, permissao_justificativa_micro=mi)
                     registrar_atividade("editar_usuario", "administracao", {"usuario_id": str(u["id"])})
                     st.success("Alterações salvas.")
+
+            st.markdown("**Redefinir senha**")
+            forcar_troca = st.checkbox("Forçar troca de senha no próximo login", value=True, key=f"admin-forcar-troca-{u['id']}")
+            if st.button("Gerar nova senha temporária", key=f"admin-resetar-senha-{u['id']}"):
+                senha_temporaria = gerar_senha_temporaria()
+                resetar_senha_admin(u["id"], gerar_hash(senha_temporaria), forcar_troca)
+                registrar_atividade("resetar_senha", "administracao", {"usuario_id": str(u["id"]), "forcar_troca": forcar_troca})
+                st.success(f"Senha de {u['nome_completo']} redefinida.")
+                st.code(senha_temporaria, language=None)
+                st.warning("Copie a senha acima agora — ela não será exibida novamente. Repasse com segurança à pessoa; a troca é obrigatória no próximo login se a caixa acima estiver marcada.")
+
+            with st.expander("⚠️ Excluir usuário"):
+                st.caption(
+                    "Exclusão é permanente e o banco bloqueia (fail closed) se este usuário já tiver login, "
+                    "exportação, upload ou justificativa registrados — nesse caso, desmarque \"Ativo\" acima "
+                    "em vez de excluir."
+                )
+                confirmar = st.checkbox(
+                    f"Confirmo que quero excluir permanentemente {u['nome_completo']}",
+                    key=f"admin-confirma-exclusao-{u['id']}",
+                )
+                if st.button("Excluir usuário", disabled=not confirmar, key=f"admin-excluir-{u['id']}"):
+                    try:
+                        excluir_usuario(u["id"])
+                    except psycopg2.errors.ForeignKeyViolation:
+                        st.error(
+                            "Não foi possível excluir: este usuário tem histórico vinculado (login, exportação, "
+                            "upload ou justificativa) e a exclusão físico-permanente apagaria rastro de auditoria. "
+                            "Desmarque \"Ativo\" acima para desativar em vez de excluir."
+                        )
+                    else:
+                        registrar_atividade(
+                            "excluir_usuario", "administracao",
+                            {"nome_completo": u["nome_completo"], "matricula": u.get("matricula"), "email": u.get("email")},
+                        )
+                        st.toast(f"Usuário {u['nome_completo']} excluído.")
+                        st.rerun()
 
     with t2:
         usuarios = listar_usuarios()

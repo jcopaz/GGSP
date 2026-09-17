@@ -4,6 +4,29 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 12.0.0 — 2026-09-17
+
+- **Administração → Usuários ganha "Redefinir senha" e "Excluir usuário".**
+  Faltavam os dois botões — pedido real do usuário (não achou como
+  resetar a senha de um usuário nem excluí-lo pela tela). "Gerar nova
+  senha temporária" gera senha aleatória, grava o hash e mostra uma
+  única vez (mesmo padrão da criação de usuário), com checkbox pra
+  forçar troca no próximo login. "Excluir usuário" (dentro de um
+  expander de aviso) exige marcar uma confirmação com o nome da pessoa
+  antes do botão ficar habilitado. Bump MAJOR porque é ação de
+  segurança (redefinição de credencial e exclusão de conta).
+  - Exclusão é física (`delete`, não `ativo=false`) e o Postgres já
+    bloqueia (fail closed) se o usuário tiver qualquer linha vinculada
+    em `log_auditoria`, `artefato_exportado`, `arquivo_bruto_versao`,
+    `fact_explicacao_log` ou `delegacao_justificativa` — nenhuma dessas
+    FKs tem `ON DELETE CASCADE` de propósito, pra nunca apagar rastro
+    de auditoria/justificativa junto com o usuário. Na prática, todo
+    usuário que já logou pelo menos uma vez fica bloqueado pra exclusão
+    (a página registra "visualizar_pagina" a cada acesso) — a rota real
+    pra desativar alguém com histórico é desmarcar "Ativo", não excluir.
+  - `src/auth/admin_queries.py`: `resetar_senha_admin()` e
+    `excluir_usuario()` novas.
+
 ## 11.0.10 — 2026-09-15
 
 - **Assinatura movida pra debaixo do logotipo.** Usuário relatou não ver
