@@ -71,3 +71,4 @@ def listar_exportacoes(limite=200):
 def obter_exportacao(exportacao_id): return buscar_um("select nome_arquivo,conteudo from app.artefato_exportado where id=%s",(exportacao_id,))
 def listar_versoes_upload(limite=200):
     return buscar_todos("select v.id,v.tipo,v.nome_original,v.tamanho_bytes,v.enviado_em,u.nome_completo,v.ativo from app.arquivo_bruto_versao v left join app.usuario u on u.id=v.enviado_por order by v.enviado_em desc limit %s",(limite,))
+def obter_versao_arquivo(versao_id): return buscar_um("select nome_original,conteudo from app.arquivo_bruto_versao where id=%s",(versao_id,))

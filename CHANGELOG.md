@@ -4,6 +4,19 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 12.1.0 — 2026-09-18
+
+- **Administração → Uploads e exportações ganha "Baixar cópia deste
+  arquivo bruto".** Pedido do usuário depois do incidente do
+  `KeyError: 'COMPETENCIA'` (v12.0.3): não havia como baixar de volta
+  o arquivo original que alguém subiu (só "Restaurar esta versão e
+  reprocessar") — pra investigar um erro de coluna era preciso achar o
+  arquivo de novo no computador de quem subiu. `app.arquivo_bruto_versao`
+  já guarda o `conteudo` (bytea) de cada upload; só faltava expor.
+  `obter_versao_arquivo()` novo em `admin_queries.py` + `st.download_button`
+  ao lado do botão de restaurar, mesmo padrão já usado em "Cópias das
+  exportações".
+
 ## 12.0.3 — 2026-09-18
 
 - **"Reprocessar base" falhando com `Erro ao reprocessar: 'COMPETENCIA'`.**

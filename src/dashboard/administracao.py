@@ -495,7 +495,8 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
         if versoes:
             opv = {f"{_fmt_hora_br(v['enviado_em'])} · {v['tipo']} · {v['nome_original']}": v for v in versoes}
             v = opv[st.selectbox("Versão para restaurar", list(opv))]
-            if st.button("Restaurar esta versão e reprocessar", type="primary"):
+            c_restaurar, c_baixar = st.columns(2)
+            if c_restaurar.button("Restaurar esta versão e reprocessar", type="primary"):
                 cfg = carregar_config(); caminho = cfg["caminhos"].get(v["tipo"])
                 if not caminho:
                     st.error("Tipo sem caminho configurado em settings.yaml.")
@@ -503,6 +504,11 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
                     build_star_schema()
                     registrar_atividade("reverter_upload", "administracao", {"versao_id": str(v["id"]), "tipo": v["tipo"]})
                     st.success("Versão restaurada e base reprocessada.")
+            bruto_versao = obter_versao_arquivo(v["id"])
+            c_baixar.download_button(
+                "Baixar cópia deste arquivo bruto", bytes(bruto_versao["conteudo"]),
+                file_name=bruto_versao["nome_original"],
+            )
         st.markdown("**Cópias das exportações**")
         exps = listar_exportacoes()
         st.dataframe(_com_hora_br(pd.DataFrame(exps)), hide_index=True, use_container_width=True)
