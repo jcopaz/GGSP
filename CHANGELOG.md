@@ -4,6 +4,36 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 12.0.1 — 2026-09-18
+
+- **`keep-awake.yml` mascarava a própria causa da falha desde
+  2026-09-04.** Usuário reportou o keep-awake falhando com "exit code
+  47" sem a mensagem explicativa que devia aparecer (escrita no
+  incidente de 09-14). Reproduzi o `curl` do workflow e conferi o
+  histórico real via API do GitHub: 94 das últimas 100 execuções
+  falharam, sem nenhum sucesso desde **2026-09-04T17:42Z** — quase 2
+  semanas contínuas.
+  - **Bug real corrigido**: o runner do GitHub Actions roda cada
+    `run:` com `bash -e`. Quando `curl --max-redirs 8` esgota o limite
+    de redirecionamento, o curl sai com código 47 **antes** do `if`
+    do script conseguir inspecionar a URL final — o `-e` aborta a
+    linha `SAIDA=$(curl ...)` imediatamente, e a mensagem de
+    diagnóstico escrita em 09-14 nunca chega a rodar (log real só
+    mostrava "curl: (47) Maximum (8) redirects followed" cru).
+    Corrigido isolando o curl entre `set +e`/`set -e` pra capturar o
+    código de saída sem deixar o `-e` matar o script antes da hora;
+    código 47 agora vira uma mensagem explícita apontando a causa.
+  - **Causa raiz de verdade (fora do repositório, ação do usuário)**:
+    o app `fin360.streamlit.app` continua em loop de redirecionamento
+    pra `/-/login` — a configuração "Who can view this app" em
+    share.streamlit.io saiu de público. Mesmo sintoma do incidente de
+    09-14, nunca corrigido de fato no painel do Streamlit Cloud desde
+    então. **Ação manual necessária**: share.streamlit.io → app
+    fin360 → Settings → Sharing → "Who can view this app" → voltar
+    pra público. Enquanto isso não for feito, o keep-awake continua
+    falhando (agora com mensagem clara) e usuários reais também caem
+    na tela de login ao abrir o link direto do app.
+
 ## 12.0.0 — 2026-09-17
 
 - **Administração → Usuários ganha "Redefinir senha" e "Excluir usuário".**

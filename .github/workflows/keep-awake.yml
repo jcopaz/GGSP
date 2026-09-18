@@ -23,10 +23,24 @@
 # fin360.streamlit.app/-/login) — a visibilidade do app em Settings ->
 # Sharing tinha saído de "público" (efeito colateral não intencional
 # do trabalho de auth unificado do HubSP). Com --fail isso só aparecia
-# como "curl: exit 47", sem dizer o porquê. Agora o step checa a URL
-# final e aponta a causa explicitamente. A correção em si é fora do
-# repositório: só o dono da conta resolve em share.streamlit.io,
-# Settings -> Sharing -> "Who can view this app" de volta pra público.
+# como "curl: exit 47", sem dizer o porquê. O step passou a checar a
+# URL final e apontar a causa explicitamente.
+#
+# Achado 2026-09-18 (ainda sem correção real no Streamlit Cloud —
+# 94 de 100 execuções mais recentes falharam, ininterrupto desde
+# 2026-09-04T17:42Z): a mensagem explicativa acima **nunca chegou a
+# aparecer em nenhum log** porque o runner do GitHub Actions roda cada
+# `run:` com `bash -e` — quando `curl --max-redirs 8` esgota o limite
+# de redirecionamento (o próprio caso que o diagnóstico foi escrito
+# pra explicar), o CURL mesmo sai com código 47 *antes* do `if`
+# conseguir inspecionar a URL, e o `-e` aborta o script naquela linha.
+# O log real (visto pelo usuário) só mostrava "curl: (47) Maximum (8)
+# redirects followed" cru, sem nenhuma das linhas de diagnóstico.
+# Corrigido isolando o curl com `set +e`/`set -e` pra capturar o
+# código de saída sem deixar o `-e` matar o script antes da hora.
+# A correção do problema de verdade continua fora do repositório: só
+# o dono da conta resolve em share.streamlit.io, Settings -> Sharing ->
+# "Who can view this app" de volta pra público.
 name: Keep Fin360 awake
 
 on:
@@ -41,12 +55,23 @@ jobs:
     steps:
       - name: Ping fin360.streamlit.app
         run: |
+          set +e
           SAIDA=$(curl --silent --show-error --location --max-redirs 8 \
             --retry 3 --retry-delay 5 --connect-timeout 15 --max-time 60 \
             --user-agent "Fin360-keep-awake/1.0" \
             --output /dev/null \
             --write-out "%{http_code}|%{url_effective}" \
             "https://fin360.streamlit.app/?keepalive=$(date +%s)")
+          CURL_RC=$?
+          set -e
+          if [[ $CURL_RC -ne 0 ]]; then
+            if [[ $CURL_RC -eq 47 ]]; then
+              echo "::error::curl esgotou o limite de 8 redirecionamentos (codigo 47) tentando abrir fin360.streamlit.app -- ISSO NAO eh problema de rede/curl. E o mesmo sintoma do incidente de 2026-09-14: em share.streamlit.io, no app fin360, Settings > Sharing, 'Who can view this app' saiu de 'public' e o app entrou num loop de redirect pra tela de login do Streamlit Community Cloud. Por isso o keep-awake nunca conta como visita real e o app volta a dormir. So o dono da conta corrige isso no painel do Streamlit Cloud."
+            else
+              echo "::error::curl falhou com codigo $CURL_RC antes de completar a requisicao (timeout/DNS/TLS) -- ver https://curl.se/libcurl/c/libcurl-errors.html."
+            fi
+            exit 1
+          fi
           CODIGO_HTTP="${SAIDA%%|*}"
           URL_FINAL="${SAIDA#*|}"
           echo "HTTP $CODIGO_HTTP -> $URL_FINAL"
