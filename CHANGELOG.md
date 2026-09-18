@@ -23,16 +23,39 @@ nada; PATCH = correção de bug. Bump a cada commit relevante.
     Corrigido isolando o curl entre `set +e`/`set -e` pra capturar o
     código de saída sem deixar o `-e` matar o script antes da hora;
     código 47 agora vira uma mensagem explícita apontando a causa.
-  - **Causa raiz de verdade (fora do repositório, ação do usuário)**:
-    o app `fin360.streamlit.app` continua em loop de redirecionamento
-    pra `/-/login` — a configuração "Who can view this app" em
-    share.streamlit.io saiu de público. Mesmo sintoma do incidente de
-    09-14, nunca corrigido de fato no painel do Streamlit Cloud desde
-    então. **Ação manual necessária**: share.streamlit.io → app
-    fin360 → Settings → Sharing → "Who can view this app" → voltar
-    pra público. Enquanto isso não for feito, o keep-awake continua
-    falhando (agora com mensagem clara) e usuários reais também caem
-    na tela de login ao abrir o link direto do app.
+  - **Causa raiz apontada aqui (Settings > Sharing) estava ERRADA —
+    corrigido em 12.0.2, ver abaixo.** O usuário confirmou por print
+    que "Who can view this app" sempre esteve em público; a causa
+    de verdade era outra, sem nenhuma ação manual necessária.
+
+## 12.0.2 — 2026-09-18
+
+- **Correção do diagnóstico acima (v12.0.1): a causa real do loop de
+  redirecionamento não era a configuração de Sharing.** O usuário
+  conferiu o painel do Streamlit Cloud e "Who can view this app" já
+  estava como "This app is public and searchable" — a hipótese da
+  v12.0.1 estava errada.
+  - **Causa raiz de verdade**: o `curl` do keep-awake nunca habilitou
+    o motor de cookies. Desde ~2026-09-04, o Streamlit Community Cloud
+    passou a validar a visita com um handshake de 2 saltos mesmo em
+    app público (`fin360.streamlit.app` → `share.streamlit.io/-/auth/app`,
+    emite cookie de sessão → `fin360.streamlit.app/-/login?payload=...`,
+    emite outro cookie → volta pra URL original). Sem guardar esses
+    cookies entre os saltos, o curl nunca prova que já passou pelo
+    handshake e o servidor reinicia o ciclo do zero pra sempre, até
+    estourar `--max-redirs` (código 47) — sem nunca chegar no app de
+    verdade. Confirmado reproduzindo o mesmo `curl` de fora: sem
+    cookie, loop infinito; com `-b ""` (habilita o motor de cookies em
+    memória, sem precisar de arquivo), resolve em só 3 redirecionamentos
+    e HTTP 200. **Corrigido com essa única flag** — nenhuma ação
+    manual no painel do Streamlit Cloud foi necessária.
+  - **Verificado de brinde, sem problema**: a versão de Python
+    selecionada no painel (3.14.7) resolve os 50 pacotes do
+    `requirements.txt` sem conflito — log de build mostra
+    `streamlit==1.57.0` "Found ... in the environment", batendo exato
+    com o pin da lição 26 (`docs/04`). Não é causa de nada aqui.
+  - `docs/04-licoes-aprendidas.md` ganha item novo sobre diagnosticar
+    a causa errada antes de confirmar com a fonte (o painel real).
 
 ## 12.0.0 — 2026-09-17
 

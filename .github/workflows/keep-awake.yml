@@ -17,30 +17,35 @@
 # externo (ex. UptimeRobot/cron-job.org), que não sofre esse atraso por
 # rodar fora da fila do GitHub Actions.
 #
-# Incidente 2026-09-14: app dormindo desde 04/09 porque este ping
-# passou a cair num loop de redirecionamento pra tela de login do
-# próprio Streamlit Community Cloud (share.streamlit.io/-/auth/app ->
-# fin360.streamlit.app/-/login) — a visibilidade do app em Settings ->
-# Sharing tinha saído de "público" (efeito colateral não intencional
-# do trabalho de auth unificado do HubSP). Com --fail isso só aparecia
-# como "curl: exit 47", sem dizer o porquê. O step passou a checar a
-# URL final e apontar a causa explicitamente.
+# Incidente 2026-09-14 — DIAGNÓSTICO ORIGINAL CORRIGIDO EM 2026-09-18,
+# ver achado abaixo. Registrado aqui por transparência, não repetir:
+# achou-se então que a causa era "Sharing > Who can view this app"
+# ter saído de público em share.streamlit.io. Guardado como hipótese
+# até a checagem de 09-18 provar que a configuração sempre esteve
+# correta (print do painel confirmado pelo usuário).
 #
-# Achado 2026-09-18 (ainda sem correção real no Streamlit Cloud —
-# 94 de 100 execuções mais recentes falharam, ininterrupto desde
-# 2026-09-04T17:42Z): a mensagem explicativa acima **nunca chegou a
-# aparecer em nenhum log** porque o runner do GitHub Actions roda cada
-# `run:` com `bash -e` — quando `curl --max-redirs 8` esgota o limite
-# de redirecionamento (o próprio caso que o diagnóstico foi escrito
-# pra explicar), o CURL mesmo sai com código 47 *antes* do `if`
-# conseguir inspecionar a URL, e o `-e` aborta o script naquela linha.
-# O log real (visto pelo usuário) só mostrava "curl: (47) Maximum (8)
-# redirects followed" cru, sem nenhuma das linhas de diagnóstico.
-# Corrigido isolando o curl com `set +e`/`set -e` pra capturar o
-# código de saída sem deixar o `-e` matar o script antes da hora.
-# A correção do problema de verdade continua fora do repositório: só
-# o dono da conta resolve em share.streamlit.io, Settings -> Sharing ->
-# "Who can view this app" de volta pra público.
+# Achado 2026-09-18 (causa raiz de verdade, resolvida sem nenhuma ação
+# manual no painel do Streamlit Cloud): o `curl` deste step nunca
+# habilitou o motor de cookies. Desde ~2026-09-04, o Streamlit
+# Community Cloud passou a validar a visita com um handshake de 2
+# saltos MESMO em app público: fin360.streamlit.app -> redireciona pra
+# share.streamlit.io/-/auth/app (que emite um cookie de sessão) ->
+# redireciona pra fin360.streamlit.app/-/login?payload=... (emite outro
+# cookie) -> volta pra URL original. Sem guardar esses cookies entre os
+# 3 saltos, o curl nunca consegue provar que já passou pelo handshake
+# — o servidor reinicia o ciclo do zero pra sempre, até estourar
+# `--max-redirs` (curl sai com código 47, sem nunca chegar no app de
+# verdade). Reproduzido e confirmado localmente: o mesmo curl, com
+# `-b ""` (habilita o motor de cookies em memória, sem precisar de
+# arquivo), resolve em só 3 redirecionamentos e HTTP 200. Corrigido
+# abaixo com essa única flag.
+#
+# Nota à parte, também verificada em 2026-09-18 e SEM problema: a
+# versão de Python selecionada no painel (3.14.7) resolve os 50
+# pacotes do `requirements.txt` sem conflito, com
+# `streamlit==1.57.0` "Found ... in the environment" batendo exato
+# com o pin da lição 26 (docs/04) — build saudável, não é causa de
+# nada aqui.
 name: Keep Fin360 awake
 
 on:
@@ -56,7 +61,7 @@ jobs:
       - name: Ping fin360.streamlit.app
         run: |
           set +e
-          SAIDA=$(curl --silent --show-error --location --max-redirs 8 \
+          SAIDA=$(curl --silent --show-error --location --max-redirs 8 -b "" \
             --retry 3 --retry-delay 5 --connect-timeout 15 --max-time 60 \
             --user-agent "Fin360-keep-awake/1.0" \
             --output /dev/null \
@@ -66,7 +71,7 @@ jobs:
           set -e
           if [[ $CURL_RC -ne 0 ]]; then
             if [[ $CURL_RC -eq 47 ]]; then
-              echo "::error::curl esgotou o limite de 8 redirecionamentos (codigo 47) tentando abrir fin360.streamlit.app -- ISSO NAO eh problema de rede/curl. E o mesmo sintoma do incidente de 2026-09-14: em share.streamlit.io, no app fin360, Settings > Sharing, 'Who can view this app' saiu de 'public' e o app entrou num loop de redirect pra tela de login do Streamlit Community Cloud. Por isso o keep-awake nunca conta como visita real e o app volta a dormir. So o dono da conta corrige isso no painel do Streamlit Cloud."
+              echo "::error::curl esgotou o limite de 8 redirecionamentos (codigo 47) tentando abrir fin360.streamlit.app, mesmo com o motor de cookies habilitado (-b). Se isso voltar a acontecer, o handshake de sessao do Streamlit Community Cloud mudou de novo -- conferir com um navegador real antes de assumir que e a config de Sharing (ja foi checada em 2026-09-18 e estava correta)."
             else
               echo "::error::curl falhou com codigo $CURL_RC antes de completar a requisicao (timeout/DNS/TLS) -- ver https://curl.se/libcurl/c/libcurl-errors.html."
             fi
@@ -76,7 +81,7 @@ jobs:
           URL_FINAL="${SAIDA#*|}"
           echo "HTTP $CODIGO_HTTP -> $URL_FINAL"
           if [[ "$URL_FINAL" == *"share.streamlit.io"* || "$URL_FINAL" == *"/-/login"* || "$URL_FINAL" == *"/-/auth"* ]]; then
-            echo "::error::Ping caiu na tela de login do Streamlit Community Cloud ($URL_FINAL) em vez do app. NAO eh problema de rede/curl: em share.streamlit.io, no app fin360, Settings > Sharing, 'Who can view this app' saiu de 'public' e passou a exigir login -- por isso o keep-awake nunca conta como visita real e o app volta a dormir. So o dono da conta corrige isso no painel do Streamlit Cloud."
+            echo "::error::Ping caiu na tela de login do Streamlit Community Cloud ($URL_FINAL) em vez do app, mesmo com cookies habilitados. Com o motor de cookies ligado isso deixa de ser falso-positivo do handshake normal -- agora e sinal real de que Settings > Sharing > 'Who can view this app' pode ter saido de publico. Confirmar no painel do app antes de mexer em qualquer coisa."
             exit 1
           fi
           if [[ "$CODIGO_HTTP" != "200" ]]; then

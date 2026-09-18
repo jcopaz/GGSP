@@ -676,3 +676,53 @@ antes de seguir** — working tree limpo depois de uma edição real é
 sinal de arquivo errado ou pasta ignorada, nunca "nada mudou". Regra
 geral (não só deste projeto) registrada em
 `C:\Users\30028203\Documents\PADRAO-DE-ENGENHARIA.md`.
+
+## 28. Keep-awake em loop de redirecionamento há 2 semanas — causa apontada errado na primeira passada (2026-09-18)
+
+**Sintoma**: usuário pediu pra verificar por que o `keep-awake.yml`
+estava falhando. O log mostrava `curl: (47) Maximum (8) redirects
+followed` — o mesmo sintoma textual do incidente de 2026-09-14
+("Sharing > Who can view this app saiu de público").
+
+**Causa raiz ERRADA assumida na primeira passada**: por bater o mesmo
+sintoma (redirect pra `/-/login`) do incidente anterior, assumi sem
+checar que a causa era a mesma — a configuração de Sharing do app
+tinha voltado a exigir login. Registrei isso em código/CHANGELOG
+(v12.0.1) como certeza, incluindo uma "ação manual necessária" pro
+usuário ir mudar uma configuração que **já estava certa**. O usuário
+mandou o print do painel (`Settings > Sharing > "This app is public
+and searchable"`) e derrubou a hipótese na hora.
+
+**Causa raiz de verdade**: o Streamlit Community Cloud passou a
+validar toda visita — pública ou não — com um handshake de 2 saltos
+que emite cookie de sessão em cada salto
+(`fin360.streamlit.app` → `share.streamlit.io/-/auth/app` →
+`fin360.streamlit.app/-/login?payload=...` → volta pra URL original).
+O `curl` do workflow nunca habilitou o motor de cookies — sem guardar
+o cookie entre os saltos, o servidor nunca via a visita como validada
+e reiniciava o handshake do zero, em loop, até estourar
+`--max-redirs`. Bug 100% do lado do script, nada a corrigir no painel
+do Streamlit Cloud.
+
+**O que entregou a causa certa**: reproduzir o mesmo `curl` de fora
+com `-v` e olhar o `Set-Cookie`/redirect a cada salto — dava pra ver
+os 2 cookies sendo emitidos e nunca reenviados. Testar de novo com
+`-b ""` (habilita o motor de cookies em memória) resolveu em 3
+redirecionamentos e HTTP 200 — mesma URL, mesmo ambiente, única
+diferença foi a flag.
+
+**Correção**: `-b ""` adicionado ao `curl` (v12.0.2). CHANGELOG e
+comentários do workflow corrigidos pra registrar o erro do
+diagnóstico anterior, não só a causa nova — apagar a história errada
+teria escondido a lição.
+
+**Lição**: **um sintoma idêntico a um incidente anterior não é prova
+de que a causa é a mesma** — principalmente quando a causa anterior
+era uma configuração externa (painel de terceiro) que o usuário pode
+checar em segundos. Antes de escrever "ação manual necessária" pro
+usuário mudar algo fora do repositório, **pedir/checar o estado atual
+daquilo especificamente** (aqui, um print do painel) é mais rápido do
+que reafirmar uma hipótese antiga e deixar o usuário descobrir que
+estava errada. Mesma raiz do achado "Reler estado antes de afirmar"
+(memória do agente, [[feedback_reler_estado_antes_de_afirmar]]): não
+confiar em diagnóstico anterior sem reverificar contra o estado real.
