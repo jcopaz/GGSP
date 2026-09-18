@@ -9,6 +9,7 @@ Custo/Mês) acontece em src/model/build_star_schema.py (Fase 2) — não aqui.
 from __future__ import annotations
 
 import re
+import unicodedata
 
 import pandas as pd
 
@@ -235,6 +236,35 @@ def _dividir_codigo_nome(serie: pd.Series) -> tuple[pd.Series, pd.Series]:
     return codigo, nome.fillna("")
 
 
+def _normalizar_nome_coluna(nome: str) -> str:
+    """Remove acento/caixa/espaço nas pontas pra comparar cabeçalho de
+    coluna de forma tolerante — export do SAP/BW pode vir com grafia
+    levemente diferente entre rodadas (mesma classe de risco das
+    lições 13/15, docs/04-licoes-aprendidas.md)."""
+    sem_acento = unicodedata.normalize("NFKD", nome).encode("ascii", "ignore").decode("ascii")
+    return sem_acento.strip().casefold()
+
+
+def _coluna(df: pd.DataFrame, nome_esperado: str) -> pd.Series:
+    """`df[nome_esperado]` tolerante a acento/caixa/espaço no cabeçalho.
+    Achado 2026-09-18 (incidente real, `docs/04` item 29): "Reprocessar
+    base" falhou com `KeyError: 'COMPETENCIA'` — o nome exato mudou
+    entre uma rodada de export e outra. Sem essa função, o erro não diz
+    quais colunas o arquivo realmente tem; com ela, ou resolve pela
+    variação de grafia, ou levanta um erro explícito listando as
+    colunas reais, em vez do KeyError mudo de antes."""
+    if nome_esperado in df.columns:
+        return df[nome_esperado]
+    alvo = _normalizar_nome_coluna(nome_esperado)
+    for col in df.columns:
+        if _normalizar_nome_coluna(str(col)) == alvo:
+            return df[col]
+    raise KeyError(
+        f"coluna '{nome_esperado}' não encontrada no arquivo. "
+        f"Colunas disponíveis: {list(df.columns)}"
+    )
+
+
 def load_consulta_contas(path: str) -> pd.DataFrame:
     """Carrega "Consulta de Contas.xlsx" — fonte trazida em 2026-08-10,
     Orçado (`VersãoComparativo1`) x Realizado (`VersãoComparativo2`) já com
@@ -260,16 +290,16 @@ def load_consulta_contas(path: str) -> pd.DataFrame:
     """
     df = pd.read_excel(path, sheet_name="Export")
 
-    periodo = df["COMPETENCIA"].astype(str).str.split("/", expand=True)
+    periodo = _coluna(df, "COMPETENCIA").astype(str).str.split("/", expand=True)
     ano = pd.to_numeric(periodo[0], errors="coerce")
     mes = pd.to_numeric(periodo[1], errors="coerce")
 
-    gg_id, gg_nome = _parte_hierarquia_generico(df["GER GERAL"])
-    gerencia_id, gerencia_nome = _parte_hierarquia_generico(df["GERENCIA"])
-    diretoria_id, diretoria_nome = _parte_hierarquia_generico(df["DIRETORIA"])
-    centro_custo_id, centro_custo_nome = _dividir_codigo_nome(df["CC(Descrição)"])
-    pacote_id, pacote_nome = _dividir_codigo_nome(df["Pacote"])
-    conta_id, conta_nome = _dividir_codigo_nome(df["Conta"])
+    gg_id, gg_nome = _parte_hierarquia_generico(_coluna(df, "GER GERAL"))
+    gerencia_id, gerencia_nome = _parte_hierarquia_generico(_coluna(df, "GERENCIA"))
+    diretoria_id, diretoria_nome = _parte_hierarquia_generico(_coluna(df, "DIRETORIA"))
+    centro_custo_id, centro_custo_nome = _dividir_codigo_nome(_coluna(df, "CC(Descrição)"))
+    pacote_id, pacote_nome = _dividir_codigo_nome(_coluna(df, "Pacote"))
+    conta_id, conta_nome = _dividir_codigo_nome(_coluna(df, "Conta"))
 
     resultado = pd.DataFrame({
         "ano": ano,
@@ -287,11 +317,11 @@ def load_consulta_contas(path: str) -> pd.DataFrame:
         "pacote_nome": pacote_nome,
         "conta_id": conta_id,
         "conta_nome": conta_nome,
-        "dominio": df["Descrição"],
-        "linha_dre": df["d_DRE"],
-        "responsavel": df["CC_PONTA_FIRME"],
-        "valor_orcado": pd.to_numeric(df["VersãoComparativo1"], errors="coerce").fillna(0.0),
-        "valor_realizado": pd.to_numeric(df["VersãoComparativo2"], errors="coerce").fillna(0.0),
+        "dominio": _coluna(df, "Descrição"),
+        "linha_dre": _coluna(df, "d_DRE"),
+        "responsavel": _coluna(df, "CC_PONTA_FIRME"),
+        "valor_orcado": pd.to_numeric(_coluna(df, "VersãoComparativo1"), errors="coerce").fillna(0.0),
+        "valor_realizado": pd.to_numeric(_coluna(df, "VersãoComparativo2"), errors="coerce").fillna(0.0),
     })
     resultado = resultado[resultado["ano"].notna() & resultado["mes"].notna()].copy()
     resultado["ano"] = resultado["ano"].astype(int)

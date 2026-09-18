@@ -4,6 +4,33 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 12.0.3 — 2026-09-18
+
+- **"Reprocessar base" falhando com `Erro ao reprocessar: 'COMPETENCIA'`.**
+  Usuário reportou o erro na tela de Dados e Qualidade. Rastreei até
+  `src/ingestion/loaders.py::load_consulta_contas` — única linha do
+  projeto que lê a coluna `"COMPETENCIA"` por nome literal, sem try/except
+  entre `build_star_schema()` e o `st.error` de `app.py` (o `KeyError`
+  sobe cru). Local (`data/raw/Orçado x Realizado.xlsx`, 18/08) tem a
+  coluna com esse nome exato — o arquivo atual em produção
+  provavelmente veio de uma rodada de export do SAP/BW com o cabeçalho
+  grafado diferente (acento/caixa/espaço), mesma classe de risco já
+  registrada nas lições 13 e 15 (`docs/04`). Não confirmei o cabeçalho
+  exato do arquivo de produção (sem acesso a ele deste sandbox).
+  - **Correção**: `_coluna(df, nome)` nova em `loaders.py` — resolve o
+    nome exato primeiro, senão tenta por comparação tolerante a
+    acento/caixa/espaço; se mesmo assim não achar, levanta um erro
+    listando as colunas reais do arquivo em vez do `KeyError` mudo de
+    antes. Aplicada nas 11 colunas lidas por nome literal em
+    `load_consulta_contas` (todas igualmente frágeis à mesma classe de
+    problema, não só `COMPETENCIA`). Testado com 5 variações de grafia
+    plausíveis — todas resolvem; caso genuinamente sem a coluna agora
+    aponta as colunas disponíveis.
+  - Se o erro persistir depois deste fix, a mensagem nova vai dizer
+    exatamente quais colunas o arquivo atual tem — aí sim decide se é
+    coluna renomeada de vez (ajustar `nome_esperado`) ou arquivo errado.
+  - `docs/04-licoes-aprendidas.md` item 29.
+
 ## 12.0.1 — 2026-09-18
 
 - **`keep-awake.yml` mascarava a própria causa da falha desde

@@ -726,3 +726,51 @@ que reafirmar uma hipótese antiga e deixar o usuário descobrir que
 estava errada. Mesma raiz do achado "Reler estado antes de afirmar"
 (memória do agente, [[feedback_reler_estado_antes_de_afirmar]]): não
 confiar em diagnóstico anterior sem reverificar contra o estado real.
+
+## 29. `KeyError: 'COMPETENCIA'` ao reprocessar — cabeçalho de export pode mudar de grafia entre rodadas (2026-09-18)
+
+**Sintoma**: usuário clicou "Reprocessar base" (Dados e Qualidade) e a
+tela mostrou `Erro ao reprocessar: 'COMPETENCIA'` — um `KeyError` cru,
+só com o nome da coluna, sem dizer de qual arquivo ou por quê.
+
+**Causa raiz**: `src/ingestion/loaders.py::load_consulta_contas` lê a
+aba "Export" de `data/raw/Orçado x Realizado.xlsx` (nome de arquivo já
+trocado uma vez, ver item da v11.0.0 no CHANGELOG) e acessa 11 colunas
+por nome literal, sem nenhuma tolerância — `df["COMPETENCIA"]`,
+`df["GER GERAL"]`, `df["CC(Descrição)"]` etc. `build_star_schema()`
+chama esse loader sem try/except, então qualquer `KeyError` sobe cru
+até o `except Exception as exc: st.error(...)` de `app.py`. O arquivo
+local de referência (18/08) tem a coluna `COMPETENCIA` grafada exatamente
+como o código espera — não reproduzi o erro daqui porque não tenho
+acesso ao arquivo real que está em produção agora. A hipótese mais
+provável é que o export do SAP/BW que o usuário subiu veio com esse
+cabeçalho escrito diferente (acento/caixa/espaço) — mesma classe de
+risco já registrada nos itens 13 e 15 deste documento (nome de coluna
+não é estável entre rodadas de export).
+
+**Correção**: `_coluna(df, nome_esperado)` nova em `loaders.py` —
+tenta o nome exato primeiro; se não achar, compara sem acento/caixa/
+espaço nas pontas; se mesmo assim não achar, levanta um erro listando
+as colunas reais do arquivo (`Colunas disponíveis: [...]`) em vez do
+`KeyError` mudo de antes. Aplicada às 11 colunas de
+`load_consulta_contas` — não só a que quebrou hoje, porque todas são
+igualmente frágeis à mesma classe de problema. Testado com 5 variações
+de grafia plausíveis (acento, caixa, espaço nas pontas) — todas
+resolvem pro valor certo; um caso sem a coluna nenhuma agora aponta as
+colunas disponíveis em vez de falhar mudo.
+
+**Lição**: coluna lida por nome literal de um export externo (SAP/BW,
+qualquer fonte "rotina periódica, sobe a cada nova rodada") é uma
+aposta de que o cabeçalho não muda entre rodadas — aposta que já
+perdeu 3 vezes neste projeto (itens 13, 15, 29). Sempre que um loader
+tiver mais de 1 ou 2 colunas lidas assim, vale envolver com uma
+função tolerante a acento/caixa/espaço desde o início, não só depois
+que quebra — o custo de escrever é baixo e o ganho (erro que se
+explica sozinho, listando as colunas reais) evita o próximo
+"KeyError mudo" e a rodada de investigação que vem com ele. **Não
+confirmei o cabeçalho real do arquivo de produção antes de corrigir**
+(sem acesso a ele deste sandbox) — a correção é robusta contra várias
+hipóteses de grafia ao mesmo tempo, mas se o nome mudou pra algo
+semanticamente diferente (não só formatação), a mensagem nova vai
+mostrar isso e precisa de decisão do usuário, não é golpe de sorte
+resolvido só pela normalização.
