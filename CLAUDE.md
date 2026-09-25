@@ -6,7 +6,7 @@
 > 2. `docs/01-plano-de-build-mvp.md` — em que ordem construir (fases/tarefas)
 > 3. `docs/02-perguntas-em-aberto.md` — o que NÃO está resolvido ainda (não
 >    tente adivinhar essas respostas; trate como TODO explícito no código)
-> 4. `C:\Users\30028203\Documents\PADRAO-DE-ENGENHARIA.md` — padrão de
+> 4. `C:\Users\30028203\Documents\Projetos em Python\PADRAO-DE-ENGENHARIA.md` — padrão de
 >    engenharia comum a todos os apps do Julio (versionamento, arquitetura,
 >    modelagem, RBAC, auth/segredos, testes, deps, observabilidade,
 >    hardening, pentest). Ponto zero; toda lição nova volta pra lá. O
