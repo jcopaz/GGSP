@@ -80,6 +80,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 
 import duckdb
 import pandas as pd
@@ -645,7 +646,19 @@ def _agregar_fact_realizado(df_real: pd.DataFrame) -> pd.DataFrame:
     return df_real.groupby(chaves, dropna=False, as_index=False)["valor_realizado"].sum()
 
 
+# Uma trava por processo: no Streamlit Cloud todas as sessões rodam no
+# mesmo processo, e o auto-restore pós-reboot + os botões "Reprocessar
+# base" podem disparar ao mesmo tempo (mesmo .tmp, mesmo lock do DuckDB).
+# RLock porque o auto-restore do app.py segura a trava e chama o build.
+TRAVA_BUILD = threading.RLock()
+
+
 def build_star_schema() -> str:
+    with TRAVA_BUILD:
+        return _build_star_schema()
+
+
+def _build_star_schema() -> str:
     cfg = carregar_config()
     caminho_bz = cfg["caminhos"]["base_zero"]
     caminho_real = cfg["caminhos"]["realizado"]
@@ -835,7 +848,18 @@ def build_star_schema() -> str:
     # "SELECT * FROM fact_orcamento" resolve para a tabela antiga do disco
     # (não para o DataFrame novo) — reescrevendo o schema velho em cima de
     # si mesmo silenciosamente, sem erro.
-    con = duckdb.connect(caminho_db)
+    #
+    # Escrita atômica (2026-10-04): grava num .tmp e só no fim troca pelo
+    # arquivo final com os.replace. Antes gravava direto em caminho_db —
+    # durante o rebuild pós-reboot do Streamlit Cloud, quem abria o app via
+    # um .duckdb pela metade (sem fact_orcamento) e caía no aviso "Base
+    # ainda não processada"; se o build quebrasse no meio, o arquivo
+    # parcial ficava lá e bloqueava o auto-restore.
+    caminho_tmp = caminho_db + ".tmp"
+    for resto in (caminho_tmp, caminho_tmp + ".wal"):
+        if os.path.exists(resto):
+            os.remove(resto)
+    con = duckdb.connect(caminho_tmp)
     try:
         con.execute("CREATE OR REPLACE TABLE dim_tempo AS SELECT * FROM df_dim_tempo")
         con.execute("CREATE OR REPLACE TABLE dim_pacote AS SELECT * FROM df_dim_pacote")
@@ -901,8 +925,14 @@ def build_star_schema() -> str:
                 "CREATE OR REPLACE TABLE fact_pce_realizado AS "
                 "SELECT * FROM df_pce_realizado"
             )
-    finally:
+        con.execute("CHECKPOINT")
+    except Exception:
         con.close()
+        if os.path.exists(caminho_tmp):
+            os.remove(caminho_tmp)
+        raise
+    con.close()
+    os.replace(caminho_tmp, caminho_db)
 
     return caminho_db
 

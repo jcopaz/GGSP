@@ -4,6 +4,25 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 12.1.1 — 2026-10-04
+
+- **Usuários caindo em "Base ainda não processada" sem ter feito nada.**
+  Após reboot/hibernação do Streamlit Cloud (disco efêmero), o
+  auto-restore do Neon tinha 4 falhas: (1) o ETL gravava direto no
+  `painel.duckdb`, então quem abria o app durante o rebuild via um
+  arquivo pela metade; (2) o restore só rodava se o arquivo NÃO
+  existisse — um arquivo parcial bloqueava a restauração para sempre;
+  (3) várias sessões chegando juntas disparavam rebuilds concorrentes e
+  brigavam pelo lock do DuckDB; (4) erro engolido (`except: pass`) e sem
+  nova tentativa na mesma sessão. Correção: escrita atômica (`.tmp` +
+  `os.replace`) em `build_star_schema.py`; trava por processo
+  (`TRAVA_BUILD`) compartilhada entre auto-restore e "Reprocessar base";
+  `_garantir_base_pronta()` checa a base pronta (tem `fact_orcamento`),
+  mostra spinner, quem chega durante o rebuild espera em vez de ver o
+  aviso, loga a exceção e tenta de novo após 60 s. Aviso para quem não
+  tem acesso a "Dados e Qualidade" virou orientação simples + botão
+  "Tentar novamente".
+
 ## 12.1.0 — 2026-09-18
 
 - **Administração → Uploads e exportações ganha "Baixar cópia deste

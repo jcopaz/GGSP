@@ -51,8 +51,10 @@ Uso: streamlit run src/dashboard/app.py
 from __future__ import annotations
 
 import io
+import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 # Garante que a raiz do repositório esteja no sys.path antes de qualquer
@@ -127,7 +129,7 @@ from src.dashboard.capex_rastreabilidade import render_nivel6_sap_capex
 from src.dashboard.pce_especialista import render_pce_especialista
 from src.engine.explanation_engine import COLUNAS_EXPLICACAO, validar_categorias
 from src.engine.simulador import gerar_explicacoes_simuladas
-from src.model.build_star_schema import build_star_schema
+from src.model.build_star_schema import TRAVA_BUILD, build_star_schema
 from src.branding import inject_shell_css, render_page_banner
 from src.versao import APP_VERSION
 
@@ -267,33 +269,53 @@ def _conectar(read_only: bool = True) -> duckdb.DuckDBPyConnection:
     return duckdb.connect(CFG["caminhos"]["warehouse_db"], read_only=read_only)
 
 
-def _garantir_base_pronta() -> None:
-    """Roda 1x por sessão de script: se o warehouse não existir (disco
-    efêmero do Streamlit Cloud apagado num reboot), tenta restaurar os
-    arquivos brutos a partir do backup no Neon e reconstrói a base sozinho
-    — sem precisar de reenvio manual quando não há arquivo novo de verdade.
-    Falha silenciosa por completo: se o Neon estiver fora do ar ou não
-    houver backup nenhum, simplesmente não faz nada — as telas continuam
-    mostrando o aviso normal de "base não processada", e o usuário sempre
-    pode subir manualmente."""
-    if st.session_state.get("_base_restaurada_tentativa"):
-        return
-    st.session_state["_base_restaurada_tentativa"] = True
-
-    if os.path.exists(CFG["caminhos"]["warehouse_db"]):
-        return
-
+def _warehouse_ok() -> bool:
+    caminho_db = CFG["caminhos"]["warehouse_db"]
+    if not os.path.exists(caminho_db):
+        return False
     try:
-        tipos_salvos = listar_tipos_salvos()
-        restaurou_algo = False
-        for tipo, info in TIPOS_ARQUIVO.items():
-            if tipo in tipos_salvos and info["caminho"]:
-                if restaurar_arquivo_bruto(tipo, info["caminho"]):
-                    restaurou_algo = True
-        if restaurou_algo:
-            build_star_schema()
+        con = _conectar()
+        try:
+            return _base_pronta(con)
+        finally:
+            con.close()
     except Exception:
-        pass
+        return False
+
+
+def _garantir_base_pronta() -> None:
+    """Se o warehouse não estiver pronto (disco efêmero do Streamlit Cloud
+    apagado num reboot, ou arquivo incompleto), restaura os arquivos brutos
+    do backup no Neon e reconstrói a base sozinho — sem reenvio manual.
+
+    Revisado em 2026-10-04 (usuários caindo em "Base ainda não processada"
+    sem ter culpa nenhuma): checa a base pronta (não só o arquivo existir),
+    serializa o rebuild entre sessões (quem chega durante o rebuild espera
+    em vez de ver o aviso), tenta de novo no próximo rerun se falhar, e
+    loga o erro no console do Streamlit Cloud em vez de engolir."""
+    if _warehouse_ok():
+        return
+    # Já falhou nesta sessão há pouco — não trava cada rerun por minutos.
+    ultima_falha = st.session_state.get("_base_restauracao_falhou_em", 0.0)
+    if time.time() - ultima_falha < 60:
+        return
+
+    with st.spinner("Preparando a base de dados (leva alguns segundos após uma atualização do app)..."):
+        with TRAVA_BUILD:
+            if _warehouse_ok():  # outra sessão terminou enquanto esperávamos
+                return
+            try:
+                tipos_salvos = listar_tipos_salvos()
+                restaurou_algo = False
+                for tipo, info in TIPOS_ARQUIVO.items():
+                    if tipo in tipos_salvos and info["caminho"]:
+                        if restaurar_arquivo_bruto(tipo, info["caminho"]):
+                            restaurou_algo = True
+                if restaurou_algo:
+                    build_star_schema()
+            except Exception:
+                logging.exception("Auto-restore do warehouse falhou")
+                st.session_state["_base_restauracao_falhou_em"] = time.time()
 
 
 def _base_pronta(con: duckdb.DuckDBPyConnection) -> bool:
@@ -304,11 +326,22 @@ def _base_pronta(con: duckdb.DuckDBPyConnection) -> bool:
 
 
 def _aviso_base_nao_processada() -> None:
-    st.warning(
-        "Base ainda não processada. Use a aba 'Gestão → Dados e Qualidade' "
-        "pra subir os arquivos e clicar em 'Reprocessar base', ou rode "
-        "`python -m src.model.build_star_schema` no terminal."
-    )
+    # Quem não tem acesso à tela de upload não consegue fazer nada com a
+    # instrução técnica — pra essa pessoa, o caminho é recarregar ou avisar.
+    if can_acessar_pagina("upload"):
+        st.warning(
+            "Base ainda não processada. Use a aba 'Gestão → Dados e Qualidade' "
+            "pra subir os arquivos e clicar em 'Reprocessar base'."
+        )
+    else:
+        st.info(
+            "Os dados estão sendo preparados. Aguarde alguns segundos e "
+            "recarregue a página (F5). Se o aviso persistir, avise o "
+            "administrador do Fin360."
+        )
+        if st.button("Tentar novamente"):
+            st.session_state.pop("_base_restauracao_falhou_em", None)
+            st.rerun()
 
 
 def _validar_explicacoes_csv(dados: bytes) -> str | None:
