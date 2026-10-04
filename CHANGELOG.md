@@ -4,6 +4,16 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 12.1.2 — 2026-10-04
+
+- **App dormindo apesar do keep-awake sempre verde.** Causa raiz: `curl`
+  não conta como visita no Streamlit Community Cloud (só sessão real com
+  JS + WebSocket), e a casca HTML responde 200 mesmo com o app dormindo —
+  o workflow nunca detectava o sono. Trocado por navegador headless
+  (`scripts/keep_awake.py`, Playwright): abre o app, clica em "Yes, get
+  this app back up!" se necessário e falha de verdade se não acordar.
+  Histórico real do Actions: execuções a cada 3h–6h (não 10 min).
+
 ## 12.1.1 — 2026-10-04
 
 - **Usuários caindo em "Base ainda não processada" sem ter feito nada.**

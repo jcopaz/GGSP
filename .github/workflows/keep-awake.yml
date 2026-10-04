@@ -46,6 +46,17 @@
 # `streamlit==1.57.0` "Found ... in the environment" batendo exato
 # com o pin da lição 26 (docs/04) — build saudável, não é causa de
 # nada aqui.
+#
+# Achado 2026-10-04 (causa raiz do app dormindo com o workflow sempre
+# verde): curl NAO conta como visita no Community Cloud — so uma sessao
+# real (navegador rodando o JS + WebSocket do app). E a casca HTML
+# responde 200 mesmo com o app dormindo (a tela de "gone to sleep" e
+# desenhada via JS), entao o check acima nunca detectava nada. Trocado
+# por navegador headless (scripts/keep_awake.py, Playwright): abre o app,
+# clica em "Yes, get this app back up!" se estiver dormindo e falha de
+# verdade se nao acordar. Historico real de execucoes nessa data:
+# intervalo de 3h-6h (nao 10 min) — ainda abaixo das ~12h de inatividade
+# que fazem o app dormir.
 name: Keep Fin360 awake
 
 on:
@@ -56,35 +67,15 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 10
     steps:
-      - name: Ping fin360.streamlit.app
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instala Playwright + Chromium
         run: |
-          set +e
-          SAIDA=$(curl --silent --show-error --location --max-redirs 8 -b "" \
-            --retry 3 --retry-delay 5 --connect-timeout 15 --max-time 60 \
-            --user-agent "Fin360-keep-awake/1.0" \
-            --output /dev/null \
-            --write-out "%{http_code}|%{url_effective}" \
-            "https://fin360.streamlit.app/?keepalive=$(date +%s)")
-          CURL_RC=$?
-          set -e
-          if [[ $CURL_RC -ne 0 ]]; then
-            if [[ $CURL_RC -eq 47 ]]; then
-              echo "::error::curl esgotou o limite de 8 redirecionamentos (codigo 47) tentando abrir fin360.streamlit.app, mesmo com o motor de cookies habilitado (-b). Se isso voltar a acontecer, o handshake de sessao do Streamlit Community Cloud mudou de novo -- conferir com um navegador real antes de assumir que e a config de Sharing (ja foi checada em 2026-09-18 e estava correta)."
-            else
-              echo "::error::curl falhou com codigo $CURL_RC antes de completar a requisicao (timeout/DNS/TLS) -- ver https://curl.se/libcurl/c/libcurl-errors.html."
-            fi
-            exit 1
-          fi
-          CODIGO_HTTP="${SAIDA%%|*}"
-          URL_FINAL="${SAIDA#*|}"
-          echo "HTTP $CODIGO_HTTP -> $URL_FINAL"
-          if [[ "$URL_FINAL" == *"share.streamlit.io"* || "$URL_FINAL" == *"/-/login"* || "$URL_FINAL" == *"/-/auth"* ]]; then
-            echo "::error::Ping caiu na tela de login do Streamlit Community Cloud ($URL_FINAL) em vez do app, mesmo com cookies habilitados. Com o motor de cookies ligado isso deixa de ser falso-positivo do handshake normal -- agora e sinal real de que Settings > Sharing > 'Who can view this app' pode ter saido de publico. Confirmar no painel do app antes de mexer em qualquer coisa."
-            exit 1
-          fi
-          if [[ "$CODIGO_HTTP" != "200" ]]; then
-            echo "::error::HTTP $CODIGO_HTTP inesperado (url final: $URL_FINAL)."
-            exit 1
-          fi
+          pip install playwright==1.63.0
+          python -m playwright install --with-deps chromium
+      - name: Visita o app com navegador real (acorda se estiver dormindo)
+        run: python scripts/keep_awake.py
