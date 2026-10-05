@@ -72,3 +72,10 @@ def obter_exportacao(exportacao_id): return buscar_um("select nome_arquivo,conte
 def listar_versoes_upload(limite=200):
     return buscar_todos("select v.id,v.tipo,v.nome_original,v.tamanho_bytes,v.enviado_em,u.nome_completo,v.ativo from app.arquivo_bruto_versao v left join app.usuario u on u.id=v.enviado_por order by v.enviado_em desc limit %s",(limite,))
 def obter_versao_arquivo(versao_id): return buscar_um("select nome_original,conteudo from app.arquivo_bruto_versao where id=%s",(versao_id,))
+def listar_escopos_todos_ativos():
+    """Todas as linhas de escopo ativas (com e sem universo) de usuários
+    ativos — base do diagnóstico "Perfis com problema" da Administração."""
+    return buscar_todos(
+        "select e.usuario_id, e.universo, e.tipo, e.valor from app.escopo_acesso e "
+        "join app.usuario u on u.id = e.usuario_id where e.ativo = true and u.ativo = true"
+    )

@@ -4,6 +4,22 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 12.2.0 — 2026-10-05
+
+- **Perfil "desconfigurado" deixava a tela em branco, sem aviso** (caso
+  Sandra, 2026-10-04: via só o menu lateral até liberar todas as camadas).
+  Dois ajustes:
+  - `filtros.guardar_e_faixa_universo` agora conta quantas linhas o
+    recorte do usuário alcança; se for 0 (código de Gerência/PEP que não
+    existe na base, ou tipo de escopo que o filtro de CAPEX Obras não
+    entende — ex. `gerencia` em vez de `gerencia_obras`), mostra aviso
+    explicando e para a página, em vez de gráficos vazios.
+  - Administração → Permissões e escopos ganha **"Perfis com problema"**:
+    lista usuários ativos não-admin sem universo, só com escopo legado
+    (universo NULL), com tipo de escopo não filtrável no universo ou com
+    valor inexistente na base atual (`diagnosticar_perfis`, função pura
+    com testes em `tests/test_diagnostico_perfis.py`).
+
 ## 12.1.2 — 2026-10-04
 
 - **App dormindo apesar do keep-awake sempre verde.** Causa raiz: `curl`

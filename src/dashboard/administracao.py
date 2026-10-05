@@ -322,6 +322,107 @@ def _render_acesso_por_universo(u: dict, con: duckdb.DuckDBPyConnection | None) 
             )
 
 
+# Tipos que o filtro de cada universo de fato entende (filtros.py:
+# clausula_escopo usa gerencia_id; clausula_escopo_obras usa gerencia_obras
+# / e_pep_projeto). Escopo com outro tipo libera o menu mas filtra 0 linha.
+_TIPOS_VALIDOS_UNIVERSO = {
+    "opex_sustaining": {"gg", "gerencia"},
+    "capex_sustaining": {"gg", "gerencia"},
+    "capex_obras": {"gg", "gerencia_obras", "elemento_pep"},
+}
+_ROTULO_UNIVERSO = {
+    "opex_sustaining": "OPEX Sustaining",
+    "capex_sustaining": "CAPEX Sustaining",
+    "capex_obras": "CAPEX Obras",
+}
+
+
+def _valores_existentes_na_base(con: duckdb.DuckDBPyConnection | None) -> dict[str, set[str]] | None:
+    """{tipo: valores reais na base} pra checar escopo apontando pra código
+    inexistente. None se a base não está disponível (pula essa checagem)."""
+    if con is None:
+        return None
+    consultas = {
+        "gerencia": "SELECT DISTINCT gerencia_id FROM dim_gerencia",
+        "gerencia_obras": "SELECT DISTINCT gerencia_obras FROM fact_cji4_capex_obras "
+                          "UNION SELECT DISTINCT gerencia_obras FROM fact_cji3_capex_obras",
+        "elemento_pep": "SELECT DISTINCT e_pep_projeto FROM fact_cji4_capex_obras "
+                        "UNION SELECT DISTINCT e_pep_projeto FROM fact_cji3_capex_obras",
+    }
+    out: dict[str, set[str]] = {}
+    for tipo, sql in consultas.items():
+        try:
+            out[tipo] = {str(r[0]) for r in con.execute(sql).fetchall() if r[0] is not None}
+        except Exception:
+            pass  # tabela ausente — essa checagem é pulada pra esse tipo
+    return out
+
+
+def diagnosticar_perfis(
+    usuarios: list[dict], escopos: list[dict], valores_base: dict[str, set[str]] | None
+) -> list[dict]:
+    """Função pura (testável sem Streamlit/Neon). Para cada usuário ATIVO
+    não-admin, lista os motivos pelos quais ele pode abrir o app e não ver
+    dado nenhum — o caso da Sandra (2026-10-04): menu lateral visível e
+    tela em branco até liberar todas as camadas."""
+    por_usuario: dict[str, list[dict]] = {}
+    for e in escopos:
+        por_usuario.setdefault(str(e["usuario_id"]), []).append(e)
+
+    problemas: list[dict] = []
+    for u in usuarios:
+        if not u.get("ativo") or u.get("papel") == "admin":
+            continue
+        linhas = por_usuario.get(str(u["id"]), [])
+        com_universo = [l for l in linhas if l.get("universo")]
+        motivos: list[str] = []
+        if not com_universo:
+            if linhas:
+                motivos.append("só tem escopos legados (sem universo) — eles não liberam nada hoje")
+            else:
+                motivos.append("nenhum universo liberado — vê só a tela 'Sem acesso'")
+        for universo, validos in _TIPOS_VALIDOS_UNIVERSO.items():
+            rel = [l for l in com_universo if l["universo"] == universo]
+            if not rel or any(l["tipo"] == "gg" for l in rel):
+                continue
+            rotulo = _ROTULO_UNIVERSO[universo]
+            invalidos = sorted({l["tipo"] for l in rel if l["tipo"] not in validos})
+            if invalidos:
+                motivos.append(f"{rotulo}: tipo de escopo {', '.join(invalidos)} não é filtrável nesse universo")
+            if valores_base is not None:
+                for l in rel:
+                    tipo_ref = "gerencia" if universo != "capex_obras" else l["tipo"]
+                    base = valores_base.get(tipo_ref)
+                    if base is not None and l["tipo"] in validos and str(l["valor"]) not in base:
+                        motivos.append(f"{rotulo}: '{l['valor']}' não existe na base atual")
+        if motivos:
+            problemas.append({
+                "Usuário": u.get("nome_completo"),
+                "Papel": u.get("papel"),
+                "Problema": " · ".join(motivos),
+            })
+    return problemas
+
+
+def _render_diagnostico_perfis(con: duckdb.DuckDBPyConnection | None) -> None:
+    try:
+        problemas = diagnosticar_perfis(
+            listar_usuarios(), listar_escopos_todos_ativos(), _valores_existentes_na_base(con)
+        )
+    except Exception as exc:
+        st.caption(f"⚠️ Não consegui rodar o diagnóstico de perfis: {exc}")
+        return
+    if not problemas:
+        st.success("✅ Todos os usuários ativos têm universo e escopo que alcançam dados.")
+        return
+    st.warning(
+        f"⚠️ {len(problemas)} usuário(s) ativo(s) podem entrar no app e não ver dado nenhum. "
+        "Ajuste em **Acesso por universo** abaixo. Lembre: a mudança só vale "
+        "depois que a pessoa sair e entrar de novo."
+    )
+    st.dataframe(pd.DataFrame(problemas), hide_index=True, use_container_width=True)
+
+
 def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
     """`con`: conexão de leitura do warehouse DuckDB LOCAL (não o Neon) —
     só usada pra popular os dropdowns de Gerência/Gerência de Obras/PEP/
@@ -428,6 +529,9 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
                         st.rerun()
 
     with t2:
+        st.markdown("**Perfis com problema**")
+        _render_diagnostico_perfis(con)
+        st.divider()
         usuarios = listar_usuarios()
         if usuarios:
             nomes = {f"{u['nome_completo']} · {u.get('matricula') or u.get('email')}": u for u in usuarios}

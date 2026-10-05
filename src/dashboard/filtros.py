@@ -501,6 +501,52 @@ def clausula_projeto_capex(
     return " AND " + " AND ".join(condicoes), params
 
 
+def _contar_no_recorte(con: duckdb.DuckDBPyConnection, universo: str) -> int | None:
+    """Quantas linhas de fato o recorte do usuário alcança. None = não deu
+    pra checar (tabela ausente etc.) — quem chama não barra nesse caso."""
+    if universo == "capex_obras":
+        clausula, params = clausula_escopo_obras()
+        tabelas = ("fact_cji4_capex_obras", "fact_cji3_capex_obras")
+    else:
+        clausula, params = clausula_escopo(universo)
+        tabelas = ("fact_orcamento", "fact_realizado")
+    existentes = {
+        r[0] for r in con.execute(
+            "SELECT table_name FROM information_schema.tables"
+        ).fetchall()
+    }
+    tabelas = [t for t in tabelas if t in existentes]
+    if not tabelas:
+        return None
+    total = 0
+    for t in tabelas:
+        (n,) = con.execute(f"SELECT COUNT(*) FROM {t} WHERE 1=1{clausula}", params).fetchone()
+        total += n
+    return total
+
+
+def _barrar_recorte_sem_dado(con: duckdb.DuckDBPyConnection, universo: str, alvos: list[str]) -> None:
+    """Caso Sandra (2026-10-04): usuário com universo liberado, mas cujo
+    recorte não casa com nenhuma linha da base (código de Gerência/PEP
+    antigo, ou tipo de escopo que o filtro de CAPEX Obras não reconhece —
+    ex. 'gerencia' em vez de 'gerencia_obras'). Antes, toda consulta voltava
+    vazia e a tela ficava em branco, sem aviso nenhum — parecia app
+    quebrado. Agora explica e para a página."""
+    try:
+        n = _contar_no_recorte(con, universo)
+    except Exception:
+        return
+    if n is None or n > 0:
+        return
+    st.warning(
+        "🔒 Seu acesso a esta área está liberado, mas o recorte cadastrado "
+        f"para o seu usuário ({', '.join(alvos)}) não encontrou nenhum dado "
+        "na base atual. Peça ao administrador para revisar seus escopos em "
+        "**Administração → Permissões e escopos**."
+    )
+    st.stop()
+
+
 def guardar_e_faixa_universo(con: duckdb.DuckDBPyConnection, universo: str) -> None:
     """`require_universo` (barra quem não tem acesso) + faixa "🔒 Recorte
     do seu acesso: <Gerências>" quando o usuário não tem a GG inteira.
@@ -517,6 +563,7 @@ def guardar_e_faixa_universo(con: duckdb.DuckDBPyConnection, universo: str) -> N
     _tem, tudo, alvos = escopo_universo(universo)
     if tudo or not alvos:
         return
+    _barrar_recorte_sem_dado(con, universo, alvos)
     if universo == "capex_obras":
         nomes = list(alvos)
     else:
