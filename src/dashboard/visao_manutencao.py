@@ -36,11 +36,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.branding import render_page_banner
-from src.dashboard.filtros import clausula_escopo, clausula_periodo, guardar_e_faixa_universo
+from src.dashboard.filtros import guardar_e_faixa_universo
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY, com_alternancia_barra_linha
 from src.dashboard.layout import bloco_resumo_visual, nota_forecast
-from src.dashboard.nivel4_contas import render_arvore_contas
+from src.dashboard.nivel4_contas import _filtros_padrao, render_arvore_contas
 from src.dashboard.nivel5_centro_custo import render_arvore_centro_custo
 from src.dashboard.paleta import COR_ORCADO, COR_REALIZADO
 from src.dashboard.tendencia import dados_tendencia, figura_tendencia
@@ -58,26 +58,31 @@ _NOMES_MES = {1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
               7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"}
 
 
-def _where_recorte() -> tuple[str, list]:
-    """`clausula_periodo` (filtro de Período da sidebar) + `clausula_escopo`
-    (RBAC de escopo por Gerência, universo opex_sustaining — docs/08 Fase
-    RBAC-A.2) num fragmento só. Todas as consultas desta página usam. Vale
-    pros dois fatos: `fact_orcamento` e `fact_realizado` têm `gerencia_id`
-    populado."""
-    where_p, params_p = clausula_periodo()
-    where_e, params_e = clausula_escopo("opex_sustaining")
-    return where_p + where_e, [*params_p, *params_e]
+def _filtros(familia: str) -> tuple[tuple[str, list], tuple[str, list]]:
+    """((where_orc, params_orc), (where_real, params_real)) — fragmentos
+    prontos pra colar depois de "WHERE 1=1".
+
+    Corrigido em 2026-10-05 (usuário: filtrar Gerência não mudava os
+    números da sub-aba Manutenção (PM)). Antes era só Período + escopo
+    RBAC: (1) os filtros da sidebar (Gerência, Pacote, Centro de Custo,
+    PEP...) não entravam no card nem nos gráficos de cima — só nas árvores
+    N4/N5 lá embaixo; (2) o Orçado não era restrito a OPEX, e a família PM
+    carrega o CAPEX Sustaining (PM03) da Base Zero — o card da PM somava
+    CAPEX no Orçado contra um Realizado só OPEX (PD/PP não têm CAPEX, por
+    isso pareciam certos). Agora reusa exatamente o filtro do Nível 4
+    (`_filtros_padrao`: família + sidebar + Período + escopo) e força OPEX
+    no Orçado, igual a Tendência já fazia."""
+    (where_orc, params_orc), (where_real, params_real) = _filtros_padrao(familia)
+    return (where_orc + " AND classificacao_contabil = 'OPEX'", params_orc), (where_real, params_real)
 
 
 def resumo_manutencao(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO) -> dict:
-    where_periodo, params_periodo = _where_recorte()
+    (w_orc, p_orc), (w_real, p_real) = _filtros(familia)
     (orcado,) = con.execute(
-        f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE familia_pacote = ?{where_periodo}",
-        [familia, *params_periodo],
+        f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE 1=1{w_orc}", p_orc,
     ).fetchone()
     (realizado,) = con.execute(
-        f"SELECT SUM(valor_realizado) FROM fact_realizado WHERE familia_pacote = ?{where_periodo}",
-        [familia, *params_periodo],
+        f"SELECT SUM(valor_realizado) FROM fact_realizado WHERE 1=1{w_real}", p_real,
     ).fetchone()
     orcado = orcado or 0.0
     realizado = realizado or 0.0
@@ -87,22 +92,22 @@ def resumo_manutencao(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MAN
 
 
 def _dados_por_pacote(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO) -> pd.DataFrame:
-    where_periodo, params_periodo = _where_recorte()
+    (w_orc, p_orc), (w_real, p_real) = _filtros(familia)
     return con.execute(
         f"""
         WITH orc AS (
             SELECT pacote_id, SUM(valor_orcado) AS orcado FROM fact_orcamento
-            WHERE familia_pacote = ?{where_periodo} GROUP BY pacote_id
+            WHERE 1=1{w_orc} GROUP BY pacote_id
         ), real AS (
             SELECT pacote_id, SUM(valor_realizado) AS realizado FROM fact_realizado
-            WHERE familia_pacote = ?{where_periodo} GROUP BY pacote_id
+            WHERE 1=1{w_real} GROUP BY pacote_id
         )
         SELECT COALESCE(orc.pacote_id, real.pacote_id) AS pacote_id,
                COALESCE(orcado, 0) AS orcado, COALESCE(realizado, 0) AS realizado
         FROM orc FULL OUTER JOIN real USING (pacote_id)
         ORDER BY pacote_id
         """,
-        [familia, *params_periodo, familia, *params_periodo],
+        [*p_orc, *p_real],
     ).df()
 
 
@@ -127,22 +132,22 @@ def _grafico_por_pacote(df: pd.DataFrame, nomes_pacote: dict[str, str]) -> go.Fi
 
 
 def _dados_mensal(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO) -> pd.DataFrame:
-    where_periodo, params_periodo = _where_recorte()
+    (w_orc, p_orc), (w_real, p_real) = _filtros(familia)
     df = con.execute(
         f"""
         WITH orc AS (
             SELECT mes, SUM(valor_orcado) AS orcado FROM fact_orcamento
-            WHERE familia_pacote = ?{where_periodo} GROUP BY mes
+            WHERE 1=1{w_orc} GROUP BY mes
         ), real AS (
             SELECT mes, SUM(valor_realizado) AS realizado FROM fact_realizado
-            WHERE familia_pacote = ?{where_periodo} GROUP BY mes
+            WHERE 1=1{w_real} GROUP BY mes
         )
         SELECT COALESCE(orc.mes, real.mes) AS mes,
                COALESCE(orcado, 0) AS orcado, COALESCE(realizado, 0) AS realizado
         FROM orc FULL OUTER JOIN real USING (mes)
         ORDER BY mes
         """,
-        [familia, *params_periodo, familia, *params_periodo],
+        [*p_orc, *p_real],
     ).df()
     df["aderencia"] = df.apply(
         lambda r: (r["realizado"] / r["orcado"]) if r["orcado"] else None, axis=1
@@ -188,17 +193,17 @@ def _grafico_escopo(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUT
     """Só Orçado — Realizado (SAP) não carrega Grupo/Disciplina. Só a
     família PM tem essa coluna preenchida na Base Zero (PD/PP vêm vazias),
     então retorna None pras outras — o `render_*` nem monta a linha."""
-    where_periodo, params_periodo = _where_recorte()
+    (w_orc, p_orc), (w_real, p_real) = _filtros(familia)
     df = con.execute(
         f"""
         SELECT grupo_disciplina, SUM(valor_orcado) AS orcado
         FROM fact_orcamento
-        WHERE familia_pacote = ? AND grupo_disciplina != ''{where_periodo}
+        WHERE grupo_disciplina != ''{w_orc}
         GROUP BY grupo_disciplina
         ORDER BY orcado DESC
         LIMIT ?
         """,
-        [familia, *params_periodo, top_n],
+        [*p_orc, top_n],
     ).df()
     if df.empty:
         return None
@@ -218,14 +223,14 @@ def _grafico_escopo(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUT
 def _grafico_tipo(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO) -> go.Figure | None:
     """Só Orçado — Realizado (SAP) não carrega Tipo (Material/Serviço). Só
     PM tem a coluna preenchida → None pras outras famílias."""
-    where_periodo, params_periodo = _where_recorte()
+    (w_orc, p_orc), (w_real, p_real) = _filtros(familia)
     df = con.execute(
         f"""
         SELECT tipo_item, SUM(valor_orcado) AS orcado
-        FROM fact_orcamento WHERE familia_pacote = ? AND tipo_item != ''{where_periodo}
+        FROM fact_orcamento WHERE tipo_item != ''{w_orc}
         GROUP BY tipo_item ORDER BY orcado DESC
         """,
-        [familia, *params_periodo],
+        p_orc,
     ).df()
     if df.empty:
         return None
@@ -243,16 +248,16 @@ def _dados_por_conta(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANU
     não mostrar código sem nome). Trazido pra cá em 2026-09-08: era o
     gráfico "Orçado por Conta" da aba "OPEX / CAPEX Sustaining", que o
     usuário pediu pra indexar aqui na ordem macro (Pacote) → micro (Conta)."""
-    where_periodo, params_periodo = _where_recorte()
+    (w_orc, p_orc), (w_real, p_real) = _filtros(familia)
     return con.execute(
         f"""
         SELECT conta_interna_id AS conta, MAX(NULLIF(conta_interna_nome, '')) AS nome,
                SUM(valor_orcado) AS orcado
         FROM fact_orcamento
-        WHERE familia_pacote = ?{where_periodo}
+        WHERE 1=1{w_orc}
         GROUP BY conta_interna_id ORDER BY orcado DESC LIMIT ?
         """,
-        [familia, *params_periodo, top_n],
+        [*p_orc, top_n],
     ).df()
 
 
@@ -322,11 +327,12 @@ def render_visao_manutencao(
     st.divider()
     # Tendência com o mesmo recorte de escopo das demais consultas da
     # página (o default de `dados_tendencia` já força OPEX no Orçado).
-    _frag_esc, _params_esc = clausula_escopo("opex_sustaining")
+    # Mesmo recorte do card (família + sidebar + Período + escopo + OPEX
+    # no Orçado) — mesmo padrão da Tendência do Nível 4.
+    (w_orc_t, p_orc_t), (w_real_t, p_real_t) = _filtros(familia)
     df_tend = dados_tendencia(
-        con, ano_fiscal, familia=familia,
-        filtro_orcado=(" AND classificacao_contabil = 'OPEX'" + _frag_esc, list(_params_esc)),
-        filtro_realizado=(_frag_esc, list(_params_esc)) if _frag_esc else None,
+        con, ano_fiscal,
+        filtro_orcado=(w_orc_t, p_orc_t), filtro_realizado=(w_real_t, p_real_t),
     )
     st.plotly_chart(
         figura_tendencia(df_tend, f"Tendência do ano — {meta['curto']} (SP)"),

@@ -4,6 +4,23 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 12.2.1 — 2026-10-05
+
+- **"Reprocessar base" ~20x mais rápido (142 s → 7 s, medido local).**
+  96% do tempo era `pd.read_excel` com openpyxl. Trocado pelo motor
+  `calamine` (Rust, suporte oficial do pandas) via `_ler_excel` em
+  `loaders.py` — 5-11x mais rápido por arquivo, resultado idêntico
+  (conferido arquivo a arquivo e as 13 tabelas do warehouse antes x
+  depois). O Realizado SAP era lido 2x por build; agora 1x (memo por
+  arquivo+mtime). Fallback automático pro openpyxl sem o pacote.
+- **Análise Financeira → Manutenção (PM) não respeitava o filtro de
+  Gerência** (relato do usuário). O card, os gráficos por Pacote/Conta/
+  Mensal/Escopo/Tipo e a Tendência usavam só Período + escopo RBAC — os
+  filtros da sidebar só chegavam nas árvores N4/N5. E o Orçado não era
+  restrito a OPEX: a PM somava o CAPEX Sustaining (PM03) da Base Zero
+  contra um Realizado só OPEX (PD/PP não têm CAPEX). Agora reusa
+  `_filtros_padrao` do Nível 4 + OPEX no Orçado.
+
 ## 12.2.0 — 2026-10-05
 
 - **Perfil "desconfigurado" deixava a tela em branco, sem aviso** (caso

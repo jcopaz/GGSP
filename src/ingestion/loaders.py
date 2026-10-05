@@ -8,12 +8,48 @@ Custo/Mês) acontece em src/model/build_star_schema.py (Fase 2) — não aqui.
 """
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 
 import pandas as pd
 
 from src.config import RAIZ_PROJETO
+
+# Leitura de Excel (2026-10-05): 96% do tempo do "Reprocessar base" era
+# pd.read_excel com o motor padrão openpyxl (Python puro) — ~140 s no
+# total. O calamine (Rust, suportado oficialmente pelo pandas) leu os
+# mesmos arquivos 5-11x mais rápido com resultado IDÊNTICO (mesmo shape,
+# dtypes e valores, conferido arquivo a arquivo). Se o pacote não estiver
+# instalado, cai de volta pro openpyxl sem quebrar nada.
+try:
+    import python_calamine  # noqa: F401
+    _ENGINE_EXCEL = "calamine"
+except ImportError:
+    _ENGINE_EXCEL = None
+
+# Memo por (arquivo, data de modificação, tamanho, opções): o mesmo
+# Realizado SAP era lido 2x por build (load_realizado e
+# load_realizado_documentos). Só guarda os últimos poucos — não é cache
+# de longo prazo, só evita reler o mesmo arquivo dentro de um build.
+_MEMO_EXCEL: dict[tuple, pd.DataFrame] = {}
+
+
+def _ler_excel(path, **kwargs) -> pd.DataFrame:
+    try:
+        st_ = os.stat(path)
+        chave = (str(path), st_.st_mtime_ns, st_.st_size, tuple(sorted(kwargs.items())))
+    except (OSError, TypeError):
+        chave = None
+    if chave is not None and chave in _MEMO_EXCEL:
+        return _MEMO_EXCEL[chave].copy()
+    df = pd.read_excel(path, engine=_ENGINE_EXCEL, **kwargs)
+    if chave is not None:
+        if len(_MEMO_EXCEL) >= 4:
+            _MEMO_EXCEL.pop(next(iter(_MEMO_EXCEL)))
+        _MEMO_EXCEL[chave] = df
+        return df.copy()
+    return df
 
 MESES_PT = {
     "jan": 1, "fev": 2, "mar": 3, "abr": 4, "mai": 5, "jun": 6,
@@ -124,7 +160,7 @@ def load_base_zero(path: str, ano_fiscal: int) -> pd.DataFrame:
     # export (Valor Financeiro Reajustado) — Base Zero não tem coluna de
     # ano explícita. Ver docs/02-perguntas-em-aberto.md, item 5.
     """
-    raw = pd.read_excel(path, sheet_name=0, header=None)
+    raw = _ler_excel(path, sheet_name=0, header=None)
     linha_cab = _encontrar_linha_cabecalho(raw)
     header = raw.iloc[linha_cab]
     dados = raw.iloc[linha_cab + 1:].reset_index(drop=True)
@@ -182,7 +218,7 @@ def load_realizado(path: str) -> pd.DataFrame:
     linhas de rodapé (filtros aplicados) sem "Exercício Período Fiscal"
     preenchido — essas linhas são descartadas.
     """
-    df = pd.read_excel(path, sheet_name=0)
+    df = _ler_excel(path, sheet_name=0)
 
     df = df[df["Exercício Período Fiscal"].notna()].copy()
     periodo = df["Exercício Período Fiscal"].astype(int)
@@ -288,7 +324,7 @@ def load_consulta_contas(path: str) -> pd.DataFrame:
 
     `VersãoComparativo3` vem 100% vazia no arquivo atual — não usada.
     """
-    df = pd.read_excel(path, sheet_name="Export")
+    df = _ler_excel(path, sheet_name="Export")
 
     periodo = _coluna(df, "COMPETENCIA").astype(str).str.split("/", expand=True)
     ano = pd.to_numeric(periodo[0], errors="coerce")
@@ -349,7 +385,7 @@ def load_catalogo_contas(path: str) -> pd.DataFrame:
     "I", quando aplicável) — quem usa isso decide como casar contra
     `conta_orcamento_id`/`conta_razao_id`.
     """
-    df = pd.read_excel(path, sheet_name="Export")
+    df = _ler_excel(path, sheet_name="Export")
     df = df[df["Nº conta do Razão"].notna()].copy()
 
     codigo_bruto = df["Nº conta do Razão"].astype(str).str.strip()
@@ -388,7 +424,7 @@ def load_realizado_documentos(path: str) -> pd.DataFrame:
     # responsável/ponta firme da GG) — rotulado como tal, não como
     # "usuário", pra não sugerir que é quem lançou no SAP.
     """
-    df = pd.read_excel(path, sheet_name=0)
+    df = _ler_excel(path, sheet_name=0)
     df = df[df["Exercício Período Fiscal"].notna()].copy()
     periodo = df["Exercício Período Fiscal"].astype(int)
     df["ano"] = periodo // 100
@@ -444,7 +480,7 @@ def load_cji4_capex_obras(path: str) -> pd.DataFrame:
     são reversão/revisão de orçamento do próprio SAP — não tratadas aqui,
     a soma natural já zera o par quando agregado, sem precisar filtrar.
     """
-    df = pd.read_excel(path, sheet_name="Data")
+    df = _ler_excel(path, sheet_name="Data")
     df = df[df["Definição do projeto"].notna()].copy()
 
     colunas_base = {
@@ -493,7 +529,7 @@ def load_catalogo_capex_obras(path: str) -> pd.DataFrame:
     de "PCE Base Luiz.xlsx" pra esse campo (confirmado pelo usuário que
     vem do Catálogo, e os valores batem 1:1 nos dados reais).
     """
-    df = pd.read_excel(path, sheet_name="Auxiliar")
+    df = _ler_excel(path, sheet_name="Auxiliar")
     return pd.DataFrame({
         "e_pep_projeto": df["E_PEP"],
         "id_projeto": df["ID Projeto"],
@@ -524,7 +560,7 @@ def load_catalogo_capex_sustaining(path: str) -> pd.DataFrame:
     coarse `ME/22001` (Base Zero, ~86% do Orçado CAPEX) não tem linha
     própria aqui — fica sem Disciplina, mostrado como tal (não inventar).
     """
-    df = pd.read_excel(path, sheet_name="Catalogo_PEP")
+    df = _ler_excel(path, sheet_name="Catalogo_PEP")
     saida = pd.DataFrame({
         "elemento_pep": df["Elemento PEP"].astype(str).str.strip(),
         "prefixo_regra": df["Prefixo Regra"].astype(str).str.strip(),
@@ -623,7 +659,7 @@ def load_pce_consolidado(path: str) -> pd.DataFrame:
     pra 0.0 aqui (`errors="coerce"` vira NaN, tratado como zero, não
     descartado).
     """
-    df = pd.read_excel(path, sheet_name="consolidado", header=1)
+    df = _ler_excel(path, sheet_name="consolidado", header=1)
     df.columns = [str(c).strip() if isinstance(c, str) else c for c in df.columns]
     df = df[df["Definição do projeto"].notna()].copy()
 
@@ -702,7 +738,7 @@ def load_transferencia_combustivel_terceiros(path: str) -> pd.DataFrame:
     ainda — fica pra quando a pesquisa no Copilot (ver
     docs/05-briefing-copilot-gerencia-vp-e-escopo-gg.md) voltar.
     """
-    df = pd.read_excel(path, sheet_name="Resumo", header=1)
+    df = _ler_excel(path, sheet_name="Resumo", header=1)
     df = df.dropna(subset=["CC"]).copy()
     return pd.DataFrame({
         "escopo": df["Escopo"],
@@ -738,7 +774,7 @@ def load_cji3_capex_obras_realizado(path: str) -> pd.DataFrame:
     projeto` vazia, valor R$477,8 MM sozinho, sem nenhum outro campo
     preenchido) — descartada junto com qualquer outra linha assim.
     """
-    df = pd.read_excel(path, sheet_name=0)
+    df = _ler_excel(path, sheet_name=0)
     df = df[df["estornado"].isna() & df["Definição do projeto"].notna()].copy()
 
     data_lancamento = pd.to_datetime(df["Data de lançamento"], errors="coerce")

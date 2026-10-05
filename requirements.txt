@@ -20,6 +20,9 @@ pyarrow==24.0.0
 altair==6.1.0
 pyyaml==6.0.3
 openpyxl==3.1.5
+# Leitor de Excel em Rust (2026-10-05): 5-11x mais rápido que o openpyxl
+# com resultado idêntico — derrubou o "Reprocessar base" de ~140 s pra ~7 s.
+python-calamine==0.8.2
 pyxlsb==1.0.10
 psycopg2-binary==2.9.12
 bcrypt==5.0.0
