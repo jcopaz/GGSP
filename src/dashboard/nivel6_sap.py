@@ -65,6 +65,42 @@ def render_nivel6_sap(con: duckdb.DuckDBPyConnection) -> None:
         )
         params += [f"%{busca}%"] * 3
 
+    # Performance (2026-10-06): esta tela mandava TODOS os lançamentos pro
+    # navegador (~3 MB com a base local, mais em produção) a cada
+    # interação, pra mostrar ~15 linhas visíveis. Agora as métricas saem
+    # agregadas do DuckDB (exatas, sobre o recorte inteiro) e a tabela traz
+    # por padrão só os maiores lançamentos — o usuário pode pedir mais.
+    (n_total, valor_total, top_freq) = con.execute(
+        f"""
+        SELECT COUNT(*), COALESCE(SUM(valor_realizado), 0),
+               MODE(fornecedor) FILTER (WHERE fornecedor IS NOT NULL)
+        FROM fact_realizado_documento WHERE 1=1{where}
+        """,
+        params,
+    ).fetchone()
+
+    if not n_total:
+        st.info("Nenhum lançamento para os filtros selecionados.")
+        return
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Lançamentos", f"{n_total:,}".replace(",", "."))
+    c2.metric("Valor total", fmt_reais_abrev(valor_total))
+    c3.metric("Fornecedor mais frequente", top_freq or "—")
+
+    _LIMITES = {"1.000 maiores": 1000, "5.000 maiores": 5000, "Todos": None}
+    escolha = st.segmented_control(
+        "Linhas na tabela", list(_LIMITES), default="1.000 maiores", key="n6-limite",
+    ) or "1.000 maiores"
+    limite = _LIMITES[escolha]
+    if limite and n_total > limite:
+        _br = lambda n: f"{n:,}".replace(",", ".")
+        st.caption(
+            f"Mostrando os {_br(limite)} maiores lançamentos (por valor absoluto) de "
+            f"{_br(n_total)}. Use a busca ou os filtros da barra lateral para achar "
+            "um lançamento específico, ou escolha \"Todos\" (mais lento)."
+        )
+
     with st.spinner("Carregando lançamentos..."):
         df: pd.DataFrame = con.execute(
             f"""
@@ -79,19 +115,10 @@ def render_nivel6_sap(con: duckdb.DuckDBPyConnection) -> None:
             FROM fact_realizado_documento
             WHERE 1=1{where}
             ORDER BY ABS(valor_realizado) DESC
+            {f"LIMIT {int(limite)}" if limite else ""}
             """,
             params,
         ).df()
-
-    if df.empty:
-        st.info("Nenhum lançamento para os filtros selecionados.")
-        return
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Lançamentos", f"{len(df):,}".replace(",", "."))
-    c2.metric("Valor total", fmt_reais_abrev(df["_valor"].sum()))
-    fornecedor_top = df["Fornecedor"].dropna()
-    c3.metric("Fornecedor mais frequente", fornecedor_top.mode().iloc[0] if not fornecedor_top.empty else "—")
 
     df["Valor"] = df["_valor"].map(fmt_reais)
     df = df.drop(columns="_valor")

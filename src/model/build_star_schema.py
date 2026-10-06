@@ -842,6 +842,15 @@ def _build_star_schema() -> str:
         df_real_opex = pd.DataFrame(columns=_COLUNAS_FACT_REALIZADO)
 
     df_fact_realizado = _agregar_fact_realizado(df_real_opex[_COLUNAS_FACT_REALIZADO])
+    if df_fact_realizado.empty:
+        # DataFrame vazio tem colunas sem tipo e o DuckDB grava como INTEGER
+        # — aí `COALESCE(orc.pacote_id, real.pacote_id)` quebra com "Cannot
+        # mix VARCHAR and INTEGER" (visto 2026-10-06 com a Consulta de
+        # Contas ausente). Fixa os tipos que o fato tem quando há dado.
+        df_fact_realizado = df_fact_realizado.astype({
+            c: ("int64" if c in ("ano", "mes") else "float64" if c == "valor_realizado" else "string")
+            for c in df_fact_realizado.columns
+        })
 
     # As variáveis Python acima usam prefixo df_ de propósito: sem isso, um
     # rerun encontra uma tabela já existente de mesmo nome no .duckdb e

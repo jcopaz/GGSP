@@ -39,6 +39,12 @@ def _script() -> None:
             "select coalesce(sum(valor_orcado),0) from fact_orcamento "
             "where familia_pacote='PM' and gerencia_id in (?)", [_ALVO],
         ).fetchone()
+        # Card da sub-aba PM é OPEX puro desde 12.2.1 (antes somava o CAPEX
+        # Sustaining PM03 da Base Zero); as árvores N4 seguem com o total.
+        (orc_opex_pm,) = con.execute(
+            "select coalesce(sum(valor_orcado),0) from fact_orcamento "
+            "where familia_pacote='PM' and classificacao_contabil='OPEX' and gerencia_id in (?)", [_ALVO],
+        ).fetchone()
         (real_d,) = con.execute(
             "select coalesce(sum(valor_realizado),0) from fact_realizado "
             "where familia_pacote='PM' and gerencia_id in (?)", [_ALVO],
@@ -64,7 +70,7 @@ def _script() -> None:
         ).fetchone()
 
         checks = {
-            "resumo_orcado": abs(r["orcado"] - orc_d) < 0.01,
+            "resumo_orcado": abs(r["orcado"] - orc_opex_pm) < 0.01,
             "resumo_realizado": abs(r["realizado"] - real_d) < 0.01,
             "n4_familia_orcado": abs(float(df_fam["orcado"].sum()) - orc_d) < 0.01,
             "n4_conta_orcado": abs(float(df_cta["orcado"].sum()) - orc_d) < 0.01,
@@ -75,7 +81,7 @@ def _script() -> None:
             ).fetchone()[0],
         }
         st.write("RESULT " + " ".join(f"{k}={v}" for k, v in checks.items()))
-        st.write(f"VALORES orcado={r['orcado']:.2f} sql={orc_d:.2f}")
+        st.write(f"VALORES orcado={r['orcado']:.2f} sql={orc_opex_pm:.2f}")
     finally:
         con.close()
 

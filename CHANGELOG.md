@@ -4,6 +4,23 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 12.2.2 — 2026-10-06
+
+- **Evidências SAP e Rastreabilidade CJI3 ~93% mais leves.** Medição por
+  página (render no servidor + bytes enviados): todas as telas renderizam
+  em < 1 s, mas estas duas mandavam a tabela INTEIRA de lançamentos pro
+  navegador a cada interação (3,1 MB e 2,6 MB com a base local). Agora as
+  métricas (Lançamentos, Valor total, mais frequente) saem agregadas do
+  DuckDB — idênticas às de antes, conferidas — e a tabela traz por padrão
+  os 1.000 maiores lançamentos, com seletor 1.000 / 5.000 / Todos
+  (217 KB e 238 KB no padrão).
+- **`fact_realizado` vazio gravado com tipos errados.** Sem a Consulta de
+  Contas, o DataFrame vazio virava colunas INTEGER no DuckDB e a aba
+  Pacotes quebrava com "Cannot mix VARCHAR and INTEGER in COALESCE".
+  Tipos fixados no build.
+- `tests/rbac_sustaining_check.py` atualizado: o card da sub-aba PM é
+  OPEX puro desde 12.2.1 (o check esperava o Orçado com CAPEX).
+
 ## 12.2.1 — 2026-10-05
 
 - **"Reprocessar base" ~20x mais rápido (142 s → 7 s, medido local).**
