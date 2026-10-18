@@ -54,6 +54,8 @@ def dados_waterfall_gg(
     gg_id: str,
     caminho_explicacoes: str,
     categorias_validas: list[str],
+    pacotes_filtro: list[str] | None = None,
+    ate_periodo: int | None = None,
 ) -> tuple[float, float, pd.DataFrame]:
     """Retorna (orcado, delta_total, df com 1 linha por categoria incl. Não
     Justificado). `orcado` vira a barra âncora inicial do waterfall (ver
@@ -72,8 +74,18 @@ def dados_waterfall_gg(
     módulo `filtros.py`), Período não quebra o fechamento do waterfall:
     `explicacoes.csv` já tem `ano`/`mes` por linha, então dá pra filtrar
     o Delta (SQL) e a explicação de causa (`filtrar_periodo_df`) pelo
-    mesmo recorte de tempo sem inventar rateio nenhum."""
+    mesmo recorte de tempo sem inventar rateio nenhum.
+
+    `pacotes_filtro` (2026-10-18): filtro de Pacote da sidebar. Também não
+    quebra o fechamento — a causa já é rastreada por Pacote inteiro em
+    `explicacoes.csv` —, então o waterfall do Resumo responde a ele.
+
+    `ate_periodo` (aaaamm, 2026-10-18, P7): corta Orçado, Realizado e causa
+    no último mês fechado — o Orçado dos meses seguintes é "a realizar" e
+    não entra no Delta nem no Não Justificado."""
     pacotes = _pacotes_do_gg(con, gg_id)
+    if pacotes_filtro:
+        pacotes = list(pacotes_filtro) if pacotes is None else [p for p in pacotes if p in set(pacotes_filtro)]
     where_periodo, params_periodo = clausula_periodo()
     # RBAC de escopo (docs/08) — no-op (fragmento vazio) pra quem tem a GG
     # inteira/admin, então o waterfall da visão GG fica byte-idêntico. O
@@ -82,6 +94,9 @@ def dados_waterfall_gg(
     where_escopo, params_escopo = clausula_escopo("opex_sustaining")
     where_periodo += where_escopo
     params_periodo = params_periodo + params_escopo
+    if ate_periodo:
+        where_periodo += " AND (ano * 100 + mes) <= ?"
+        params_periodo = params_periodo + [ate_periodo]
 
     if pacotes is None:
         (orcado,) = con.execute(
@@ -113,6 +128,8 @@ def dados_waterfall_gg(
     if pacotes is not None:
         df_explicacao = df_explicacao[df_explicacao["pacote_id"].isin(pacotes)]
     df_explicacao = filtrar_periodo_df(df_explicacao)
+    if ate_periodo and not df_explicacao.empty:
+        df_explicacao = df_explicacao[(df_explicacao["ano"] * 100 + df_explicacao["mes"]) <= ate_periodo]
 
     categorias_preenchiveis = [c for c in categorias_validas if c != CATEGORIA_CALCULADA]
     explicado_por_cat = (
@@ -169,6 +186,8 @@ def render_nivel2(
     caminho_explicacoes: str,
     categorias_validas: list[str],
     ano_fiscal: int,
+    pacotes_filtro: list[str] | None = None,
+    ate_periodo: int | None = None,
 ) -> None:
     """Só o waterfall + seletor de categoria pro Nível 3. A Tendência saiu
     daqui em 2026-08-10 (a pedido do usuário) — vira `render_tendencia_gg`,
@@ -176,7 +195,10 @@ def render_nivel2(
     dentro da coluna estreita do waterfall."""
     render_page_banner("📊", "Gerência Geral", "Waterfall do Delta por categoria de causa — Orçado x Real é só OPEX.")
     nome_gg = _nome_gg(con, gg_id)
-    orcado, delta_total, df_categorias = dados_waterfall_gg(con, gg_id, caminho_explicacoes, categorias_validas)
+    orcado, delta_total, df_categorias = dados_waterfall_gg(
+        con, gg_id, caminho_explicacoes, categorias_validas,
+        pacotes_filtro=pacotes_filtro, ate_periodo=ate_periodo,
+    )
     fig = figura_waterfall(nome_gg, orcado, delta_total, df_categorias)
     st.plotly_chart(fig, use_container_width=True, key=f"waterfall-{gg_id}", config=CONFIG_PLOTLY)
 
@@ -192,7 +214,11 @@ def render_nivel2(
     st.session_state["categoria_selecionada"] = None if escolha == _SEM_SELECAO else escolha
 
 
-def dados_gerencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str) -> pd.DataFrame:
+def dados_gerencia_gg(
+    con: duckdb.DuckDBPyConnection,
+    gg_id: str,
+    filtros: tuple[tuple[str, list], tuple[str, list]] | None = None,
+) -> pd.DataFrame:
     """Orçado x Real x Delta por Gerência, dentro do recorte do GG (mesmo
     escopo de Pacotes de `_pacotes_do_gg`) — pedido do usuário em
     2026-08-11: "como executivo, onde está o problema e qual Gerência".
@@ -211,14 +237,23 @@ def dados_gerencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str) -> pd.DataFram
     motivo do waterfall — não depende de causa/explicacoes.csv aqui (é só
     soma de Orçado/Realizado), então nem precisava do cuidado extra do
     Nível 2/3 com `filtrar_periodo_df`.
+
+    `filtros` (2026-10-18): `((where_orc, params), (where_real, params))`
+    já montados por quem chama (ex.: Resumo Executivo, via
+    `filtros.clausulas_recorte_sidebar` + escopo) — substitui o
+    Período+escopo padrão, pra a Visão Gerências Locais responder a todos
+    os filtros da sidebar. Sem `filtros`, comportamento idêntico ao de antes.
     """
     pacotes = _pacotes_do_gg(con, gg_id)
-    where_periodo, params_periodo = clausula_periodo()
-    # RBAC de escopo (docs/08): no-op pra GG inteira/admin. Pra usuário
-    # escopado, a "Visão por Gerência" fica só com as Gerências do grant.
-    where_escopo, params_escopo = clausula_escopo("opex_sustaining")
-    where_periodo += where_escopo
-    params_periodo = params_periodo + params_escopo
+    if filtros is None:
+        where_periodo, params_periodo = clausula_periodo()
+        # RBAC de escopo (docs/08): no-op pra GG inteira/admin. Pra usuário
+        # escopado, a "Visão por Gerência" fica só com as Gerências do grant.
+        where_escopo, params_escopo = clausula_escopo("opex_sustaining")
+        where_periodo += where_escopo
+        params_periodo = params_periodo + params_escopo
+        filtros = ((where_periodo, params_periodo), (where_periodo, list(params_periodo)))
+    (frag_orc, par_orc), (frag_real, par_real) = filtros
     if pacotes is None:
         where_orc, params_orc = "WHERE 1=1", []
         where_real, params_real = "WHERE 1=1", []
@@ -226,10 +261,10 @@ def dados_gerencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str) -> pd.DataFram
         marcadores = ", ".join("?" * len(pacotes)) if pacotes else "NULL"
         where_orc, params_orc = f"WHERE pacote_id IN ({marcadores})", list(pacotes)
         where_real, params_real = f"WHERE pacote_id IN ({marcadores})", list(pacotes)
-    where_orc += where_periodo
-    params_orc += params_periodo
-    where_real += where_periodo
-    params_real += params_periodo
+    where_orc += frag_orc
+    params_orc += list(par_orc)
+    where_real += frag_real
+    params_real += list(par_real)
 
     df_orc = con.execute(
         f"SELECT COALESCE(gerencia_id, '') AS gerencia_id, SUM(valor_orcado) AS orcado "
@@ -303,6 +338,7 @@ def _grafico_gerencia(df: pd.DataFrame) -> go.Figure:
 
 def dados_pacotes_gerencia(
     con: duckdb.DuckDBPyConnection, gg_id: str, gerencia_id: str | None,
+    filtros: tuple[tuple[str, list], tuple[str, list]] | None = None,
 ) -> pd.DataFrame:
     """Orçado x Real x Delta por Pacote, dentro de 1 Gerência — cascata
     Gerência → Pacote (pedido do usuário em 2026-08-11, "mais uma
@@ -329,6 +365,14 @@ def dados_pacotes_gerencia(
 
     where_orc = "WHERE " + " AND ".join(condicoes_orc)
     where_real = "WHERE " + " AND ".join(condicoes_real)
+    # 2026-10-18: cascata Gerência → Pacote no mesmo recorte da tabela de
+    # cima (antes ignorava até o Período e somava CAPEX no Orçado).
+    if filtros is not None:
+        (frag_o, par_o), (frag_r, par_r) = filtros
+        where_orc += frag_o
+        params_orc += list(par_o)
+        where_real += frag_r
+        params_real += list(par_r)
 
     df_orc = con.execute(
         f"SELECT pacote_id, SUM(valor_orcado) AS orcado FROM fact_orcamento {where_orc} GROUP BY 1",
@@ -358,7 +402,10 @@ def tabela_pacotes_gerencia(df: pd.DataFrame, nomes_pacote: dict[str, str]) -> p
     )
 
 
-def render_gerencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str) -> None:
+def render_gerencia_gg(
+    con: duckdb.DuckDBPyConnection, gg_id: str,
+    filtros: tuple[tuple[str, list], tuple[str, list]] | None = None,
+) -> None:
     """Seção recolhível: gráfico + tabela de Orçado x Real x Delta por
     Gerência dentro da GG, e uma cascata pra ver os Pacotes de 1 Gerência
     escolhida — pra o GG ver rápido onde está o problema (qual Gerência) e
@@ -369,7 +416,7 @@ def render_gerencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str) -> None:
     fica pra quando a captação Micro (Conta/Centro de Custo, que já
     carrega Gerência real no Realizado) existir de verdade — ver
     docs/03-processo-justificativas-causas.md."""
-    df = dados_gerencia_gg(con, gg_id)
+    df = dados_gerencia_gg(con, gg_id, filtros=filtros)
     if df.empty:
         return
     with st.expander("📊 Ver por Gerência (dentro desta GG)", expanded=False):
@@ -397,7 +444,7 @@ def render_gerencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str) -> None:
             "Ver Pacotes desta Gerência:", opcoes, key=f"gerencia-selecionada-{gg_id}",
         )
         gerencia_id_escolhida = df.loc[df["rotulo"] == escolha, "gerencia_id"].iloc[0] or None
-        df_pacotes = dados_pacotes_gerencia(con, gg_id, gerencia_id_escolhida)
+        df_pacotes = dados_pacotes_gerencia(con, gg_id, gerencia_id_escolhida, filtros=filtros)
         if df_pacotes.empty:
             st.info("Nenhum Pacote com Orçado/Realizado nesta Gerência.")
         else:
@@ -408,7 +455,10 @@ def render_gerencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str) -> None:
             )
 
 
-def render_tendencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str, ano_fiscal: int) -> None:
+def render_tendencia_gg(
+    con: duckdb.DuckDBPyConnection, gg_id: str, ano_fiscal: int,
+    filtros_ano: tuple[tuple[str, list], tuple[str, list]] | None = None,
+) -> None:
     """Gráfico de Tendência, separado do waterfall (ver render_nivel2) pra
     renderizar full-width, não espremido na coluna estreita ao lado do
     Nível 1."""
@@ -417,11 +467,16 @@ def render_tendencia_gg(con: duckdb.DuckDBPyConnection, gg_id: str, ano_fiscal: 
     # Gerência pra usuário escopado. Com `filtro_orcado` explícito o
     # `dados_tendencia` não aplica sozinho o trava de OPEX — por isso vai
     # aqui no fragmento.
-    _frag, _params = clausula_escopo("opex_sustaining")
+    # `filtros_ano` (2026-10-18): recorte da sidebar sem Período (a curva
+    # é sempre o ano inteiro) + escopo — passado por Desvios e Causas.
+    if filtros_ano is None:
+        _frag, _params = clausula_escopo("opex_sustaining")
+        filtros_ano = ((_frag, list(_params)), (_frag, list(_params)))
+    (_frag_o, _par_o), (_frag_r, _par_r) = filtros_ano
     df_tend = dados_tendencia(
         con, ano_fiscal, pacotes=_pacotes_do_gg(con, gg_id),
-        filtro_orcado=(" AND classificacao_contabil = 'OPEX'" + _frag, list(_params)),
-        filtro_realizado=((_frag, list(_params)) if _frag else None),
+        filtro_orcado=(" AND classificacao_contabil = 'OPEX'" + _frag_o, list(_par_o)),
+        filtro_realizado=((_frag_r, list(_par_r)) if _frag_r else None),
     )
     st.plotly_chart(
         figura_tendencia(df_tend, f"Tendência do ano — {nome_gg}"),

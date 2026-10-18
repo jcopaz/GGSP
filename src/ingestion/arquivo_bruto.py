@@ -38,15 +38,28 @@ def salvar_arquivo_bruto(
 def restaurar_arquivo_bruto(tipo: str, caminho_destino: str) -> bool:
     """Se `caminho_destino` já existir, não faz nada (devolve True). Senão,
     tenta restaurar do Postgres. Devolve True se o arquivo existe ao final
-    (já existia ou foi restaurado agora), False se não há backup salvo."""
+    (já existia ou foi restaurado agora), False se não há backup salvo.
+
+    B4 (docs/12, 2026-10-18): o mtime do arquivo restaurado volta a ser o
+    `enviado_em` do upload original — o build grava esse mtime em
+    `meta_carga` como data da carga (define o mês "em andamento"). Sem
+    isso, todo reboot do Streamlit Cloud viraria uma "carga nova" na data
+    do reboot."""
     if os.path.exists(caminho_destino):
         return True
-    linha = buscar_um("select conteudo from app.arquivo_bruto where tipo = %s", (tipo,))
+    linha = buscar_um("select conteudo, enviado_em from app.arquivo_bruto where tipo = %s", (tipo,))
     if not linha:
         return False
     os.makedirs(os.path.dirname(caminho_destino), exist_ok=True)
     with open(caminho_destino, "wb") as f:
         f.write(bytes(linha["conteudo"]))
+    try:
+        # Best effort: sem `enviado_em` (ou tipo inesperado), fica o mtime
+        # da restauração — a nota do painel mostra a data usada.
+        ts = linha["enviado_em"].timestamp()
+        os.utime(caminho_destino, (ts, ts))
+    except Exception:
+        pass
     return True
 
 
@@ -115,6 +128,10 @@ def restaurar_versao_arquivo(versao_id: str, caminho_destino: str) -> bool:
     não ficar dessincronizada do que voltou pro disco (senão o próximo
     reboot restauraria a versão errada). Devolve False se o `id` não
     existir; quem chama decide a mensagem de erro."""
+    # GAP: a reversão conta como carga NOVA na data da restauração (mtime
+    # do arquivo regravado agora + `enviado_em = now()` em
+    # `salvar_arquivo_bruto`), não na data do upload original da versão —
+    # aceito pelo Julio em 2026-10-18 (docs/12, B4).
     linha = buscar_um(
         "select tipo, nome_original, conteudo, enviado_por from app.arquivo_bruto_versao where id = %s",
         (versao_id,),

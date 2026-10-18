@@ -32,6 +32,7 @@ import duckdb
 import pandas as pd
 import plotly.graph_objects as go
 
+from src.dashboard.filtros import ultimo_periodo_fechado
 from src.dashboard.formatacao import fmt_reais_abrev
 from src.dashboard.grafico_interativo import com_alternancia_barra_linha
 from src.dashboard.paleta import COR_ECONOMIA, COR_ESTOURO, COR_FORECAST, COR_ORCADO, COR_REALIZADO
@@ -136,7 +137,28 @@ def dados_tendencia(
     df["mes_nome"] = df["mes"].map(_NOMES_MES)
 
     df["tendencia_acumulada"] = pd.NA
-    meses_com_dado = df.loc[df["tem_realizado"], "mes"]
+    # Base das projeções (Forecast e ritmo) = meses FECHADOS (B4, docs/12,
+    # 2026-10-18). O mês da carga do Realizado (e o anterior, se a carga
+    # veio antes do 5º dia útil) é parcial — usá-lo como "mês de
+    # referência" puxava a média do ritmo pra baixo e inflava o saldo do
+    # Forecast. A curva do Realizado continua com todos os meses com
+    # lançamento (inclusive o parcial); só a âncora das projeções para no
+    # corte (`filtros.ultimo_periodo_fechado`), e o mês em aberto entra
+    # como projetado. Sem `meta_carga` o corte é o último mês com
+    # Realizado — mesmo resultado de antes.
+    corte = ultimo_periodo_fechado(con)
+    if corte is None or corte // 100 > ano_fiscal:
+        mes_limite = 12
+    elif corte // 100 == ano_fiscal:
+        mes_limite = corte % 100
+    else:
+        mes_limite = 0  # nenhum mês do ano fiscal fechado ainda
+    meses_com_dado = df.loc[df["tem_realizado"] & (df["mes"] <= mes_limite), "mes"]
+    # Mês com lançamento DEPOIS do corte = Realizado parcial (mês em aberto
+    # na carga). Continua na curva — Tendência mostra o que está no SAP —,
+    # mas marcado, pra não ser lido como mês fechado (2ª revisão do Astra,
+    # 2026-10-18). Fica fora de Delta/Aderência em todas as telas.
+    df["realizado_parcial"] = df["tem_realizado"] & (df["mes"] > mes_limite)
     if not meses_com_dado.empty:
         ultimo_mes = int(meses_com_dado.max())
         acumulado_ate_agora = df.loc[df["mes"] == ultimo_mes, "realizado_acumulado"].iloc[0]
@@ -168,6 +190,7 @@ def dados_tendencia(
     #   fechamento_projetado = realizado_acumulado_ate_o_ultimo_mes + media_realizada * meses_restantes
     #
     # "meses_considerados" = quantidade de meses com `tem_realizado=True`
+    # ATÉ O CORTE (B4, 2026-10-18 — mês em aberto fica fora da média)
     # (não o número do último mês em si — robusto a eventual lacuna, ex.:
     # dado de Jan/Mar sem Fev). Sem nenhum mês com Realizado, a coluna
     # fica toda `pd.NA` — nunca calcula projeção em cima de nada (pedido
@@ -262,6 +285,24 @@ def figura_tendencia(df: pd.DataFrame, titulo: str) -> go.Figure:
             "font": {"color": cor_ritmo, "size": 12}, "arrowcolor": cor_ritmo,
         })
 
+    # Realizado parcial (mês em aberto na carga — `realizado_parcial`, ver
+    # `dados_tendencia`): marcador próprio por cima da curva, pra não ser
+    # lido como mês fechado. `dados_tendencia_capex` não tem a coluna.
+    df_parcial = (
+        df[df["realizado_parcial"]] if "realizado_parcial" in df.columns else df.iloc[0:0]
+    )
+    if not df_parcial.empty:
+        traces_extras.append(go.Scatter(
+            name="Realizado parcial (mês em aberto)",
+            x=df_parcial["mes_nome"], y=df_parcial["realizado_acumulado"],
+            mode="markers",
+            marker={"color": "white", "size": 11, "symbol": "circle-open",
+                    "line": {"color": COR_REALIZADO, "width": 2}},
+            text=[fmt_reais_abrev(v) for v in df_parcial["realizado_acumulado"]],
+            hovertemplate="Realizado parcial (mês em aberto, fora do Delta): %{text}<extra></extra>",
+            visible=True,
+        ))
+
     fig = com_alternancia_barra_linha(
         categorias=df["mes_nome"].tolist(),
         series=[
@@ -292,4 +333,11 @@ def figura_tendencia(df: pd.DataFrame, titulo: str) -> go.Figure:
         fig.data[indice].text = [fmt_reais_abrev(v) for v in y]
         nome = fig.data[indice].name
         fig.data[indice].hovertemplate = f"{nome}: %{{text}}<extra></extra>"
+    if not df_parcial.empty:
+        parcial = df_real["realizado_parcial"].tolist()
+        for indice in (1, 3):
+            fig.data[indice].text = [
+                f"{t} (parcial — mês em aberto)" if p else t
+                for t, p in zip(fig.data[indice].text, parcial)
+            ]
     return fig

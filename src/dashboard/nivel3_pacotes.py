@@ -31,8 +31,15 @@ def dados_ranking_pacotes(
     categoria: str,
     caminho_explicacoes: str,
     categorias_validas: list[str],
+    pacotes_filtro: list[str] | None = None,
+    ate_periodo: int | None = None,
 ) -> pd.DataFrame:
     pacotes = _pacotes_do_gg(con, gg_id)
+    # Filtro de Pacote da sidebar (2026-10-18) — mesmo critério de
+    # `dados_waterfall_gg(pacotes_filtro=...)`, pra o ranking fechar com o
+    # waterfall do Resumo.
+    if pacotes_filtro:
+        pacotes = list(pacotes_filtro) if pacotes is None else [p for p in pacotes if p in set(pacotes_filtro)]
     df_explicacao = carregar_explicacoes(caminho_explicacoes)
     if pacotes is not None:
         df_explicacao = df_explicacao[df_explicacao["pacote_id"].isin(pacotes)]
@@ -40,6 +47,9 @@ def dados_ranking_pacotes(
     # mesmo motivo do Nível 2: explicacoes.csv já tem ano/mes por linha,
     # então dá pra filtrar sem quebrar o fechamento com o waterfall.
     df_explicacao = filtrar_periodo_df(df_explicacao)
+    # P7 (2026-10-18): mesmo corte no último mês fechado do waterfall.
+    if ate_periodo and not df_explicacao.empty:
+        df_explicacao = df_explicacao[(df_explicacao["ano"] * 100 + df_explicacao["mes"]) <= ate_periodo]
 
     if categoria == CATEGORIA_CALCULADA:
         # OPEX só — mesmo ajuste de 2026-08-11 do waterfall (Nível 2):
@@ -49,6 +59,9 @@ def dados_ranking_pacotes(
         # entra nos dois lados (Orçado e Realizado), mesmo filtro do
         # waterfall.
         where_periodo, params_periodo = clausula_periodo()
+        if ate_periodo:
+            where_periodo += " AND (ano * 100 + mes) <= ?"
+            params_periodo = params_periodo + [ate_periodo]
         filtro_orc_opex, params_orc_opex = combinar_clausulas(
             (" AND classificacao_contabil = 'OPEX'", []),
             (where_periodo, params_periodo),
@@ -106,9 +119,14 @@ def render_nivel3(
     categoria: str,
     caminho_explicacoes: str,
     categorias_validas: list[str],
+    pacotes_filtro: list[str] | None = None,
+    ate_periodo: int | None = None,
 ) -> None:
     render_page_banner("📦", "Pacotes", f"Pacotes em '{categoria}' — maior para menor impacto.")
-    df_ranking = dados_ranking_pacotes(con, gg_id, categoria, caminho_explicacoes, categorias_validas)
+    df_ranking = dados_ranking_pacotes(
+        con, gg_id, categoria, caminho_explicacoes, categorias_validas,
+        pacotes_filtro=pacotes_filtro, ate_periodo=ate_periodo,
+    )
     if df_ranking.empty:
         st.info(f"Nenhum pacote com valor em '{categoria}' neste recorte.")
         return

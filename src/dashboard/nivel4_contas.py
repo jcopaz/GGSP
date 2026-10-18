@@ -35,12 +35,12 @@ from src.dashboard.arvore_html import (
     linha_resumo,
 )
 from src.dashboard.filtros import (
-    clausula_escopo,
     clausula_familia,
-    clausula_periodo,
-    clausula_where,
-    combinar_clausulas,
+    clausulas_recorte,
     guardar_e_faixa_universo,
+    nota_fechamento_recorte,
+    rotulo_periodo,
+    ultimo_periodo_fechado,
 )
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
@@ -50,56 +50,110 @@ from src.dashboard.tendencia import dados_tendencia, figura_tendencia
 from src.engine.delta_calculator import calcular_delta
 
 
-def _filtros_padrao(familia: str | None) -> tuple[tuple[str, list], tuple[str, list]]:
-    """(filtro_orcado, filtro_realizado) — mesmo recorte de filtros da
-    sidebar (Pacote/Centro de Custo/PEP/Classificação/Coordenação/
-    Gerência/Período) usado por dados_familia/dados_pacote/dados_conta E
-    pela Tendência do recorte (ver render_arvore_contas) — extraído em
-    2026-08-10 pra não repetir a mesma lógica 4x.
+def _filtros_padrao(
+    familia: str | None,
+    con: duckdb.DuckDBPyConnection | None = None,
+    ate_fechamento: bool = False,
+    incluir_periodo: bool = True,
+) -> tuple[tuple[str, list], tuple[str, list]]:
+    """(filtro_orcado, filtro_realizado) do recorte da sidebar, usado por
+    dados_familia/dados_pacote/dados_conta, pelo Nível 5 e pela Visão
+    Manutenção (que reusam este helper) e pela Tendência do recorte.
 
-    Gerência no lado do Orçado usa a coluna `gerencia_raw`, não
-    `gerencia_nome` (fact_orcamento não tem essa coluna) — corrigido em
-    2026-08-11: o filtro de Gerência filtrava só o Realizado, deixando o
-    Orçado do OPEX de fora mesmo já tendo o mesmo texto disponível
-    (`gerencia_raw` carrega o nome real da Consulta de Contas pro OPEX,
-    ver `_reshape_consulta_contas_opex` em build_star_schema.py — bate
-    com `gerencia_nome` do Realizado, mesma fonte/hierarquia). CAPEX
-    (Base Zero) não tem Gerência real, então essas linhas nunca batem
-    com nenhum valor selecionado — ficam de fora quando o filtro de
-    Gerência está ativo, o que é o comportamento correto (não sabemos a
-    Gerência do CAPEX, não dá pra incluir por suposição). Coordenação
-    continua só no Realizado — Orçado não tem essa informação de jeito
-    nenhum (nem indireto), ver `_derivar_coordenacao`.
+    **Reescrito em 2026-10-18 (validação de filtros, P1/P2):**
+    - Usa `filtros.clausulas_recorte` — a MESMA regra do Resumo nos dois
+      fatos. Antes o lado Realizado ignorava Classificação e PEP: com
+      Classificação = CAPEX o Orçado zerava e o Realizado OPEX continuava
+      inteiro (Delta de +R$ 20,9 MM na PM). Gerência no Orçado passa de
+      `gerencia_raw` para `gerencia_id`.
+    - Orçado SEMPRE só OPEX (B1, decisão do Julio em 2026-10-18, opção
+      b): o Realizado carregado é 100% OPEX, e comparar o Orçado
+      CAPEX+OPEX contra ele inflava o Delta (Contas e CC mostravam
+      -R$ 66,2 MM contra -R$ 23,1 MM do Resumo). Até a rodada anterior,
+      escolher Classificação = CAPEX trazia o CAPEX pra árvore com
+      Realizado zero — um Delta = -Orçado que não é desvio, é falta de
+      fonte. Agora Contas, CC e Tendência são OPEX x OPEX sempre; a
+      Classificação continua nos dois lados (via `clausulas_recorte`):
+      CAPEX → 0/0, CAPEX+OPEX → OPEX x OPEX. O CAPEX Sustaining do recorte
+      aparece só como informação, sem Delta (`aviso_capex_sustaining`).
+    - `ate_fechamento=True` (com `con`): Orçado e Realizado só até o último
+      mês fechado (P7, "a realizar"). As Tendências chamam sem corte, pra
+      desenhar o ano inteiro; `incluir_periodo=False` idem.
     """
+    (where_orc, params_orc), (where_real, params_real) = clausulas_recorte(
+        "opex_sustaining", incluir_periodo=incluir_periodo, con=con, ate_fechamento=ate_fechamento,
+    )
+    where_orc += " AND classificacao_contabil = 'OPEX'"
     extra_where, extra_params = clausula_familia(familia)
-    # RBAC de escopo (docs/08, Fase RBAC-A.2): recorte sempre-ligado por
-    # Gerência do universo OPEX Sustaining. `gerencia_id` existe e está
-    # populado nos dois fatos (diferente do filtro de Gerência da sidebar,
-    # que no Orçado usa `gerencia_raw`). Nível 4 e Nível 5 (que reusa este
-    # helper) e a Visão Manutenção (árvores embutidas) herdam daqui.
-    escopo = clausula_escopo("opex_sustaining")
-    where_orc, params_orc = combinar_clausulas(
-        clausula_where({
-            "pacote_id": "pacote_id", "centro_custo_id": "centro_custo_id",
-            "pep_id": "pep_id", "classificacao_contabil": "classificacao_contabil",
-            "gerencia_nome": "gerencia_raw",
-        }),
-        clausula_periodo(),
-        escopo,
+    return (
+        (where_orc + extra_where, params_orc + extra_params),
+        (where_real + extra_where, params_real + extra_params),
     )
-    where_real, params_real = combinar_clausulas(
-        clausula_where({
-            "pacote_id": "pacote_id", "centro_custo_id": "centro_custo_id",
-            "coordenacao": "coordenacao", "gerencia_nome": "gerencia_nome",
-        }),
-        clausula_periodo(),
-        escopo,
+
+
+def orcado_capex_fora_da_arvore(con: duckdb.DuckDBPyConnection, familia: str | None = None) -> float:
+    """Orçado CAPEX Sustaining do recorte, que NÃO entra na árvore (ver
+    `_filtros_padrao`: Contas/CC são sempre OPEX x OPEX). Mostrado à parte
+    por `aviso_capex_sustaining` — Regra de Ouro, nada some calado.
+
+    B1 (2026-10-18): usa o recorte do universo `capex_sustaining` —
+    respeita todos os filtros (Classificação = OPEX zera; Gerência pega o
+    PEP da região) e o RBAC desse universo: quem não tem acesso ao CAPEX
+    Sustaining recebe `1=0` → 0 (antes o valor vazava pra quem só tinha
+    OPEX, e com qualquer filtro de Classificação voltava 0 calado). Sem
+    corte de fechamento: não há Delta aqui, é o Orçado do recorte inteiro."""
+    (where_orc, params_orc), _ = clausulas_recorte("capex_sustaining")
+    extra_where, extra_params = clausula_familia(familia)
+    (valor,) = con.execute(
+        f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE classificacao_contabil = 'CAPEX'"
+        f"{where_orc}{extra_where}",
+        params_orc + extra_params,
+    ).fetchone()
+    return float(valor or 0.0)
+
+
+# B1 (2026-10-18): não citar a fonte — a fonte do Realizado CAPEX ainda vai
+# ser decidida (correção do Julio).
+TEXTO_REALIZADO_CAPEX_AUSENTE = (
+    "O Realizado do CAPEX Sustaining ainda não está carregado no painel — por isso esse "
+    "Orçado fica fora do Delta e da Aderência. Ver a aba CAPEX Sustaining."
+)
+
+
+def aviso_capex_sustaining(
+    con: duckdb.DuckDBPyConnection, familia: str | None = None, destaque: bool = False,
+) -> None:
+    """Linha informativa do CAPEX Sustaining do recorte (B1, 2026-10-18):
+    "Orçado ... R$ X · Realizado: — (não carregado)". Nunca "R$ 0" no
+    Realizado (seria afirmar que não houve gasto) e nunca Delta/Aderência.
+    `st.info` quando o recorte não tem OPEX (filtro de Classificação sem
+    OPEX, ou `destaque=True` — árvore vazia); senão `st.caption` embaixo
+    do card. Só aparece com valor ≠ 0."""
+    capex = orcado_capex_fora_da_arvore(con, familia)
+    if not capex:
+        return
+    texto = escapar_cifrao_md(
+        f"Orçado CAPEX Sustaining do recorte: {fmt_reais_abrev(capex)} · Realizado: — (não carregado). "
+        + TEXTO_REALIZADO_CAPEX_AUSENTE
     )
-    return (where_orc + extra_where, params_orc + extra_params), (where_real + extra_where, params_real + extra_params)
+    classificacao = st.session_state.get("filtro_classificacao") or []
+    if destaque or (classificacao and "OPEX" not in classificacao):
+        st.info(texto)
+    else:
+        st.caption(texto)
+
+
+def nota_recorte_arvore(con: duckdb.DuckDBPyConnection, familia: str | None = None) -> None:
+    """Legenda comum dos cards de Contas / Centro de Custo: corte no último
+    mês fechado, mês(es) em aberto com o Realizado parcial (B4), a realizar
+    + CAPEX Sustaining que ficou fora da comparação (B1)."""
+    filtro_orc_sem_corte, filtro_real_sem_corte = _filtros_padrao(familia)
+    nota_fechamento_recorte(con, filtro_orc_sem_corte, filtro_real_sem_corte)
+    aviso_capex_sustaining(con, familia)
 
 
 def dados_familia(con: duckdb.DuckDBPyConnection, familia: str | None = None) -> pd.DataFrame:
-    filtro_orcado, filtro_realizado = _filtros_padrao(familia)
+    filtro_orcado, filtro_realizado = _filtros_padrao(familia, con=con, ate_fechamento=True)
     return calcular_delta(
         con, dims=["familia_pacote"],
         filtro_orcado=filtro_orcado, filtro_realizado=filtro_realizado,
@@ -107,7 +161,7 @@ def dados_familia(con: duckdb.DuckDBPyConnection, familia: str | None = None) ->
 
 
 def dados_pacote(con: duckdb.DuckDBPyConnection, familia: str | None = None) -> pd.DataFrame:
-    filtro_orcado, filtro_realizado = _filtros_padrao(familia)
+    filtro_orcado, filtro_realizado = _filtros_padrao(familia, con=con, ate_fechamento=True)
     return calcular_delta(
         con, dims=["familia_pacote", "pacote_id"],
         filtro_orcado=filtro_orcado, filtro_realizado=filtro_realizado,
@@ -118,7 +172,7 @@ def dados_conta(con: duckdb.DuckDBPyConnection, familia: str | None = None) -> p
     """Orçado x Real x Delta por `conta_interna_id` — a chave unificada do
     Catálogo de Contas (ver docstring do módulo). 1 linha por conta, não
     mais 2 subárvores separadas."""
-    filtro_orcado, filtro_realizado = _filtros_padrao(familia)
+    filtro_orcado, filtro_realizado = _filtros_padrao(familia, con=con, ate_fechamento=True)
     df = calcular_delta(
         con, dims=["familia_pacote", "pacote_id", "conta_interna_id"],
         filtro_orcado=filtro_orcado, filtro_realizado=filtro_realizado,
@@ -208,7 +262,17 @@ def _grafico_top_contas(df_conta: pd.DataFrame, nomes_pacote: dict[str, str], to
     return fig
 
 
-def _render_card_nivel4(df_familia: pd.DataFrame, df_pacote: pd.DataFrame, df_conta: pd.DataFrame) -> None:
+def rotulo_ate_corte(con: duckdb.DuckDBPyConnection) -> str:
+    """"até Ago/2026" (último mês fechado) ou "" sem corte — rótulo das
+    linhas Orçado/Realizado dos cards de Contas, CC e Manutenção (N4,
+    2026-10-18: o card dizia só "Orçado" e parecia o ano inteiro)."""
+    corte = rotulo_periodo(ultimo_periodo_fechado(con))
+    return f" até {corte}" if corte else ""
+
+
+def _render_card_nivel4(
+    df_familia: pd.DataFrame, df_pacote: pd.DataFrame, df_conta: pd.DataFrame, ate: str = "",
+) -> None:
     orcado = df_familia["orcado"].sum()
     realizado = df_familia["realizado"].sum()
     delta = realizado - orcado
@@ -219,8 +283,8 @@ def _render_card_nivel4(df_familia: pd.DataFrame, df_pacote: pd.DataFrame, df_co
             escapar_cifrao_md(f"""
             | | |
             |---|---|
-            | Orçado | {fmt_reais_abrev(orcado)} |
-            | Realizado | {fmt_reais_abrev(realizado)} |
+            | Orçado{ate} | {fmt_reais_abrev(orcado)} |
+            | Realizado{ate} | {fmt_reais_abrev(realizado)} |
             | Delta | :{cor_delta}[**{fmt_reais_abrev(delta)}**] |
             | Pacotes | {df_pacote['pacote_id'].nunique()} |
             | Contas distintas | {df_conta['conta_interna_id'].nunique()} |
@@ -249,7 +313,13 @@ def render_arvore_contas(
     nomes_pacote = mapa_nomes_pacote(con)
 
     if df_familia.empty:
-        st.info("Nenhum dado para os filtros selecionados.")
+        # B1 (2026-10-18): a árvore é sempre OPEX — com Classificação =
+        # CAPEX ela fica vazia, e o CAPEX do recorte sumia calado. Aviso
+        # com o valor ANTES do return. Sem resumo (Visão Manutenção), o
+        # card da própria página já mostra o aviso — não repete.
+        st.info("Nenhum OPEX no recorte selecionado.")
+        if mostrar_resumo:
+            aviso_capex_sustaining(con, familia, destaque=True)
         return
 
     if mostrar_resumo:
@@ -262,7 +332,10 @@ def render_arvore_contas(
                 st.info("Nenhuma conta com desvio no recorte selecionado.")
 
         bloco_resumo_visual(
-            lambda: _render_card_nivel4(df_familia, df_pacote, df_conta),
+            lambda: (
+                _render_card_nivel4(df_familia, df_pacote, df_conta, rotulo_ate_corte(con)),
+                nota_recorte_arvore(con, familia),
+            ),
             _visual_top_contas,
             key=f"{key_prefix}-resumo",
         )

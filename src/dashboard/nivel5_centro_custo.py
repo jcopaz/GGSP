@@ -39,7 +39,14 @@ from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_reais_ab
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.layout import bloco_resumo_visual, nota_forecast
 from src.dashboard.filtros import guardar_e_faixa_universo
-from src.dashboard.nivel4_contas import _filtros_padrao, dados_familia, dados_pacote
+from src.dashboard.nivel4_contas import (
+    _filtros_padrao,
+    aviso_capex_sustaining,
+    dados_familia,
+    dados_pacote,
+    nota_recorte_arvore,
+    rotulo_ate_corte,
+)
 from src.dashboard.paleta import COR_ECONOMIA, COR_ESTOURO
 from src.dashboard.tendencia import dados_tendencia, figura_tendencia
 from src.engine.delta_calculator import calcular_delta
@@ -56,7 +63,7 @@ CENTRO_CUSTO_INDIRETO_GG = "CGG050"
 
 
 def dados_centro_custo(con: duckdb.DuckDBPyConnection, familia: str | None = None) -> pd.DataFrame:
-    filtro_orcado, filtro_realizado = _filtros_padrao(familia)
+    filtro_orcado, filtro_realizado = _filtros_padrao(familia, con=con, ate_fechamento=True)
     df = calcular_delta(
         con, dims=["familia_pacote", "pacote_id", "centro_custo_id"],
         filtro_orcado=filtro_orcado, filtro_realizado=filtro_realizado,
@@ -125,7 +132,9 @@ def _grafico_top_cc(df: pd.DataFrame, nomes_pacote: dict[str, str], top_n: int =
     return fig
 
 
-def _render_card_nivel5(df_familia: pd.DataFrame, df_cc: pd.DataFrame) -> None:
+def _render_card_nivel5(df_familia: pd.DataFrame, df_cc: pd.DataFrame, ate: str = "") -> None:
+    """`ate`: " até Ago/2026" (`nivel4_contas.rotulo_ate_corte`) — N4,
+    2026-10-18: o Orçado do card é só até o último mês fechado."""
     orcado = df_familia["orcado"].sum()
     realizado = df_familia["realizado"].sum()
     delta = realizado - orcado
@@ -142,8 +151,8 @@ def _render_card_nivel5(df_familia: pd.DataFrame, df_cc: pd.DataFrame) -> None:
         cor_delta_sem = "red" if delta_sem > 0 else "green" if delta_sem < 0 else "gray"
         linha_indireto = f"""
             | &nbsp; | &nbsp; |
-            | Orçado sem Indireto GG ({CENTRO_CUSTO_INDIRETO_GG}) | {fmt_reais_abrev(orcado_sem)} |
-            | Realizado sem Indireto GG | {fmt_reais_abrev(realizado_sem)} |
+            | Orçado sem Indireto GG ({CENTRO_CUSTO_INDIRETO_GG}){ate} | {fmt_reais_abrev(orcado_sem)} |
+            | Realizado sem Indireto GG{ate} | {fmt_reais_abrev(realizado_sem)} |
             | Delta sem Indireto GG | :{cor_delta_sem}[**{fmt_reais_abrev(delta_sem)}**] |
             """
 
@@ -153,8 +162,8 @@ def _render_card_nivel5(df_familia: pd.DataFrame, df_cc: pd.DataFrame) -> None:
             escapar_cifrao_md(f"""
             | | |
             |---|---|
-            | Orçado | {fmt_reais_abrev(orcado)} |
-            | Realizado | {fmt_reais_abrev(realizado)} |
+            | Orçado{ate} | {fmt_reais_abrev(orcado)} |
+            | Realizado{ate} | {fmt_reais_abrev(realizado)} |
             | Delta | :{cor_delta}[**{fmt_reais_abrev(delta)}**] |
             | Centros de Custo | {df_cc['centro_custo_id'].nunique()} |
             {linha_indireto}""")
@@ -189,7 +198,11 @@ def render_arvore_centro_custo(
     nomes_pacote = mapa_nomes_pacote(con)
 
     if df_familia.empty:
-        st.info("Nenhum dado para os filtros selecionados.")
+        # B1 (2026-10-18): mesma regra do Nível 4 — árvore sempre OPEX; o
+        # CAPEX do recorte aparece com o valor em vez de sumir calado.
+        st.info("Nenhum OPEX no recorte selecionado.")
+        if mostrar_resumo:
+            aviso_capex_sustaining(con, familia, destaque=True)
         return
 
     if mostrar_resumo:
@@ -202,7 +215,10 @@ def render_arvore_centro_custo(
                 st.info("Nenhum Centro de Custo com desvio no recorte selecionado.")
 
         bloco_resumo_visual(
-            lambda: _render_card_nivel5(df_familia, df_cc),
+            lambda: (
+                _render_card_nivel5(df_familia, df_cc, rotulo_ate_corte(con)),
+                nota_recorte_arvore(con, familia),
+            ),
             _visual_top_cc,
             key=f"{key_prefix}-resumo",
         )

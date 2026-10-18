@@ -4,6 +4,146 @@ Versionamento SemVer (ver `src/versao.py`): MAJOR = tela nova/schema/
 segurança/integridade de dado; MINOR = funcionalidade nova sem quebrar
 nada; PATCH = correção de bug. Bump a cada commit relevante.
 
+## 13.0.0 — 2026-10-18
+
+MAJOR pela regra do `versao.py` (tela nova + segurança). Proposta aprovada
+em `docs/13-proposta-simplificacao-permissoes.md`.
+
+- **Perfil de acesso — uma tela só por usuário** (Administração → aba
+  "Perfil de acesso"). Perfis prontos — Gestão GG, Gerência de
+  Manutenção, Obras, Sem acesso, Administrador — mais "Personalizado" com
+  os controles avançados de antes. Recorte, capacidades, prévia do que a
+  pessoa vai ver (com o diagnóstico de recorte sem dado) e **um botão**,
+  que grava papel, capacidades, escopos e páginas numa **transação só**
+  (`salvar_perfil_acesso`). O perfil atual é detectado a partir do que já
+  está gravado; quem não cabe no molde abre como Personalizado.
+  `src/auth/perfis.py` é a regra pura (testada em `tests/test_perfis.py`).
+- **Mudança de acesso vale em até 1 minuto, sem novo login**
+  (`permissions.revalidar_acesso_da_sessao`): assinatura md5 do acesso,
+  checada no máximo 1x/min; usuário desativado cai pro login.
+- **Segurança — "Sair" não limpava o cache de permissões:** quem entrava
+  em seguida na mesma aba herdava universos/escopos/páginas do usuário
+  anterior. `clear_session` agora limpa tudo, e a revalidação descarta o
+  cache se o usuário da sessão mudar.
+- **Segurança — capacidade Upload não era checada:** "Dados e Qualidade"
+  (upload + reprocessar base) aparecia pra qualquer usuário logado sem
+  bloqueio explícito da página. Agora exige `permissao_upload` (menu e
+  acesso direto). ⚠️ Antes do deploy, marcar Upload em quem de fato
+  sobe arquivos.
+- Formulários: "Criar usuário" sem Papel/Gerência (usuário novo nasce
+  "Sem acesso"); "Editar usuário" só com Ativo. Escopos legados (sem
+  universo, sem efeito) viram só leitura com botão pra desativar. Textos
+  desatualizados ("enforcement ainda não ligado") corrigidos.
+- `tests/rbac_navegacao_check.py`: caso "com upload" passa a exigir a
+  capacidade + caso novo "upload sem capacidade → Sem acesso".
+
+Correções pós-revisão (Opus + Codex, 18/10 — B2, B3, N1–N3):
+
+- **Segurança — revalidação não congela mais o acesso antigo:** se a
+  recarga do usuário falha depois de detectar mudança, a assinatura nova
+  não é gravada (tenta de novo em até 1 minuto) e a sessão fica
+  rebaixada — sem admin, sem capacidades — até a recarga funcionar. Antes
+  um admin rebaixado continuava admin até sair e entrar.
+- **Segurança — 1ª medição da sessão descarta os caches** de permissão e
+  escopo (sessão aberta antes do deploy ou login sem logout limpo).
+- **Administração — falha ao ler o acesso no Neon não vira "Sem acesso":**
+  a tela mostra o erro e não salva nada (antes um clique em Salvar
+  apagava o acesso real). `listar_escopos_universo` não engole mais a
+  exceção.
+- **Perfis — negações legadas:** sub-página antiga negada (contas,
+  centro_custo…) ou Upload negado com a capacidade ligada → detectado como
+  Personalizado; a prévia respeita a negação. Salvar um perfil pronto
+  remove as negações legadas na mesma transação, com aviso na prévia; o
+  Personalizado nunca remove.
+- **Administração — Personalizado com um botão só** (gravação atômica),
+  bloqueia "Gerências específicas" sem nenhuma escolhida (antes tirava o
+  universo calado) e a lista de páginas não duplica Especialista/Upload.
+
+## 12.3.0 — 2026-10-18
+
+Validação dos filtros em produção (11 filtros × 22 visões — ver
+`docs/12-plano-correcao-filtros.md`). Regra adotada: **sem filtro = visão
+da GG; com filtro = todos os números da tela no recorte.** Bloco que não
+consegue respeitar um filtro sem inventar dado avisa no lugar.
+
+- **Fonte única do recorte:** `filtros.clausulas_recorte_sidebar()` /
+  `clausulas_recorte()` aplicam a mesma regra no Orçado e no Realizado
+  (Gerência por `gerencia_id`, Coordenação via Centros de Custo, PEP zera
+  o Realizado, Classificação nos dois lados, Período, escopo RBAC).
+- **Resumo › Visão Executiva e Desvios e Causas respondem a todos os
+  filtros** (antes só Período). Card vira "RECORTE FILTRADO" com o
+  recorte escrito. Waterfall de causa só em recortes que a causa
+  acompanha (Período, Pacote, Classificação OPEX); nos demais, aviso e
+  ranking por Delta total.
+- **"A realizar" (decisão do usuário):** Delta, Aderência, waterfall e
+  rankings comparam Orçado e Realizado só até o último mês com Realizado
+  contabilizado; o Orçado dos meses seguintes aparece à parte. Antes o
+  Orçado de Out–Dez entrava inteiro como desvio "Não Justificado".
+- **Análise Financeira:** Classificação = CAPEX zerava o Orçado mas
+  deixava o Realizado OPEX inteiro (Delta de +R$ 20,9 MM na PM) —
+  corrigido. Contas e CC comparavam Orçado CAPEX+OPEX com Realizado só
+  OPEX (Delta -R$ 66,2 MM contra -R$ 23,1 MM do Resumo) — agora OPEX x
+  OPEX, com o CAPEX que ficou de fora à parte (ver B1 abaixo).
+- **Gerências Locais / Ver por Gerência / Mapa de Calor:** Orçado por
+  Gerência deixa de somar o CAPEX SP/VP (Aderência de GER MALHA e GER
+  IMPLANT VP ficava artificialmente baixa). Cascata Gerência → Pacote
+  passa a respeitar o recorte.
+- **Projeção e CAPEX Sustaining** respondem aos filtros (Projeção sem
+  Período, por ser anual).
+- **Evidências SAP** passa a filtrar Gerência (via Centros de Custo);
+  Classificação CAPEX e PEP mostram 0 lançamentos com aviso.
+- **Faixa "Filtros ativos" honesta:** separa os filtros que valem na
+  página dos que "não se aplicam nesta página" (Obras, Especialista).
+- **"Limpar filtros" limpa as tags** dos seletores (antes só o filtro
+  aplicado; no próximo "Aplicar" os antigos voltavam).
+- **Lista do filtro Gerência** inclui Gerências que só têm Orçado
+  (ex.: DIRETO GG).
+- **Contas, CC e Tendência sempre OPEX x OPEX (B1, opção b do Julio):**
+  o Orçado da árvore é só OPEX mesmo com Classificação = CAPEX (antes o
+  CAPEX entrava com Realizado zero, um "Delta" que era só falta de
+  fonte). CAPEX → 0/0; CAPEX+OPEX → OPEX x OPEX. O CAPEX Sustaining do
+  recorte aparece só como informação — "Orçado CAPEX Sustaining do
+  recorte: R$ X · Realizado: — (não carregado)", sem Delta nem
+  Aderência, sem citar fonte (a do Realizado CAPEX ainda vai ser
+  decidida) — também quando a árvore fica vazia (antes sumia calado) e
+  no card da Manutenção (PM03). O valor respeita os filtros e o RBAC do
+  universo `capex_sustaining` (antes vazava pra quem só tinha OPEX).
+- **Mês da carga do Realizado fica "em andamento" (B4):** a referência é
+  a data da carga da Consulta de Contas, nunca a data de hoje. Fechamento
+  contábil = 5º dia útil do mês seguinte (calendário da GGFC, jul/26;
+  `DIA_UTIL_FECHAMENTO_CONTABIL = 5`, dias úteis seg–sex sem feriados —
+  GAP): o mês M da carga é sempre aberto; M-1 só fecha se a carga for no
+  5º dia útil de M ou depois. Corte do Delta = min(último mês com
+  Realizado, M-1 ou M-2). O Realizado parcial do(s) mês(es) em aberto
+  aparece à parte no card ("Set/2026 em andamento — Realizado parcial")
+  e na nota, e nunca entra em Real Contabilizado/Delta/Aderência/rankings.
+  Realizado com competência depois do mês da carga gera alerta ("lançamento
+  futuro, verificar a base") em vez de sumir. Base sem a data da carga
+  volta à regra antiga, com aviso na nota.
+- ⚠️ **Schema: tabela nova `meta_carga`** (tipo, arquivo, carregado_em,
+  origem) gravada pelo build com o mtime de cada arquivo de origem
+  (GAP: mtime local, não a data real do upload). O auto-restore pós-reboot
+  repõe o `enviado_em` do Neon no mtime do arquivo; a reversão de versão
+  conta como carga nova na data da restauração (aceito). Precisa de
+  "Reprocessar base" pra a tabela existir.
+- **Projeção pelo ritmo e Forecast ancorados no último mês fechado:** o
+  mês em aberto (Realizado parcial) não entra mais na média — entra como
+  projetado. A curva do Realizado continua mostrando todos os meses, mas
+  o mês em aberto ganha marcador próprio "Realizado parcial (mês em
+  aberto)" e o hover diz "parcial — mês em aberto" (2ª revisão do Astra).
+- **Base sem nenhum Realizado:** a nota de fechamento deixa de sumir e
+  avisa que o Delta e a Aderência comparam o Orçado com Realizado zero.
+- Cards de Contas, CC e Manutenção dizem "Orçado até Ago/2026" (antes só
+  "Orçado", parecia o ano inteiro).
+- CAPEX Sustaining: "Realizado (ref. Malha, não fatiado)" virou
+  "Realizado OPEX do mesmo recorte (referência)" — desde o P6 o número já
+  era do recorte.
+- `tests/test_resumo_filtros.py`: 33 casos com base sintética (os 21
+  anteriores intactos + B1/B4/N4); `tests/test_corte_fechamento.py` (18,
+  regra do corte, `meta_carga`, restauração); `test_projecao_ritmo.py`
+  com o mês parcial, o marcador da curva e o aviso de base sem Realizado; `rbac_sustaining_check` passa a esperar a árvore
+  OPEX.
+
 ## 12.2.2 — 2026-10-06
 
 - **Evidências SAP e Rastreabilidade CJI3 ~93% mais leves.** Medição por

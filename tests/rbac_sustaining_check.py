@@ -40,7 +40,9 @@ def _script() -> None:
             "where familia_pacote='PM' and gerencia_id in (?)", [_ALVO],
         ).fetchone()
         # Card da sub-aba PM é OPEX puro desde 12.2.1 (antes somava o CAPEX
-        # Sustaining PM03 da Base Zero); as árvores N4 seguem com o total.
+        # Sustaining PM03 da Base Zero); as árvores N4 também desde o B1
+        # (2026-10-18, docs/12: Contas/CC sempre OPEX x OPEX, o CAPEX vira
+        # só aviso). `orc_d` (PM com CAPEX) fica só como referência.
         (orc_opex_pm,) = con.execute(
             "select coalesce(sum(valor_orcado),0) from fact_orcamento "
             "where familia_pacote='PM' and classificacao_contabil='OPEX' and gerencia_id in (?)", [_ALVO],
@@ -72,8 +74,8 @@ def _script() -> None:
         checks = {
             "resumo_orcado": abs(r["orcado"] - orc_opex_pm) < 0.01,
             "resumo_realizado": abs(r["realizado"] - real_d) < 0.01,
-            "n4_familia_orcado": abs(float(df_fam["orcado"].sum()) - orc_d) < 0.01,
-            "n4_conta_orcado": abs(float(df_cta["orcado"].sum()) - orc_d) < 0.01,
+            "n4_familia_orcado": abs(float(df_fam["orcado"].sum()) - orc_opex_pm) < 0.01,
+            "n4_conta_orcado": abs(float(df_cta["orcado"].sum()) - orc_opex_pm) < 0.01,
             "classif_opex": abs(rc_opex["orcado"] - opex_d) < 0.01,
             "classif_capex": abs(rc_capex["orcado"] - capex_d) < 0.01,
             "n6_docs": n6_scoped == n6_direct and 0 < n6_scoped < con.execute(

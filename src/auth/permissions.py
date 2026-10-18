@@ -22,6 +22,7 @@ import os
 
 import streamlit as st
 
+from src.auth.perfis import SUBPAGINAS_LEGADAS
 from src.auth.session import get_papel, get_usuario, is_logged_in
 
 
@@ -234,15 +235,9 @@ _PAGINAS_ALLOW_EXPLICITO = {"pce_especialista"}
 
 # Página-jornada consolidada -> sub-páginas antigas que ela absorveu. Se o
 # admin tinha negado explicitamente uma delas pra alguém, a jornada inteira
-# fica negada (ver can_acessar_pagina). Etapa 3 da Visão Ideal (docs/07):
-# "manutencao_resumo" = Visão Resumo Executivo + Painel Executivo + Projeção OPEX.
-_JORNADA_HERDA_DENY = {
-    "manutencao_resumo": ("resumo_executivo", "painel_executivo", "projecao_opex"),
-    "obras_resumo": ("capex_resumo", "capex_painel"),
-    "manutencao_analise_financeira": (
-        "visao_manutencao", "contas", "centro_custo", "opex_capex_manutencao",
-    ),
-}
+# fica negada (ver can_acessar_pagina). O mapa mora em perfis.py (módulo puro,
+# 2026-10-18, docs/13 N2) pra o detector de perfil enxergar as mesmas negações.
+_JORNADA_HERDA_DENY = SUBPAGINAS_LEGADAS
 
 
 def _escopos_cache(usuario_id: str) -> list[dict]:
@@ -381,3 +376,119 @@ def escopo_universo(universo: str, usuario: dict | None = None) -> tuple[bool, b
         return _resolver_escopo_universo(universo, linhas, False, bool(u))
     except Exception:
         return False, False, []
+
+
+# ---------------------------------------------------------------------------
+# Mudança de acesso vale sem novo login (docs/13, item 6 — 2026-10-18).
+#
+# As permissões ficam em cache na sessão (`_permissoes_pagina_cache`,
+# `_escopos_acesso_cache`, o próprio `usuario`) pra não abrir ~15 conexões
+# ao Neon por clique (ver `_permissoes_pagina_cache`). O preço era: mudança
+# feita pelo admin só valia no próximo login da pessoa. Agora, no máximo
+# 1x por minuto por sessão, 1 consulta barata calcula uma assinatura (md5)
+# de tudo que define o acesso do usuário; se mudou, o cache é descartado e
+# o `usuario` é recarregado. Usuário desativado nesse meio-tempo cai pro
+# login (fail closed). Se a consulta da assinatura falhar (banco fora),
+# mantém o cache que já tinha — não amplia acesso nenhum, só adia.
+#
+# Correções pós-revisão de 18/10 (docs/13, B2/B3):
+# - 1ª medição da sessão também descarta os caches (podiam ter sido lidos
+#   antes de qualquer checagem, ou de uma mudança já feita pelo admin).
+# - A assinatura nova só é gravada DEPOIS de recarregar o usuário. Se a
+#   recarga falhar, a mudança segue "pendente" e a próxima checagem (<= 1 min)
+#   tenta de novo; enquanto isso, se o acesso mudou, a sessão fica rebaixada
+#   (sem admin, sem capacidades) — fail closed, em vez de congelar o antigo.
+# ---------------------------------------------------------------------------
+
+INTERVALO_REVALIDACAO_S = 60
+_CHAVES_CACHE_ACESSO = ("_permissoes_pagina_cache", "_escopos_acesso_cache")
+
+_SQL_ASSINATURA_ACESSO = """
+select md5(
+    coalesce((select string_agg(coalesce(universo, '') || '|' || tipo || '|' || valor || '|' || ativo::text,
+                                ';' order by universo nulls first, tipo, valor)
+              from app.escopo_acesso where usuario_id = %(id)s), '')
+    || '#' ||
+    coalesce((select string_agg(pagina || '|' || permitido::text, ';' order by pagina)
+              from app.permissao_pagina where usuario_id = %(id)s), '')
+    || '#' ||
+    coalesce((select papel || '|' || ativo::text || '|' || permissao_upload::text || '|'
+                     || permissao_exportacao::text || '|' || permissao_justificativa_macro::text
+                     || '|' || permissao_justificativa_micro::text
+              from app.usuario where id = %(id)s), 'removido')
+) as assinatura
+"""
+
+
+def _assinatura_acesso(usuario_id) -> str | None:
+    from src.auth.db import buscar_um
+
+    linha = buscar_um(_SQL_ASSINATURA_ACESSO, {"id": usuario_id})
+    return linha["assinatura"] if linha else None
+
+
+def _recarregar_usuario(usuario_id) -> dict | None:
+    from src.auth.db import buscar_um
+
+    return buscar_um("select * from app.usuario where id = %s", (usuario_id,))
+
+
+def revalidar_acesso_da_sessao(agora: float | None = None) -> None:
+    """Chamar no topo do app, depois do gate de login. Ver bloco acima."""
+    import time
+
+    if os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
+        return
+    u = get_usuario()
+    if not u or not u.get("id"):
+        return
+    agora = time.monotonic() if agora is None else agora
+    # Outro usuário na mesma sessão (login sem logout limpo): descarta tudo
+    # e mede de novo agora — o cache do anterior não vale pra este.
+    anterior_id = st.session_state.get("_acesso_usuario_id")
+    if anterior_id is not None and anterior_id != u["id"]:
+        for chave in _CHAVES_CACHE_ACESSO:
+            st.session_state.pop(chave, None)
+        st.session_state.pop("_acesso_assinatura", None)
+        st.session_state.pop("_acesso_verificado_em", None)
+    st.session_state["_acesso_usuario_id"] = u["id"]
+    ultimo = st.session_state.get("_acesso_verificado_em")
+    if ultimo is not None and agora - ultimo < INTERVALO_REVALIDACAO_S:
+        return
+    st.session_state["_acesso_verificado_em"] = agora
+    try:
+        assinatura = _assinatura_acesso(u["id"])
+    except Exception:
+        return
+    anterior = st.session_state.get("_acesso_assinatura")
+    if assinatura == anterior:
+        return
+    # 1ª medição da sessão (B3) ou acesso mudou: o cache não vale mais.
+    for chave in _CHAVES_CACHE_ACESSO:
+        st.session_state.pop(chave, None)
+    try:
+        novo = _recarregar_usuario(u["id"])
+    except Exception:
+        # B2: NÃO grava a assinatura nova -> a próxima checagem (<= 1 min) tenta
+        # de novo. Fail closed: se o acesso MUDOU (anterior conhecido), a sessão
+        # fica rebaixada (sem admin, sem capacidades) até a recarga funcionar.
+        # Na 1ª medição não se sabe se mudou: mantém `u` (caches já descartados
+        # e relidos do banco na próxima consulta).
+        if anterior is not None:
+            from src.auth.session import set_usuario
+
+            set_usuario({
+                **u, "papel": "especialista_analista",
+                **{c: False for c in ("permissao_upload", "permissao_exportacao",
+                                      "permissao_justificativa_macro", "permissao_justificativa_micro")},
+            })
+        return
+    if not novo or not novo.get("ativo", False):
+        from src.auth.session import clear_session
+
+        clear_session()
+        st.rerun()
+    st.session_state["_acesso_assinatura"] = assinatura  # só depois do sucesso
+    from src.auth.session import set_usuario
+
+    set_usuario(novo)

@@ -36,11 +36,16 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.branding import render_page_banner
-from src.dashboard.filtros import guardar_e_faixa_universo
+from src.dashboard.filtros import guardar_e_faixa_universo, nota_fechamento_recorte
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY, com_alternancia_barra_linha
 from src.dashboard.layout import bloco_resumo_visual, nota_forecast
-from src.dashboard.nivel4_contas import _filtros_padrao, render_arvore_contas
+from src.dashboard.nivel4_contas import (
+    _filtros_padrao,
+    aviso_capex_sustaining,
+    render_arvore_contas,
+    rotulo_ate_corte,
+)
 from src.dashboard.nivel5_centro_custo import render_arvore_centro_custo
 from src.dashboard.paleta import COR_ORCADO, COR_REALIZADO
 from src.dashboard.tendencia import dados_tendencia, figura_tendencia
@@ -58,7 +63,9 @@ _NOMES_MES = {1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
               7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"}
 
 
-def _filtros(familia: str) -> tuple[tuple[str, list], tuple[str, list]]:
+def _filtros(
+    familia: str, con: duckdb.DuckDBPyConnection | None = None, ate_fechamento: bool = False,
+) -> tuple[tuple[str, list], tuple[str, list]]:
     """((where_orc, params_orc), (where_real, params_real)) — fragmentos
     prontos pra colar depois de "WHERE 1=1".
 
@@ -71,13 +78,25 @@ def _filtros(familia: str) -> tuple[tuple[str, list], tuple[str, list]]:
     CAPEX no Orçado contra um Realizado só OPEX (PD/PP não têm CAPEX, por
     isso pareciam certos). Agora reusa exatamente o filtro do Nível 4
     (`_filtros_padrao`: família + sidebar + Período + escopo) e força OPEX
-    no Orçado, igual a Tendência já fazia."""
-    (where_orc, params_orc), (where_real, params_real) = _filtros_padrao(familia)
+    no Orçado, igual a Tendência já fazia.
+
+    `ate_fechamento=True` (2026-10-18, P7): card e "Orçado x Real por
+    Pacote" comparam só até o último mês fechado; gráficos só de Orçado,
+    o mensal e a Tendência continuam com o recorte inteiro.
+
+    B1 (2026-10-18): `_filtros_padrao` passou a forçar OPEX no Orçado
+    sempre — o `AND classificacao_contabil = 'OPEX'` abaixo ficou
+    redundante (idempotente), mantido como trava explícita desta página.
+    O CAPEX Sustaining (PM03) da família aparece no card só como
+    informação (`aviso_capex_sustaining`), sem Delta."""
+    (where_orc, params_orc), (where_real, params_real) = _filtros_padrao(
+        familia, con=con, ate_fechamento=ate_fechamento,
+    )
     return (where_orc + " AND classificacao_contabil = 'OPEX'", params_orc), (where_real, params_real)
 
 
 def resumo_manutencao(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO) -> dict:
-    (w_orc, p_orc), (w_real, p_real) = _filtros(familia)
+    (w_orc, p_orc), (w_real, p_real) = _filtros(familia, con=con, ate_fechamento=True)
     (orcado,) = con.execute(
         f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE 1=1{w_orc}", p_orc,
     ).fetchone()
@@ -92,7 +111,7 @@ def resumo_manutencao(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MAN
 
 
 def _dados_por_pacote(con: duckdb.DuckDBPyConnection, familia: str = FAMILIA_MANUTENCAO) -> pd.DataFrame:
-    (w_orc, p_orc), (w_real, p_real) = _filtros(familia)
+    (w_orc, p_orc), (w_real, p_real) = _filtros(familia, con=con, ate_fechamento=True)
     return con.execute(
         f"""
         WITH orc AS (
@@ -275,7 +294,9 @@ def _grafico_por_conta(df: pd.DataFrame, top_n: int = 10) -> go.Figure | None:
     return fig
 
 
-def _render_card_manutencao(resumo: dict, familia: str = FAMILIA_MANUTENCAO) -> None:
+def _render_card_manutencao(resumo: dict, familia: str = FAMILIA_MANUTENCAO, ate: str = "") -> None:
+    """`ate`: " até Ago/2026" (`nivel4_contas.rotulo_ate_corte`) — N4,
+    2026-10-18: o Orçado do card é só até o último mês fechado."""
     meta = _FAMILIAS[familia]
     delta = resumo["delta"]
     cor_delta = "red" if delta > 0 else "green" if delta < 0 else "gray"
@@ -285,8 +306,8 @@ def _render_card_manutencao(resumo: dict, familia: str = FAMILIA_MANUTENCAO) -> 
             escapar_cifrao_md(f"""
             | | |
             |---|---|
-            | Orçado | {fmt_reais_abrev(resumo["orcado"])} |
-            | Real Contabilizado | {fmt_reais_abrev(resumo["realizado"])} |
+            | Orçado{ate} | {fmt_reais_abrev(resumo["orcado"])} |
+            | Real Contabilizado{ate} | {fmt_reais_abrev(resumo["realizado"])} |
             | Delta | :{cor_delta}[**{fmt_reais_abrev(delta)}**] |
             | Aderência | {fmt_pct(resumo["aderencia"])} |
             """)
@@ -309,8 +330,17 @@ def render_visao_manutencao(
 
     # Card-resumo | divisória | gráfico por Pacote — mesmo padrão das demais
     # abas. Layout compartilhado desde 6.4.0 (ver src/dashboard/layout.py).
+    def _card() -> None:
+        _render_card_manutencao(resumo, familia, rotulo_ate_corte(con))
+        # B4 (2026-10-18): lados SEM corte, pra nota mostrar o(s) mês(es)
+        # em aberto com o Realizado parcial e o "a realizar".
+        filtro_orc_sem_corte, filtro_real_sem_corte = _filtros(familia)
+        nota_fechamento_recorte(con, filtro_orc_sem_corte, filtro_real_sem_corte)
+        # B1: a família PM carrega o CAPEX Sustaining (PM03) — fora do Delta.
+        aviso_capex_sustaining(con, familia)
+
     bloco_resumo_visual(
-        lambda: _render_card_manutencao(resumo, familia),
+        _card,
         lambda: st.plotly_chart(
             _grafico_por_pacote(_dados_por_pacote(con, familia), nomes_pacote),
             use_container_width=True, key=f"{k}-por-pacote", config=CONFIG_PLOTLY,

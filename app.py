@@ -84,7 +84,15 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-from src.auth.permissions import can_acessar_pagina, escopo_universo, is_admin, universos_permitidos
+from src.auth.perfis import PAGINA_UPLOAD, UNIVERSO_DA_PAGINA
+from src.auth.permissions import (
+    can_acessar_pagina,
+    can_fazer_upload,
+    escopo_universo,
+    is_admin,
+    revalidar_acesso_da_sessao,
+    universos_permitidos,
+)
 from src.dashboard.administracao import render_administracao
 from src.auth.session import (
     clear_session,
@@ -106,9 +114,15 @@ from src.ingestion.arquivo_bruto import (
 )
 from src.auth.audit import registrar_atividade, registrar_visualizacao_pagina
 from src.dashboard.filtros import (
+    AVISO_CAUSA_INDISPONIVEL,
+    causa_disponivel_no_recorte,
+    clausulas_gerencias_opex,
+    clausulas_recorte,
     guardar_e_faixa_universo,
+    pacotes_filtro,
     renderizar_badge_filtros_ativos,
     renderizar_filtros_sidebar,
+    ultimo_periodo_fechado,
 )
 from src.dashboard.layout import bloco_resumo_visual
 from src.dashboard.nivel1_diretoria import gg_padrao, render_nivel1
@@ -152,6 +166,11 @@ if not is_logged_in() and os.environ.get("ORCAMENTO_SKIP_LOGIN") != "1":
     st.stop()
 elif os.environ.get("ORCAMENTO_SKIP_LOGIN") == "1":
     st.warning("⚠️ Login desativado (ORCAMENTO_SKIP_LOGIN=1) — só para uso local. Nunca deixe isso ligado no deploy.")
+
+# Mudança de acesso feita pelo admin vale em até 1 minuto, sem novo login
+# (docs/13 — `revalidar_acesso_da_sessao`). Antes do gate de troca de senha
+# e da navegação, pra o menu já sair com as permissões novas.
+revalidar_acesso_da_sessao()
 
 # Troca de senha obrigatória (pedido do usuário 2026-08-28): usuário
 # criado pela Administração entra com uma senha temporária única e fica
@@ -435,6 +454,11 @@ def _zona_upload(tipo: str, info: dict) -> None:
 
 def pagina_upload() -> None:
     render_page_banner("📤", "Dados e Qualidade", "Upload dos arquivos rotineiros, reprocessamento e conferência de carga.")
+    if os.environ.get("ORCAMENTO_SKIP_LOGIN") != "1" and not can_fazer_upload():
+        # Defesa em profundidade (além de esconder do menu): acesso direto
+        # sem a capacidade Upload não sobe nem reprocessa nada.
+        st.error("🚫 Você não tem permissão para enviar arquivos nem reprocessar a base.")
+        st.stop()
     with st.expander("Como funciona o upload"):
         st.caption(
             "**Rotina periódica**: formato padronizado (Base Analítico SAP "
@@ -568,6 +592,15 @@ def _frag_manut_desvios_causas() -> None:
         # recorte dele.
         guardar_e_faixa_universo(con, "opex_sustaining")
         _tem_gg_inteira = escopo_universo("opex_sustaining")[1]
+        # 2026-10-18 (validação de filtros, P4): esta aba passa a responder
+        # a todos os filtros da sidebar, como a Visão Executiva. O waterfall
+        # de causa só aparece em recortes que a causa acompanha (Período,
+        # Pacote, Classificação OPEX — `causa_disponivel_no_recorte`); Delta
+        # e Aderência até o último mês fechado (P7, "a realizar").
+        _causa_ok = causa_disponivel_no_recorte()
+        _corte = ultimo_periodo_fechado(con)
+        _filtros_ger = clausulas_gerencias_opex(con)
+        _filtros_ano = clausulas_recorte("opex_sustaining", incluir_periodo=False)
 
         if st.session_state["modo_simulado"] and _tem_gg_inteira:
             st.warning(
@@ -581,12 +614,15 @@ def _frag_manut_desvios_causas() -> None:
         caminho_explicacoes = st.session_state["caminho_explicacoes_ativo"]
 
         def _sem_waterfall_recorte() -> None:
-            st.info(
-                "🔒 A decomposição de causa (waterfall por categoria) é Macro "
-                "por Pacote e cruza Gerências — fica disponível só no acesso à "
-                "GG inteira (Analista que apura a GG). Seu recorte mostra "
-                "Orçado/Realizado/Delta, a Tendência e a Visão por Gerência."
-            )
+            if not _tem_gg_inteira:
+                st.info(
+                    "🔒 A decomposição de causa (waterfall por categoria) é Macro "
+                    "por Pacote e cruza Gerências — fica disponível só no acesso à "
+                    "GG inteira (Analista que apura a GG). Seu recorte mostra "
+                    "Orçado/Realizado/Delta, a Tendência e a Visão por Gerência."
+                )
+            else:
+                st.info(AVISO_CAUSA_INDISPONIVEL)
 
         # Nível 1 (resumo) e Nível 2 (waterfall) lado a lado, com uma linha
         # vertical separando os dois — pedido do usuário em 2026-08-10
@@ -598,17 +634,21 @@ def _frag_manut_desvios_causas() -> None:
             (lambda: render_nivel2(
                 con, st.session_state["gg_selecionado"], caminho_explicacoes,
                 CFG["categorias_causa"], ano_fiscal=CFG["ano_fiscal_orcamento"],
-            )) if _tem_gg_inteira else _sem_waterfall_recorte,
+                pacotes_filtro=pacotes_filtro(), ate_periodo=_corte,
+            )) if (_tem_gg_inteira and _causa_ok) else _sem_waterfall_recorte,
             key="painel",
         )
 
         st.divider()
-        render_tendencia_gg(con, st.session_state["gg_selecionado"], ano_fiscal=CFG["ano_fiscal_orcamento"])
+        render_tendencia_gg(
+            con, st.session_state["gg_selecionado"], ano_fiscal=CFG["ano_fiscal_orcamento"],
+            filtros_ano=_filtros_ano,
+        )
 
-        render_gerencia_gg(con, st.session_state["gg_selecionado"])
-        render_mapa_calor_gerencia_pacote(con, st.session_state["gg_selecionado"])
+        render_gerencia_gg(con, st.session_state["gg_selecionado"], filtros=_filtros_ger)
+        render_mapa_calor_gerencia_pacote(con, st.session_state["gg_selecionado"], filtros=_filtros_ger)
 
-        if _tem_gg_inteira and st.session_state.get("categoria_selecionada"):
+        if _tem_gg_inteira and _causa_ok and st.session_state.get("categoria_selecionada"):
             st.divider()
             render_nivel3(
                 con,
@@ -616,6 +656,7 @@ def _frag_manut_desvios_causas() -> None:
                 st.session_state["categoria_selecionada"],
                 caminho_explicacoes,
                 CFG["categorias_causa"],
+                pacotes_filtro=pacotes_filtro(), ate_periodo=_corte,
             )
     finally:
         con.close()
@@ -638,7 +679,7 @@ def pagina_manutencao_resumo() -> None:
     if not os.path.exists(caminho_db):
         _aviso_base_nao_processada()
         return
-    renderizar_badge_filtros_ativos()
+    renderizar_badge_filtros_ativos("manutencao")
     escolha = st.segmented_control(
         "Seção", _ABAS_MANUT_RESUMO, default=_ABAS_MANUT_RESUMO[0],
         key="w_seg_manut_resumo", label_visibility="collapsed",
@@ -758,7 +799,7 @@ def pagina_manutencao_analise_financeira() -> None:
     if not os.path.exists(caminho_db):
         _aviso_base_nao_processada()
         return
-    renderizar_badge_filtros_ativos()
+    renderizar_badge_filtros_ativos("manutencao")
 
     permitidos = universos_permitidos()
     abas = []
@@ -796,7 +837,7 @@ def pagina_sap() -> None:
         if n_tabelas == 0:
             _aviso_base_nao_processada()
             return
-        renderizar_badge_filtros_ativos()
+        renderizar_badge_filtros_ativos("manutencao")
         # Etapa 6b: retorno à análise sem perder o recorte (os filtros da
         # sidebar não mudaram ao navegar pra cá).
         _link_para(_PG_ANALISE_FIN, "Voltar à Análise Financeira", "↩️")
@@ -842,7 +883,7 @@ def pagina_obras_resumo() -> None:
     if not os.path.exists(caminho_db):
         _aviso_base_nao_processada()
         return
-    renderizar_badge_filtros_ativos()
+    renderizar_badge_filtros_ativos("obras")
     escolha = st.segmented_control(
         "Seção", _ABAS_OBRAS_RESUMO, default=_ABAS_OBRAS_RESUMO[0],
         key="w_seg_obras_resumo", label_visibility="collapsed",
@@ -864,7 +905,7 @@ def pagina_capex_contas() -> None:
         if not _base_pronta(con):
             _aviso_base_nao_processada()
             return
-        renderizar_badge_filtros_ativos()
+        renderizar_badge_filtros_ativos("obras")
         render_nivel4_contas_capex(con)
     finally:
         con.close()
@@ -880,18 +921,19 @@ def pagina_capex_rastreabilidade() -> None:
         if not _base_pronta(con):
             _aviso_base_nao_processada()
             return
-        renderizar_badge_filtros_ativos()
+        renderizar_badge_filtros_ativos("obras")
         render_nivel6_sap_capex(con)
     finally:
         con.close()
 
 
 def pagina_pce_especialista() -> None:
-    """Não chama `renderizar_badge_filtros_ativos()` de propósito — os
-    filtros globais da sidebar (Pacote/Gerência/Período etc.) não têm
+    """Os filtros globais da sidebar (Pacote/Gerência/Período etc.) não têm
     equivalente em `fact_pce_consolidado` (universo à parte, sem
-    `pacote_id`/`gerencia_id` compartilhado), mostrar o badge sugeriria
-    que eles afetam esta página quando não afetam nada aqui."""
+    `pacote_id`/`gerencia_id` compartilhado). Desde 2026-10-18 (P8) o
+    badge com universo "especialista" deixa isso explícito: lista os
+    filtros ativos como "Não se aplica nesta página" e aponta pros filtros
+    do topo (antes a página só não mostrava badge nenhum)."""
     caminho_db = CFG["caminhos"]["warehouse_db"]
     if not os.path.exists(caminho_db):
         _aviso_base_nao_processada()
@@ -901,6 +943,7 @@ def pagina_pce_especialista() -> None:
         if not _base_pronta(con):
             _aviso_base_nao_processada()
             return
+        renderizar_badge_filtros_ativos("especialista")
         render_pce_especialista(con)
     finally:
         con.close()
@@ -1080,19 +1123,19 @@ def _com_guard_pagina(chave: str, funcao):
 # do menu inteiro (não só barra na entrada). Admin / ORCAMENTO_SKIP_LOGIN=1
 # passam (universos_permitidos devolve os 3). Página fora deste mapa
 # (upload/administracao) não é escopada por universo.
-_UNIVERSO_DA_PAGINA = {
-    "manutencao_resumo": {"opex_sustaining"},
-    "manutencao_analise_financeira": {"opex_sustaining", "capex_sustaining"},
-    "rastreabilidade_sap": {"opex_sustaining"},
-    "obras_resumo": {"capex_obras"},
-    "capex_contas": {"capex_obras"},
-    "capex_rastreabilidade": {"capex_obras"},
-    "pce_especialista": {"capex_obras"},
-}
+# Fonte única desde 2026-10-18: `perfis.UNIVERSO_DA_PAGINA` (a tela de
+# Perfil de acesso usa o mesmo mapa pra montar a prévia "vai ver").
+_UNIVERSO_DA_PAGINA = UNIVERSO_DA_PAGINA
 
 
 def _pagina_se_permitida(chave: str, funcao, titulo: str, icon: str, default: bool = False):
     if not can_acessar_pagina(chave):
+        return None
+    # "Dados e Qualidade" (upload + reprocessar base) exige a capacidade
+    # Upload (2026-10-18, docs/13). Antes bastava a permissão de página —
+    # liberada por padrão — e `permissao_upload` não era checada em lugar
+    # nenhum: qualquer usuário logado via e usava a tela.
+    if chave == PAGINA_UPLOAD and not can_fazer_upload():
         return None
     universos_req = _UNIVERSO_DA_PAGINA.get(chave)
     if universos_req and not (universos_req & universos_permitidos()):

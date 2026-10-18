@@ -35,6 +35,35 @@ def _fmt_codigo(valor: float | None) -> str:
     return str(int(valor))
 
 
+def _clausula_gerencia_classificacao_pep() -> tuple[str, list]:
+    """Filtros da sidebar que `fact_realizado_documento` não tem como
+    coluna própria (P3, 2026-10-18 — antes eram ignorados aqui, e a página
+    mostrava os 17.812 lançamentos com a faixa "Filtros ativos ·
+    Gerência: ..." no topo):
+
+    - Gerência: vira a lista de Centros de Custo daquela Gerência (CC ⊂
+      Gerência é hierarquia estrita em `fact_realizado` — docs/04, mesmo
+      truque de `clausula_escopo_centro_custo`).
+    - Classificação sem OPEX / PEP: o Realizado carregado é 100% OPEX e não
+      tem PEP — nenhum lançamento casa (`1=0`), com aviso na tela.
+    """
+    ss = st.session_state
+    partes: list[tuple[str, list]] = []
+    gerencias = ss.get("filtro_gerencia") or []
+    if gerencias:
+        marc = ", ".join(["?"] * len(gerencias))
+        partes.append((
+            " AND centro_custo_id IN (SELECT DISTINCT centro_custo_id FROM fact_realizado "
+            f"WHERE gerencia_nome IN ({marc}) OR gerencia_id IN "
+            f"(SELECT gerencia_id FROM dim_gerencia WHERE gerencia_nome IN ({marc})))",
+            [*gerencias, *gerencias],
+        ))
+    classificacao = ss.get("filtro_classificacao") or []
+    if (classificacao and "OPEX" not in classificacao) or ss.get("filtro_pep"):
+        partes.append((" AND 1=0", []))
+    return combinar_clausulas(*partes) if partes else ("", [])
+
+
 def render_nivel6_sap(con: duckdb.DuckDBPyConnection) -> None:
     render_page_banner("🔎", "Evidências SAP", "Só para Realizado — a Base Zero (Orçamento) não tem documento/nota fiscal.")
     # RBAC de escopo (docs/08, Fase RBAC-A.2): universo opex_sustaining
@@ -43,10 +72,18 @@ def render_nivel6_sap(con: duckdb.DuckDBPyConnection) -> None:
     guardar_e_faixa_universo(con, "opex_sustaining")
     st.caption(
         "'Usuário' do lançamento não está no export atual; o campo mais "
-        "próximo é o responsável (ponta firme). Pacote/Centro de Custo/"
-        "Coordenação/Período usam os filtros da barra lateral — a busca "
+        "próximo é o responsável (ponta firme). Todos os filtros da barra "
+        "lateral valem aqui (Gerência via seus Centros de Custo) — a busca "
         "abaixo é só texto livre."
     )
+
+    classificacao = st.session_state.get("filtro_classificacao") or []
+    if (classificacao and "OPEX" not in classificacao) or st.session_state.get("filtro_pep"):
+        st.info(
+            "Nenhum lançamento neste recorte: o Realizado do SAP carregado é só OPEX "
+            "e não tem PEP. Filtros de Classificação CAPEX ou de PEP não encontram "
+            "documentos aqui."
+        )
 
     busca = st.text_input("Buscar por fornecedor, documento ou NF", "")
 
@@ -55,6 +92,7 @@ def render_nivel6_sap(con: duckdb.DuckDBPyConnection) -> None:
             "pacote_id": "pacote_id", "centro_custo_id": "centro_custo_id",
             "coordenacao": "coordenacao",
         }),
+        _clausula_gerencia_classificacao_pep(),
         clausula_periodo(),
         clausula_escopo_centro_custo(con),
     )

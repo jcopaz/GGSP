@@ -81,6 +81,8 @@ from __future__ import annotations
 import os
 import re
 import threading
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import duckdb
 import pandas as pd
@@ -646,6 +648,40 @@ def _agregar_fact_realizado(df_real: pd.DataFrame) -> pd.DataFrame:
     return df_real.groupby(chaves, dropna=False, as_index=False)["valor_realizado"].sum()
 
 
+# Chaves de `cfg["caminhos"]` que não são arquivo de origem (pasta e o
+# próprio warehouse) — ficam fora de `meta_carga`.
+_CAMINHOS_FORA_DA_META = {"data_raw", "warehouse_db"}
+
+
+def _linhas_meta_carga(caminhos: dict[str, str]) -> pd.DataFrame:
+    """Uma linha por arquivo de origem presente no disco: `tipo` (chave de
+    `cfg["caminhos"]`), `arquivo` (nome), `carregado_em` (horário de
+    Brasília, sem fuso) e `origem`. Pura (testada em
+    tests/test_corte_fechamento.py).
+
+    B4 (docs/12, 2026-10-18): a data da carga da Consulta de Contas define
+    o mês "em andamento" (Realizado parcial, fora do Delta) — ver
+    `filtros.corte_fechamento`. Nunca a data de hoje, nunca campo manual."""
+    # GAP: usa o mtime do arquivo em data/raw/, não a data real do upload.
+    # Upload pela tela grava o arquivo na hora (mtime = momento da carga) e
+    # o auto-restore pós-reboot repõe o `enviado_em` do Neon no mtime
+    # (`arquivo_bruto.restaurar_arquivo_bruto`); arquivo copiado à mão
+    # carrega o mtime que vier com a cópia.
+    fuso = ZoneInfo("America/Sao_Paulo")
+    linhas = []
+    for tipo, caminho in caminhos.items():
+        if tipo in _CAMINHOS_FORA_DA_META or not isinstance(caminho, str) or not os.path.isfile(caminho):
+            continue
+        linhas.append({
+            "tipo": tipo,
+            "arquivo": os.path.basename(caminho),
+            "carregado_em": datetime.fromtimestamp(os.path.getmtime(caminho), fuso).replace(tzinfo=None),
+            "origem": "mtime_arquivo",
+        })
+    df = pd.DataFrame(linhas, columns=["tipo", "arquivo", "carregado_em", "origem"])
+    return df.astype({"tipo": "string", "arquivo": "string", "carregado_em": "datetime64[us]", "origem": "string"})
+
+
 # Uma trava por processo: no Streamlit Cloud todas as sessões rodam no
 # mesmo processo, e o auto-restore pós-reboot + os botões "Reprocessar
 # base" podem disparar ao mesmo tempo (mesmo .tmp, mesmo lock do DuckDB).
@@ -898,6 +934,11 @@ def _build_star_schema() -> str:
             )
         con.execute("CREATE OR REPLACE TABLE fact_orcamento AS SELECT * FROM df_fact_orcamento")
         con.execute("CREATE OR REPLACE TABLE fact_realizado AS SELECT * FROM df_fact_realizado")
+        # B4 (docs/12, 2026-10-18): data da carga de cada arquivo de origem
+        # — `filtros.data_carga_realizado` lê a da Consulta de Contas pra
+        # separar o mês em aberto (Realizado parcial) do Delta.
+        df_meta_carga = _linhas_meta_carga(cfg["caminhos"])
+        con.execute("CREATE OR REPLACE TABLE meta_carga AS SELECT * FROM df_meta_carga")
         con.execute(
             "CREATE OR REPLACE TABLE fact_realizado_documento AS "
             "SELECT * FROM df_fact_realizado_documento"

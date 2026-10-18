@@ -47,10 +47,22 @@ import streamlit as st
 from src.auth.permissions import escopo_universo
 from src.branding import render_page_banner
 from src.dashboard.filtros import (
-    clausula_escopo,
-    clausula_periodo,
+    AVISO_CAUSA_INDISPONIVEL,
+    causa_disponivel_no_recorte,
+    clausulas_gerencias_opex,
+    clausulas_recorte,
     guardar_e_faixa_universo,
+    nota_fechamento,
+    orcado_a_realizar,
+    pacotes_filtro,
     periodo_efetivo,
+    realizado_apos_carga,
+    recorte_sidebar_ativo,
+    resumo_filtros_ativos,
+    rotulo_meses_em_aberto,
+    rotulo_periodo,
+    ultimo_periodo_fechado,
+    valores_em_andamento,
 )
 from src.dashboard.formatacao import (
     escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, fmt_semaforo, mapa_nomes_pacote,
@@ -59,6 +71,7 @@ from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.layout import bloco_resumo_visual, legenda_semaforo, nota_forecast
 from src.dashboard.nivel1_diretoria import GG_TOTAL
 from src.dashboard.nivel2_gg import dados_gerencia_gg, dados_waterfall_gg, figura_waterfall
+from src.engine.delta_calculator import calcular_delta
 from src.dashboard.nivel3_pacotes import dados_ranking_pacotes
 from src.dashboard.paleta import (
     COR_ADERENCIA_ATENCAO, COR_ADERENCIA_FORA, COR_ADERENCIA_OK,
@@ -90,42 +103,92 @@ def _subtitulo_periodo_acumulado() -> str:
     return f"Detalhamento orçamento acumulado – {_NOMES_MES_ABREV[primeiro]} a {_NOMES_MES_ABREV[ultimo]}"
 
 
-def _where_recorte_opex() -> tuple[str, list]:
-    """`clausula_periodo` + `clausula_escopo("opex_sustaining")` num
-    fragmento só (RBAC de escopo — docs/08). No-op pra quem tem a GG
-    inteira/admin; recorte por `gerencia_id` pra usuário escopado."""
-    where_p, params_p = clausula_periodo()
-    where_e, params_e = clausula_escopo("opex_sustaining")
-    return where_p + where_e, [*params_p, *params_e]
+def _filtros_resumo(
+    incluir_periodo: bool = True,
+    con: duckdb.DuckDBPyConnection | None = None,
+    ate_fechamento: bool = False,
+) -> tuple[tuple[str, list], tuple[str, list]]:
+    """`((where_orcado, params), (where_realizado, params))` com TODOS os
+    filtros da sidebar + o escopo de RBAC (`filtros.clausulas_recorte`).
+
+    2026-10-18 (validação de filtros, D1): antes o Resumo só aplicava
+    Período+escopo — Gerência/Coordenação/CC/PEP/Classificação/Pacote eram
+    ignorados e o card continuava mostrando a GG inteira com a faixa
+    "Filtros ativos" no topo. Sem filtro nenhum, os fragmentos são vazios
+    e a tela fica idêntica à visão da GG. `ate_fechamento=True` corta no
+    último mês com Realizado (P7, "a realizar")."""
+    return clausulas_recorte(
+        "opex_sustaining", incluir_periodo=incluir_periodo, con=con, ate_fechamento=ate_fechamento,
+    )
 
 
 def _resumo_geral(con: duckdb.DuckDBPyConnection) -> dict:
     """`delta`/`aderencia` comparam Realizado (só OPEX) contra Orçado
-    OPEX, não o total (CAPEX+OPEX) — ver docstring do módulo. `orcado`
-    (total) continua no retorno só pra exibição no card."""
-    where_periodo, params_periodo = _where_recorte_opex()
+    OPEX, não o total (CAPEX+OPEX) — ver docstring do módulo.
+
+    Desde 2026-10-18 (P7) a comparação vai só até o último mês fechado:
+    `orcado_opex_comparavel` é o Orçado OPEX desses meses, e o Orçado OPEX
+    dos meses seguintes vira `a_realizar` — antes ele entrava inteiro no
+    Delta como "Não Justificado". `orcado`/`orcado_opex` (recorte inteiro)
+    continuam no retorno pra exibir o Orçamento aprovado.
+
+    B4 (2026-10-18): `em_andamento` = Orçado OPEX e Realizado PARCIAL do(s)
+    mês(es) em aberto na data da carga (`filtros.valores_em_andamento`,
+    lados SEM corte) — só informativo, nunca entra em Real Contabilizado/
+    Delta/Aderência. `realizado_futuro` = Realizado com competência depois
+    do mês da carga (alerta na nota; Regra de Ouro)."""
+    (where_orc, params_orc), (where_real, params_real) = _filtros_resumo()
+    (where_orc_c, params_orc_c), (where_real_c, params_real_c) = _filtros_resumo(con=con, ate_fechamento=True)
     (orcado,) = con.execute(
-        f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE 1=1{where_periodo}", params_periodo,
+        f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE 1=1{where_orc}", params_orc,
     ).fetchone()
     (orcado_opex,) = con.execute(
         f"SELECT SUM(valor_orcado) FROM fact_orcamento "
-        f"WHERE classificacao_contabil = 'OPEX'{where_periodo}",
-        params_periodo,
+        f"WHERE classificacao_contabil = 'OPEX'{where_orc}",
+        params_orc,
+    ).fetchone()
+    (orcado_opex_comparavel,) = con.execute(
+        f"SELECT SUM(valor_orcado) FROM fact_orcamento "
+        f"WHERE classificacao_contabil = 'OPEX'{where_orc_c}",
+        params_orc_c,
     ).fetchone()
     (realizado,) = con.execute(
         f"SELECT SUM(valor_realizado) FROM fact_realizado "
-        f"WHERE classificacao_contabil = 'OPEX'{where_periodo}",
-        params_periodo,
+        f"WHERE classificacao_contabil = 'OPEX'{where_real_c}",
+        params_real_c,
     ).fetchone()
     orcado = orcado or 0.0
     orcado_opex = orcado_opex or 0.0
+    orcado_opex_comparavel = orcado_opex_comparavel or 0.0
     realizado = realizado or 0.0
-    delta = realizado - orcado_opex
-    aderencia = (realizado / orcado_opex) if orcado_opex else None
+    filtro_orc_opex = (" AND classificacao_contabil = 'OPEX'" + where_orc, list(params_orc))
+    filtro_real_opex = (" AND classificacao_contabil = 'OPEX'" + where_real, list(params_real))
+    a_realizar = orcado_a_realizar(con, filtro_orc_opex)
+    delta = realizado - orcado_opex_comparavel
+    aderencia = (realizado / orcado_opex_comparavel) if orcado_opex_comparavel else None
     return {
         "orcado": orcado, "orcado_opex": orcado_opex, "realizado": realizado,
+        "orcado_opex_comparavel": orcado_opex_comparavel, "a_realizar": a_realizar,
+        "corte": ultimo_periodo_fechado(con),
+        "em_andamento": valores_em_andamento(con, filtro_orc_opex, filtro_real_opex),
+        "realizado_futuro": realizado_apos_carga(con, filtro_real_opex),
         "delta": delta, "aderencia": aderencia,
     }
+
+
+def _linha_em_andamento(resumo: dict) -> str:
+    """Linha condicional dos cards (B4, 2026-10-18): Realizado parcial do(s)
+    mês(es) em aberto, à parte — "" quando não há. Termina com a mesma
+    indentação das linhas da tabela do card, pra a linha seguinte não
+    perder o recuo comum (o markdown é "dedentado" pelo Streamlit)."""
+    em = resumo.get("em_andamento")
+    if not em:
+        return ""
+    return (
+        f"| {rotulo_meses_em_aberto(em['meses'])} — Realizado parcial | "
+        f"{fmt_reais_abrev(em['realizado'])} (Orçado {fmt_reais_abrev(em['orcado'])}, fora do Delta) |\n"
+        + " " * 12
+    )
 
 
 def _dados_capex_opex(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
@@ -135,7 +198,7 @@ def _dados_capex_opex(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     orçamento fora do plano original aprovado, não é OPEX operacional
     comum — a Regra de Ouro do projeto pede que nada relevante fique
     escondido dentro de outra categoria."""
-    where_periodo, params_periodo = clausula_periodo()
+    (where_periodo, params_periodo), _ = _filtros_resumo()
     return con.execute(
         f"""
         SELECT COALESCE(NULLIF(classificacao_contabil, ''), 'Não informado') AS classificacao,
@@ -157,7 +220,7 @@ def _dados_composicao_capex(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     CAPEX Malha (PM03001/002/003/007/010/015): soma das duas partes bate
     exato com o total (R$43,07 MM), sem sobra nem furo.
     """
-    where_periodo, params_periodo = clausula_periodo()
+    (where_periodo, params_periodo), _ = _filtros_resumo()
     df_capex = con.execute(
         f"""
         SELECT conta_interna_id, MAX(conta_interna_nome) AS nome, SUM(valor_orcado) AS orcado
@@ -196,16 +259,16 @@ def _dados_composicao_opex(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     painel de referência do PMO não têm fonte separada aqui, ou já são
     idênticos ao Real Contabilizado — decisão já validada com o
     usuário)."""
-    where_periodo, params_periodo = _where_recorte_opex()
+    (where_orc, params_orc), (where_real, params_real) = _filtros_resumo(con=con, ate_fechamento=True)
     (orcado,) = con.execute(
         f"SELECT COALESCE(SUM(valor_orcado), 0) FROM fact_orcamento "
-        f"WHERE classificacao_contabil = 'OPEX'{where_periodo}",
-        params_periodo,
+        f"WHERE classificacao_contabil = 'OPEX'{where_orc}",
+        params_orc,
     ).fetchone()
     (realizado,) = con.execute(
         f"SELECT COALESCE(SUM(valor_realizado), 0) FROM fact_realizado "
-        f"WHERE classificacao_contabil = 'OPEX'{where_periodo}",
-        params_periodo,
+        f"WHERE classificacao_contabil = 'OPEX'{where_real}",
+        params_real,
     ).fetchone()
     return pd.DataFrame({
         "estagio": ["Orçado", "Orçado", "Real Contabilizado", "Real Contabilizado"],
@@ -260,7 +323,7 @@ def _dados_visao_gg_capex(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     não são as 8 Gerências reais (essas só existem no lado OPEX, via
     Consulta de Contas). Só Orçado: CAPEX Realizado não existe, então não
     dá pra calcular Aderência aqui — diferente da Visão GG do OPEX."""
-    where_periodo, params_periodo = clausula_periodo()
+    (where_periodo, params_periodo), _ = _filtros_resumo()
     return con.execute(
         f"""
         SELECT gerencia_raw AS regiao, SUM(valor_orcado) AS orcado
@@ -399,7 +462,7 @@ def _render_legenda_visao_gg(df_ordenado: pd.DataFrame) -> None:
 
 def _render_card_resumo(
     resumo: dict, orcado_capex: float, orcado_opex: float, orcado_fora_plano: float,
-    pct_explicado: float | None, delta_nao_justificado: float, status_semaforo: str,
+    pct_explicado: float | None, delta_nao_justificado: float | None, status_semaforo: str,
 ) -> None:
     """Card no mesmo estilo do Nível 1 (ver nivel1_diretoria._render_card_gg),
     estendido com % Explicado/Não Justificado — pedido do usuário em
@@ -407,8 +470,15 @@ def _render_card_resumo(
     em todas as abas."""
     delta = resumo["delta"]
     cor_delta = "red" if delta > 0 else "green" if delta < 0 else "gray"
+    ate = rotulo_periodo(resumo.get("corte")) or "o fim"
     with st.container(border=True):
-        st.markdown(f"**GER. GERAL DE INFRAESTRUTURA (SP)** &nbsp; {fmt_semaforo(status_semaforo)}")
+        if recorte_sidebar_ativo():
+            # Com filtro de Organização/Classificação/Pacote o card deixa de
+            # ser "a GG" — o título diz isso e repete o recorte (2026-10-18).
+            st.markdown(f"**RECORTE FILTRADO — GG INFRAESTRUTURA (SP)** &nbsp; {fmt_semaforo(status_semaforo)}")
+            st.caption(escapar_cifrao_md(resumo_filtros_ativos("manutencao") or ""))
+        else:
+            st.markdown(f"**GER. GERAL DE INFRAESTRUTURA (SP)** &nbsp; {fmt_semaforo(status_semaforo)}")
         st.markdown(
             escapar_cifrao_md(f"""
             | | |
@@ -417,10 +487,12 @@ def _render_card_resumo(
             | &nbsp;&nbsp;↳ CAPEX | {fmt_reais_abrev(orcado_capex)} |
             | &nbsp;&nbsp;↳ OPEX | {fmt_reais_abrev(orcado_opex)} |
             | &nbsp;&nbsp;&nbsp;&nbsp;↳ Fora do Plano | {fmt_reais_abrev(orcado_fora_plano)} |
+            | Orçado OPEX até {ate} | {fmt_reais_abrev(resumo["orcado_opex_comparavel"])} |
             | Real Contabilizado (OPEX) | {fmt_reais_abrev(resumo["realizado"])} |
             | Delta (OPEX x OPEX) | :{cor_delta}[**{fmt_reais_abrev(delta)}**] |
             | Aderência (OPEX x OPEX) | {fmt_pct(resumo["aderencia"])} |
-            | % Explicado | {fmt_pct(pct_explicado)} |
+            | A realizar (Orçado OPEX após {ate}) | {fmt_reais_abrev(resumo["a_realizar"])} |
+            {_linha_em_andamento(resumo)}| % Explicado | {fmt_pct(pct_explicado)} |
             | Não Justificado | {fmt_reais_abrev(delta_nao_justificado)} |
             """)
         )
@@ -435,15 +507,16 @@ def _render_resumo_recorte(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> N
     não dá pra atribuí-la corretamente a um sub-recorte de Gerência
     (ratear seria inventar dado). O waterfall fica no acesso à GG inteira
     (Analista que apura a GG)."""
-    from src.engine.delta_calculator import calcular_delta
-
-    frag, params = clausula_escopo("opex_sustaining")
-    filtro_opex = (" AND classificacao_contabil = 'OPEX'" + frag, list(params))
-    filtro_real = (frag, list(params)) if frag else None
+    # Tendência = ano inteiro (sem Período); ranking = recorte completo.
+    (frag_o_ano, par_o_ano), (frag_r_ano, par_r_ano) = _filtros_resumo(incluir_periodo=False)
+    filtro_opex = (" AND classificacao_contabil = 'OPEX'" + frag_o_ano, list(par_o_ano))
+    filtro_real = (frag_r_ano, list(par_r_ano)) if frag_r_ano else None
+    (frag_o, par_o), (frag_r, par_r) = _filtros_resumo(con=con, ate_fechamento=True)
 
     resumo = _resumo_geral(con)
     delta = resumo["delta"]
     cor_delta = "red" if delta > 0 else "green" if delta < 0 else "gray"
+    ate = rotulo_periodo(resumo.get("corte")) or "o fim"
 
     def _card() -> None:
         with st.container(border=True):
@@ -451,11 +524,15 @@ def _render_resumo_recorte(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> N
             st.markdown(escapar_cifrao_md(f"""
             | | |
             |---|---|
-            | Orçado OPEX | {fmt_reais_abrev(resumo["orcado_opex"])} |
+            | Orçado OPEX até {ate} | {fmt_reais_abrev(resumo["orcado_opex_comparavel"])} |
             | Real Contabilizado | {fmt_reais_abrev(resumo["realizado"])} |
             | Delta | :{cor_delta}[**{fmt_reais_abrev(delta)}**] |
             | Aderência | {fmt_pct(resumo["aderencia"])} |
-            """))
+            | A realizar (após {ate}) | {fmt_reais_abrev(resumo["a_realizar"])} |
+            {_linha_em_andamento(resumo)}"""))
+            nota_fechamento(
+                con, em_andamento=resumo["em_andamento"], realizado_futuro=resumo["realizado_futuro"],
+            )
             st.caption(
                 "🔒 A decomposição de causa (waterfall) é Macro por Pacote e "
                 "cruza Gerências — disponível só no acesso à GG inteira "
@@ -483,7 +560,7 @@ def _render_resumo_recorte(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> N
         key="resumo-recorte-composicao", config=CONFIG_PLOTLY,
     )
 
-    df_gerencia = dados_gerencia_gg(con, GG_TOTAL)
+    df_gerencia = dados_gerencia_gg(con, GG_TOTAL, filtros=clausulas_gerencias_opex(con))
     df_ordenado = _dados_visao_gg_ordenado(df_gerencia) if not df_gerencia.empty else df_gerencia
     df_reais, linha_na = (
         _separar_nao_atribuido(df_ordenado) if not df_ordenado.empty else (df_ordenado, None)
@@ -505,7 +582,9 @@ def _render_resumo_recorte(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> N
     st.divider()
     st.subheader("Pacotes com Maior Desvio (seu recorte)")
     ranking = calcular_delta(
-        con, dims=["pacote_id"], filtro_orcado=filtro_opex, filtro_realizado=(filtro_real or ("", [])),
+        con, dims=["pacote_id"],
+        filtro_orcado=(" AND classificacao_contabil = 'OPEX'" + frag_o, list(par_o)),
+        filtro_realizado=(frag_r, list(par_r)),
     )
     if ranking.empty:
         st.caption("Nenhum Pacote com desvio neste recorte.")
@@ -519,6 +598,33 @@ def _render_resumo_recorte(con: duckdb.DuckDBPyConnection, ano_fiscal: int) -> N
         for col in ("Orçado", "Realizado"):
             tabela[col] = tabela[col].map(fmt_reais_abrev)
         st.dataframe(tabela[["Pacote", "Orçado", "Realizado", "Delta"]], hide_index=True, use_container_width=True)
+
+
+def _render_ranking_desvio_recorte(con: duckdb.DuckDBPyConnection) -> None:
+    """Sem causa no recorte (ver `filtros.causa_disponivel_no_recorte`) não existe
+    "Não Explicado" — o ranking passa a ser por Delta total (Real − Orçado
+    OPEX) dentro do recorte filtrado, o mesmo critério do resumo de usuário
+    escopado (`_render_resumo_recorte`)."""
+    st.subheader("Pacotes com Maior Desvio (recorte filtrado)")
+    (frag_o, par_o), (frag_r, par_r) = _filtros_resumo(con=con, ate_fechamento=True)
+    ranking = calcular_delta(
+        con, dims=["pacote_id"],
+        filtro_orcado=(" AND classificacao_contabil = 'OPEX'" + frag_o, list(par_o)),
+        filtro_realizado=(frag_r, list(par_r)),
+    )
+    ranking = ranking[(ranking["orcado"] != 0) | (ranking["realizado"] != 0)]
+    if ranking.empty:
+        st.caption("Nenhum Pacote com desvio neste recorte.")
+        return
+    ranking = ranking.reindex(ranking["delta_total"].abs().sort_values(ascending=False).index).head(5)
+    nomes_pacote = mapa_nomes_pacote(con)
+    tabela = pd.DataFrame({
+        "Pacote": ranking["pacote_id"].map(lambda p: fmt_pacote(p, nomes_pacote.get(p))),
+        "Orçado": ranking["orcado"].map(fmt_reais_abrev),
+        "Realizado": ranking["realizado"].map(fmt_reais_abrev),
+        "Delta": ranking["delta_total"].map(fmt_reais_abrev),
+    })
+    st.dataframe(tabela, hide_index=True, use_container_width=True)
 
 
 def render_resumo_executivo(
@@ -545,13 +651,26 @@ def render_resumo_executivo(
         )
 
     resumo = _resumo_geral(con)
-    orcado_rdg, delta_total, df_categorias = dados_waterfall_gg(con, GG_TOTAL, caminho_explicacoes, categorias_validas)
-    delta_explicado = df_categorias.loc[df_categorias["categoria"] != CATEGORIA_CALCULADA, "valor"].sum()
-    delta_nao_justificado = df_categorias.loc[df_categorias["categoria"] == CATEGORIA_CALCULADA, "valor"].sum()
-    pct_explicado = (delta_explicado / delta_total) if delta_total else None
+    causa_ok = causa_disponivel_no_recorte()
+    if causa_ok:
+        orcado_rdg, delta_total, df_categorias = dados_waterfall_gg(
+            con, GG_TOTAL, caminho_explicacoes, categorias_validas,
+            pacotes_filtro=pacotes_filtro(), ate_periodo=resumo["corte"],
+        )
+        delta_explicado = df_categorias.loc[df_categorias["categoria"] != CATEGORIA_CALCULADA, "valor"].sum()
+        delta_nao_justificado = df_categorias.loc[df_categorias["categoria"] == CATEGORIA_CALCULADA, "valor"].sum()
+        pct_explicado = (delta_explicado / delta_total) if delta_total else None
+    else:
+        # Recorte que a causa não acompanha (ver `filtros.causa_disponivel_no_recorte`):
+        # % Explicado / Não Justificado ficam "—" e o semáforo usa só a
+        # faixa de aderência — nada de waterfall que não fecha.
+        orcado_rdg, delta_total, df_categorias = None, resumo["delta"], None
+        delta_nao_justificado = None
+        pct_explicado = None
     status_semaforo = classificar_semaforo(
         resumo["aderencia"], delta_nao_justificado=delta_nao_justificado, delta_total=delta_total,
     )
+    (frag_o_ano, par_o_ano), (frag_r_ano, par_r_ano) = _filtros_resumo(incluir_periodo=False)
 
     df_capex_opex = _dados_capex_opex(con)
     orcado_capex = df_capex_opex.loc[df_capex_opex["classificacao"] == "CAPEX", "orcado"].sum()
@@ -566,11 +685,22 @@ def render_resumo_executivo(
             resumo, orcado_capex, orcado_opex, orcado_fora_plano,
             pct_explicado, delta_nao_justificado, status_semaforo,
         )
+        nota_fechamento(
+            con, em_andamento=resumo["em_andamento"], realizado_futuro=resumo["realizado_futuro"],
+        )
         legenda_semaforo()
 
     def _visual_financeiro() -> None:
         st.plotly_chart(
-            figura_tendencia(dados_tendencia(con, ano_fiscal), "Visão Anual — Orçado x Real x Forecast (OPEX)"),
+            figura_tendencia(
+                dados_tendencia(
+                    con, ano_fiscal,
+                    filtro_orcado=(" AND classificacao_contabil = 'OPEX'" + frag_o_ano, list(par_o_ano)),
+                    filtro_realizado=(frag_r_ano, list(par_r_ano)),
+                ),
+                "Visão Anual — Orçado x Real x Forecast (OPEX)"
+                + (" — recorte filtrado" if recorte_sidebar_ativo() else ""),
+            ),
             use_container_width=True, key="resumo-tendencia", config=CONFIG_PLOTLY,
         )
         st.caption("Orçado x Real aqui é só OPEX — CAPEX Realizado ainda sem fonte carregada.")
@@ -581,7 +711,7 @@ def render_resumo_executivo(
     st.divider()
 
     # ===== Painel "OPEX" (composição + Visão GG) =====
-    df_gerencia = dados_gerencia_gg(con, GG_TOTAL)
+    df_gerencia = dados_gerencia_gg(con, GG_TOTAL, filtros=clausulas_gerencias_opex(con))
     df_gg_ordenado = _dados_visao_gg_ordenado(df_gerencia) if not df_gerencia.empty else df_gerencia
     df_gg_reais, linha_nao_atribuido = (
         _separar_nao_atribuido(df_gg_ordenado) if not df_gg_ordenado.empty else (df_gg_ordenado, None)
@@ -648,9 +778,13 @@ def render_resumo_executivo(
     with st.container(border=True):
         st.subheader("📈 Financeiro OPEX")
         st.caption(f"_{_subtitulo_periodo_acumulado()}_")
-        fig_wf = figura_waterfall("GER. GERAL DE INFRAESTRUTURA (SP)", orcado_rdg, delta_total, df_categorias)
-        st.plotly_chart(fig_wf, use_container_width=True, key="resumo-waterfall", config=CONFIG_PLOTLY)
-        st.caption("Waterfall e Delta/Aderência do card acima comparam só OPEX x OPEX.")
+        if causa_ok:
+            titulo_wf = "GER. GERAL DE INFRAESTRUTURA (SP)" + (" — Pacote filtrado" if pacotes_filtro() else "")
+            fig_wf = figura_waterfall(titulo_wf, orcado_rdg, delta_total, df_categorias)
+            st.plotly_chart(fig_wf, use_container_width=True, key="resumo-waterfall", config=CONFIG_PLOTLY)
+            st.caption("Waterfall e Delta/Aderência do card acima comparam só OPEX x OPEX.")
+        else:
+            st.info(AVISO_CAUSA_INDISPONIVEL)
         with st.expander("Notas"):
             st.caption(
                 "CAPEX Realizado ainda não tem fonte carregada. Quebra por "
@@ -699,8 +833,14 @@ def render_resumo_executivo(
         )
 
     st.divider()
+    if not causa_ok:
+        _render_ranking_desvio_recorte(con)
+        return
     st.subheader("Pacotes com Maior Desvio Não Explicado")
-    ranking = dados_ranking_pacotes(con, GG_TOTAL, CATEGORIA_CALCULADA, caminho_explicacoes, categorias_validas)
+    ranking = dados_ranking_pacotes(
+        con, GG_TOTAL, CATEGORIA_CALCULADA, caminho_explicacoes, categorias_validas,
+        pacotes_filtro=pacotes_filtro(), ate_periodo=resumo["corte"],
+    )
     top5 = ranking.head(5)
     if top5.empty:
         st.caption("Nenhum pacote com Delta Não Explicado neste recorte.")

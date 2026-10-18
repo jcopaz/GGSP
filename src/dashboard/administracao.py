@@ -10,7 +10,12 @@ import psycopg2
 import streamlit as st
 
 from src.branding import render_page_banner
+from src.auth.perfis import (
+    CAPACIDADES, PERFIS, TITULO_PAGINA, Recorte, detectar_perfil,
+    Plano, linhas_escopo_para_diagnostico, montar_plano, paginas_visiveis,
+)
 from src.auth.permissions import _PAGINAS_ALLOW_EXPLICITO, require_admin
+from src.auth.session import get_id
 from src.auth.queries import criar_usuario
 from src.auth.senha import gerar_hash, gerar_senha_temporaria
 from src.auth.admin_queries import *
@@ -230,35 +235,35 @@ def _multiselect_escopo(rotulo, opcoes, linhas_uni, tipo, *, key):
     return [rot[e] for e in escolhidos]
 
 
-def _render_acesso_por_universo(u: dict, con: duckdb.DuckDBPyConnection | None) -> None:
+def _render_acesso_por_universo(
+    u: dict, con: duckdb.DuckDBPyConnection | None, atuais: list[dict], perms: dict[str, bool],
+) -> tuple[dict[str, list[tuple[str, str, str]]], bool, bool]:
     """1ª camada (vê o universo?) + 2ª camada (GG inteira x Gerências) do
-    RBAC de escopo — grava em `app.escopo_acesso` com `universo` + a
-    permissão de página `pce_especialista` (opção B, docs/08 §10).
-    Enforcement nas telas do painel = Fase RBAC-A.2, ainda não ligado."""
+    RBAC de escopo. Só DESENHA os controles e devolve `(escopos,
+    ve_especialista, ok)` — quem grava é o botão único do modo Personalizado
+    (`_render_perfil_acesso`, gravação atômica, docs/13 N3 — 2026-10-18).
+    `atuais`/`perms` já vêm lidos do Neon (N1: esta função não consulta
+    sozinha). `ok=False` = universo em "Gerências específicas" sem nenhuma
+    escolhida (gravaria lista vazia e tiraria o universo calado)."""
     uid = str(u["id"])
-    try:
-        atuais = listar_escopos_universo(u["id"])
-    except Exception:
-        atuais = []
     por_uni: dict[str, list[dict]] = {}
     for r in atuais:
         por_uni.setdefault(r["universo"], []).append(r)
 
-    st.markdown("**Acesso por universo financeiro**")
+    st.markdown("**Acesso por universo financeiro (avançado)**")
     st.caption(
-        "1ª camada: quais universos a pessoa vê. 2ª camada: GG inteira ou "
-        "Gerências específicas. `admin` vê tudo; papel `gg` também passa por "
-        "aqui. Enforcement nas telas ainda não está ligado (Fase RBAC-A.2) — "
-        "aqui só se cadastra a intenção."
+        "Universo a universo: quais a pessoa vê e, em cada um, GG inteira ou "
+        "Gerências específicas. As telas já aplicam esse recorte (docs/08)."
     )
 
     gers_sust = _listar_gerencias(con)
     gers_obras = _listar_gerencias_obras(con)
     projetos = _listar_elemento_pep(con)
-    esp_atual = {r["pagina"]: r["permitido"] for r in listar_permissoes(u["id"])}.get("pce_especialista", False)
+    esp_atual = perms.get("pce_especialista", False)
 
     plano: dict[str, list[tuple[str, str, str]]] = {}
     ve_especialista = bool(esp_atual)
+    ok = True
     for universo in ("opex_sustaining", "capex_sustaining", "capex_obras"):
         linhas_uni = por_uni.get(universo, [])
         tem = len(linhas_uni) > 0
@@ -294,6 +299,12 @@ def _render_acesso_por_universo(u: dict, con: duckdb.DuckDBPyConnection | None) 
                             "Gerências", gers_sust, linhas_uni,
                             "gerencia", key=f"uni-{uid}-{universo}-ger")
                     ]
+                if abr != "GG inteira" and not linhas_novas:
+                    ok = False
+                    st.error(
+                        f"{_UNIVERSOS_ROTULO[universo]}: escolha ao menos uma opção, "
+                        "ou marque \"GG inteira\" (senão o universo seria removido)."
+                    )
             if universo == "capex_obras":
                 marcado = st.checkbox(
                     "Vê a tela CAPEX Obras — Especialista (planejamento PCE)",
@@ -304,22 +315,7 @@ def _render_acesso_por_universo(u: dict, con: duckdb.DuckDBPyConnection | None) 
                 ve_especialista = bool(on and marcado)
             plano[universo] = linhas_novas
 
-    if st.button("Salvar acessos por universo", type="primary", key=f"uni-{uid}-salvar"):
-        try:
-            for universo, linhas_novas in plano.items():
-                substituir_escopo_universo(u["id"], universo, linhas_novas)
-            salvar_permissao(u["id"], "pce_especialista", ve_especialista)
-            registrar_atividade("delegar_escopo_universo", "administracao", {
-                "usuario_id": uid,
-                "resumo": {k: [f"{t}:{v}" for t, v, _ in vs] for k, vs in plano.items()},
-                "pce_especialista": ve_especialista,
-            })
-            st.success("Acessos por universo salvos. O efeito aparece no próximo login da pessoa.")
-        except Exception as exc:
-            st.error(
-                f"Não consegui salvar — a migração do `docs/08` (coluna "
-                f"`universo` em `app.escopo_acesso`) já rodou no Neon? Detalhe: {exc}"
-            )
+    return plano, ve_especialista, ok
 
 
 # Tipos que o filtro de cada universo de fato entende (filtros.py:
@@ -423,6 +419,263 @@ def _render_diagnostico_perfis(con: duckdb.DuckDBPyConnection | None) -> None:
     st.dataframe(pd.DataFrame(problemas), hide_index=True, use_container_width=True)
 
 
+# ===== Perfil de acesso (docs/13, 2026-10-18) =====
+_ORDEM_PERFIS = ("gestao_gg", "manutencao", "obras", "sem_acesso", "admin", "personalizado")
+
+
+def _multiselect_codigos(rotulo: str, opcoes: list[tuple[str, str]], selecionados, *, key: str) -> list[str]:
+    """multiselect "cód — nome" -> lista de códigos. Sem base processada
+    (`opcoes` vazio), cai pra texto separado por vírgula."""
+    if not opcoes:
+        bruto = st.text_input(
+            f"{rotulo} — base não processada, digite os códigos separados por vírgula",
+            value=", ".join(selecionados), key=key + "-txt",
+        )
+        return [c.strip() for c in bruto.split(",") if c.strip()]
+    rot = {(f"{c} — {n}" if n else c): c for c, n in opcoes}
+    inv = {c: lbl for lbl, c in rot.items()}
+    escolhidos = st.multiselect(rotulo, list(rot), default=[inv[c] for c in selecionados if c in inv], key=key)
+    return [rot[e] for e in escolhidos]
+
+
+def _render_paginas_avancado(u: dict, atuais: dict[str, bool]) -> dict[str, bool]:
+    """Caixas por página (modo Personalizado). Só servem pra NEGAR uma
+    página específica — quem libera é o universo. Só desenha e devolve as
+    escolhas (o botão único está em `_render_perfil_acesso`, docs/13 N3).
+    Ficam de fora `administracao`, `pce_especialista` (dono: caixa
+    Especialista do universo) e `upload` (dono: capacidade Upload)."""
+    st.markdown("**Páginas (avançado)**")
+    st.caption("Desmarque para esconder uma página específica. Página de um universo que a pessoa não tem já fica escondida de qualquer jeito.")
+    cols = st.columns(3)
+    escolhas = {
+        p: cols[i % 3].checkbox(
+            TITULO_PAGINA.get(p, p.replace("_", " ").title()),
+            value=atuais.get(p, p not in _PAGINAS_ALLOW_EXPLICITO), key=f"perm-{u['id']}-{p}",
+        )
+        for i, p in enumerate(p for p in PAGINAS if p not in ("administracao", "pce_especialista", "upload"))
+    }
+    return escolhas
+
+
+def _texto_recorte(perfil: str, recorte: Recorte, nomes: dict[str, str]) -> str:
+    def _n(v: str) -> str:
+        return nomes.get(v) or v
+    if perfil == "manutencao":
+        return "Gerências: " + (", ".join(_n(g) for g in recorte.gerencias) if recorte.gerencias else "todas (GG inteira)")
+    if perfil == "obras":
+        partes = []
+        if recorte.gerencias_obras:
+            partes.append("Gerências de Obras: " + ", ".join(recorte.gerencias_obras))
+        if recorte.projetos:
+            partes.append("Projetos: " + ", ".join(_n(p) for p in recorte.projetos))
+        return " · ".join(partes) or "todo o Plano de Obras"
+    if perfil in ("gestao_gg", "admin"):
+        return "GG inteira, os 3 universos"
+    return "nenhum dado"
+
+
+def _render_perfil_acesso(u: dict, con: duckdb.DuckDBPyConnection | None) -> None:
+    """Tela única: perfil -> recorte -> capacidades -> prévia -> 1 botão.
+    Grava as MESMAS linhas que o RBAC já lê (`perfis.montar_plano`), numa
+    transação só (`salvar_perfil_acesso`)."""
+    uid = str(u["id"])
+    # N1 (docs/13, 2026-10-18): lê UMA vez e, se falhar, NÃO desenha nada —
+    # tratar erro como "lista vazia" mostrava "Sem acesso" e o Salvar apagava
+    # o acesso real da pessoa.
+    try:
+        escopos_atuais = listar_escopos_universo(u["id"])
+        perms_atuais = listar_permissoes(u["id"])
+    except Exception as exc:
+        st.error(
+            f"Não consegui ler o acesso atual de {u['nome_completo']} no banco — a tela "
+            "não mostra nem salva nada, para não apagar o acesso real. "
+            f"Tente de novo. Detalhe: {exc}"
+        )
+        return
+    perms = {r["pagina"]: bool(r["permitido"]) for r in perms_atuais}
+    atual, recorte_atual = detectar_perfil(u, escopos_atuais, perms_atuais)
+
+    st.markdown("**Perfil de acesso**")
+    st.caption(f"Perfil atual de {u['nome_completo']}: **{PERFIS[atual].rotulo}**")
+    perfil = st.radio(
+        "Perfil", _ORDEM_PERFIS, index=_ORDEM_PERFIS.index(atual),
+        format_func=lambda p: PERFIS[p].rotulo, horizontal=True, key=f"perfil-{uid}",
+    )
+    st.caption(PERFIS[perfil].descricao)
+    mesmo = perfil == atual
+    rec = recorte_atual if mesmo else Recorte()
+
+    nomes: dict[str, str] = {}
+    recorte = Recorte()
+    recorte_ok = True
+    escopos_pers: dict[str, list[tuple[str, str, str]]] = {}
+    ve_esp_pers = False
+    escolhas_pers: dict[str, bool] = {}
+    if perfil == "manutencao":
+        gers = _listar_gerencias(con)
+        nomes.update(dict(gers))
+        todas = st.checkbox("Todas as Gerências (GG inteira)", value=not rec.gerencias, key=f"perfil-{uid}-man-todas")
+        sel: list[str] = []
+        if not todas:
+            sel = _multiselect_codigos("Gerências", gers, rec.gerencias, key=f"perfil-{uid}-man-ger")
+            recorte_ok = bool(sel)
+        recorte = Recorte(gerencias=tuple(sel))
+    elif perfil == "obras":
+        gers_obras = _listar_gerencias_obras(con)
+        projetos = _listar_elemento_pep(con)
+        nomes.update(dict(projetos))
+        todo = st.checkbox(
+            "Todo o Plano de Obras", value=not (rec.gerencias_obras or rec.projetos), key=f"perfil-{uid}-obr-todo",
+        )
+        sel_g: list[str] = []
+        sel_p: list[str] = []
+        if not todo:
+            sel_g = _multiselect_codigos("Gerências de Obras", gers_obras, rec.gerencias_obras, key=f"perfil-{uid}-obr-ger")
+            sel_p = _multiselect_codigos("Projetos (Elemento PEP)", projetos, rec.projetos, key=f"perfil-{uid}-obr-proj")
+            recorte_ok = bool(sel_g or sel_p)
+        esp = st.checkbox(
+            "Inclui a tela CAPEX Obras — Especialista (planejamento PCE)", value=rec.especialista,
+            key=f"perfil-{uid}-obr-esp",
+        )
+        recorte = Recorte(gerencias_obras=tuple(sel_g), projetos=tuple(sel_p), especialista=esp)
+    elif perfil == "gestao_gg":
+        esp = st.checkbox(
+            "Inclui a tela CAPEX Obras — Especialista (planejamento PCE)", value=rec.especialista,
+            key=f"perfil-{uid}-gg-esp",
+        )
+        recorte = Recorte(especialista=esp)
+    elif perfil == "personalizado":
+        with st.container(border=True):
+            st.caption(
+                "Modo avançado — para quem não cabe nos perfis prontos (ex.: Manutenção e "
+                "Obras ao mesmo tempo, ou Gerências diferentes entre OPEX e CAPEX)."
+            )
+            escopos_pers, ve_esp_pers, recorte_ok = _render_acesso_por_universo(
+                u, con, escopos_atuais, perms)
+            st.divider()
+            escolhas_pers = _render_paginas_avancado(u, perms)
+    if perfil != "personalizado" and not recorte_ok:
+        st.error("Escolha ao menos uma opção, ou marque a opção \"todas\".")
+
+    st.markdown("**Capacidades**")
+    base_caps = (
+        {k: bool(u.get(k)) for k in CAPACIDADES}
+        if (mesmo or perfil == "personalizado") else PERFIS[perfil].capacidades_padrao
+    )
+    cols = st.columns(len(CAPACIDADES))
+    caps = {
+        k: cols[i].checkbox(rot, value=True if perfil == "admin" else base_caps.get(k, False),
+                            disabled=perfil == "admin", key=f"perfil-{uid}-{perfil}-cap-{k}")
+        for i, (k, rot) in enumerate(CAPACIDADES.items())
+    }
+    if not caps["permissao_upload"]:
+        st.caption("Sem Upload, a página Dados e Qualidade não aparece.")
+
+    proprio_admin = str(get_id() or "") == uid and perfil != "admin"
+    if proprio_admin:
+        st.warning("Você está editando o seu próprio acesso: sair do perfil Administrador tiraria a Administração de você. Escolha outro usuário ou mantenha Administrador.")
+
+    if perfil == "personalizado":
+        # N3: gravação única e atômica. Upload e Especialista têm dono próprio
+        # (capacidade / caixa do universo), igual ao montar_plano.
+        paginas_pers = {**escolhas_pers, "pce_especialista": ve_esp_pers,
+                        "upload": caps["permissao_upload"]}
+        plano = Plano(
+            papel=u["papel"],
+            escopos={uni: [(t, v) for t, v, _n in linhas] for uni, linhas in escopos_pers.items()},
+            paginas=paginas_pers, capacidades=caps,
+        )
+        _render_previa(u, plano, perfil, Recorte(), {}, con, perms)
+        if st.button("Salvar perfil de acesso", type="primary", key=f"perfil-{uid}-salvar",
+                     disabled=not recorte_ok or proprio_admin):
+            try:
+                salvar_perfil_acesso(u["id"], u.get("papel"), caps, escopos_pers, paginas_pers)
+            except Exception as exc:
+                st.error(f"Não consegui salvar — nada foi alterado. Detalhe: {exc}")
+                return
+            registrar_atividade("salvar_perfil_acesso", "administracao", {
+                "usuario_id": uid, "perfil": "personalizado", "papel": u.get("papel"),
+                "escopos": {k: [f"{t}:{v}" for t, v, _n in vs] for k, vs in escopos_pers.items()},
+                "paginas": paginas_pers, "capacidades": caps,
+            })
+            st.success("Perfil \"Personalizado\" salvo. Vale para a pessoa em até 1 minuto, sem novo login.")
+        return
+
+    plano = montar_plano(perfil, recorte, caps, u.get("papel"))
+    _render_previa(u, plano, perfil, recorte, nomes, con, None)
+    removidas = [s for s in plano.paginas_remover if perms.get(s) is False]
+    if removidas:
+        st.warning(
+            f"Ao salvar, as negações antigas ({', '.join(removidas)}) deste usuário serão removidas."
+        )
+
+    if st.button("Salvar perfil de acesso", type="primary", key=f"perfil-{uid}-salvar",
+                 disabled=not recorte_ok or proprio_admin):
+        escopos = {
+            universo: [(t, v, nomes.get(v, "")) for t, v in linhas]
+            for universo, linhas in plano.escopos.items()
+        }
+        try:
+            salvar_perfil_acesso(u["id"], plano.papel, plano.capacidades, escopos, plano.paginas,
+                                 paginas_remover=plano.paginas_remover)
+        except Exception as exc:
+            st.error(f"Não consegui salvar — nada foi alterado. Detalhe: {exc}")
+            return
+        registrar_atividade("salvar_perfil_acesso", "administracao", {
+            "usuario_id": uid, "perfil": perfil, "papel": plano.papel,
+            "escopos": {k: [f"{t}:{v}" for t, v in vs] for k, vs in plano.escopos.items()},
+            "paginas": plano.paginas, "capacidades": plano.capacidades,
+            "negacoes_removidas": removidas,
+        })
+        st.success(f"Perfil \"{PERFIS[perfil].rotulo}\" salvo. Vale para a pessoa em até 1 minuto, sem novo login.")
+
+
+def _render_previa(u, plano, perfil, recorte, nomes, con, permissoes_legadas) -> None:
+    """Prévia do que a pessoa vai ver + checagem do recorte contra a base.
+    `permissoes_legadas` (só no Personalizado, que não apaga negações):
+    sub-página legada negada esconde a jornada (docs/13 N2)."""
+    with st.container(border=True):
+        st.markdown("**Prévia**")
+        visiveis = paginas_visiveis(plano, permissoes_legadas)
+        st.markdown(
+            f"{u['nome_completo']} vai ver: "
+            + (", ".join(TITULO_PAGINA.get(p, p) for p in visiveis) if visiveis else "só o aviso \"Sem acesso\"")
+        )
+        if perfil != "personalizado":
+            st.caption("Recorte: " + _texto_recorte(perfil, recorte, nomes))
+        if perfil not in ("admin", "sem_acesso"):
+            problemas = diagnosticar_perfis(
+                [{**u, "ativo": True, "papel": plano.papel}],
+                linhas_escopo_para_diagnostico(str(u["id"]), plano),
+                _valores_existentes_na_base(con),
+            )
+            for p in problemas:
+                st.warning("⚠️ " + p["Problema"])
+
+
+
+def _render_escopos_legados(u: dict) -> None:
+    """Escopos sem universo (antes do docs/08): não liberam nem filtram
+    nada. Só leitura + botão pra desativar — o cadastro novo deles saiu."""
+    try:
+        legados = [r for r in listar_escopos(u["id"]) if r.get("ativo")]
+    except Exception as exc:
+        st.warning(f"Não consegui ler os escopos legados deste usuário. Detalhe: {exc}")
+        return
+    if not legados:
+        return
+    with st.expander(f"Escopos legados sem efeito ({len(legados)})"):
+        st.caption(
+            "Linhas antigas, sem universo — o controle de acesso não lê estas linhas. "
+            "Podem ser desativadas sem mudar nada do que a pessoa vê."
+        )
+        st.dataframe(pd.DataFrame(legados), hide_index=True, use_container_width=True)
+        if st.button("Desativar escopos legados deste usuário", key=f"legado-{u['id']}-desativar"):
+            desativar_escopos_legados(u["id"])
+            registrar_atividade("desativar_escopos_legados", "administracao", {"usuario_id": str(u["id"])})
+            st.success("Escopos legados desativados.")
+
+
 def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
     """`con`: conexão de leitura do warehouse DuckDB LOCAL (não o Neon) —
     só usada pra popular os dropdowns de Gerência/Gerência de Obras/PEP/
@@ -432,36 +685,29 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
     processada) cai de volta pra texto livre nesses campos, sem quebrar
     a página.
 
-    IMPORTANTE — o que este cadastro NÃO faz (2026-08-29): salvar um
-    escopo aqui (ex. Gerência de Obras = "Baixada Santista") só GRAVA a
-    intenção em `app.escopo_acesso` — nenhuma página do painel hoje lê
-    esse registro pra filtrar dado nenhum. A cascata de negócio (Gerência
-    de Obras ⊃ Elemento PEP ⊃ PEP Filho) é a regra que VAI ser aplicada
-    quando essa parte for construída, não o comportamento atual. Ver
-    aviso equivalente já dado sobre Gerência/Pacote em 2026-08-28."""
+    Desde 2026-10-18 (docs/13) o acesso de cada pessoa é definido numa
+    tela só — aba "Perfil de acesso" (`_render_perfil_acesso`) — e vale em
+    até 1 minuto, sem novo login (`permissions.revalidar_acesso_da_sessao`).
+    O enforcement nas telas está ligado desde a Fase RBAC-A.2 (docs/08)."""
     require_admin()
     render_page_banner("🛡️", "Administração", "Usuários, acessos, escopos e rastreabilidade em um só lugar.")
     if con is None:
         st.caption("⚠️ Base local ainda não processada — Gerência/PEP/PEP Filho/Centro de Custo/Pacote aparecem como texto livre até reprocessar (Gestão → Dados e Qualidade).")
-    t1, t2, t3, t4 = st.tabs(["Usuários", "Permissões e escopos", "Auditoria", "Uploads e exportações"])
+    t1, t2, t3, t4 = st.tabs(["Usuários", "Perfil de acesso", "Auditoria", "Uploads e exportações"])
 
     with t1:
         with st.expander("Criar usuário", expanded=False):
-            gerencias = _listar_gerencias(con)
             with st.form("admin-criar-usuario"):
                 c1, c2 = st.columns(2)
                 nome = c1.text_input("Nome completo")
                 matricula = c2.text_input("Matrícula")
                 email = c1.text_input("E-mail")
-                papel = c2.selectbox("Papel", ["gg", "gerente", "especialista_analista", "admin"])
-                gg = c1.text_input("GG", value="GGG_0054")
-                if gerencias:
-                    opcoes_ger = ["(sem Gerência específica)"] + [f"{gid} — {gnome}" for gid, gnome in gerencias]
-                    escolha_ger = c2.selectbox("Gerência", opcoes_ger)
-                    ger = None if escolha_ger == opcoes_ger[0] else escolha_ger.split(" — ")[0]
-                else:
-                    ger = c2.text_input("Gerência ID")
-                st.caption("Uma senha temporária única é gerada automaticamente na criação — a pessoa é obrigada a trocá-la no primeiro login.")
+                gg = c2.text_input("GG", value="GGG_0054")
+                # docs/13: papel e Gerência saíram daqui — quem decide o que a
+                # pessoa vê é o Perfil de acesso (aba ao lado). Usuário novo
+                # nasce "Sem acesso" até o admin escolher o perfil.
+                papel, ger = "especialista_analista", None
+                st.caption("Uma senha temporária única é gerada automaticamente na criação — a pessoa é obrigada a trocá-la no primeiro login. Depois, defina o que ela vê na aba **Perfil de acesso** (até lá ela fica \"Sem acesso\").")
                 if st.form_submit_button("Criar usuário", type="primary"):
                     senha_temporaria = gerar_senha_temporaria()
                     criar_usuario(
@@ -480,15 +726,10 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
             sel = st.selectbox("Editar usuário", list(nomes)); u = nomes[sel]
             with st.form("admin-editar-usuario"):
                 ativo = st.checkbox("Ativo", value=bool(u.get("ativo")))
-                papel = st.selectbox("Papel", ["gg", "gerente", "especialista_analista", "admin"], index=["gg", "gerente", "especialista_analista", "admin"].index(u["papel"]))
-                c1, c2, c3, c4 = st.columns(4)
-                up = c1.checkbox("Upload", value=bool(u.get("permissao_upload")))
-                ex = c2.checkbox("Download/exportação", value=bool(u.get("permissao_exportacao")))
-                ma = c3.checkbox("Justificativa macro", value=bool(u.get("permissao_justificativa_macro")))
-                mi = c4.checkbox("Justificativa micro", value=bool(u.get("permissao_justificativa_micro")))
+                st.caption("Papel e capacidades (upload, exportação, justificativas) ficam na aba **Perfil de acesso**.")
                 if st.form_submit_button("Salvar alterações"):
-                    atualizar_usuario(u["id"], ativo=ativo, papel=papel, permissao_upload=up, permissao_exportacao=ex, permissao_justificativa_macro=ma, permissao_justificativa_micro=mi)
-                    registrar_atividade("editar_usuario", "administracao", {"usuario_id": str(u["id"])})
+                    atualizar_usuario(u["id"], ativo=ativo)
+                    registrar_atividade("editar_usuario", "administracao", {"usuario_id": str(u["id"]), "ativo": ativo})
                     st.success("Alterações salvas.")
 
             st.markdown("**Redefinir senha**")
@@ -536,58 +777,9 @@ def render_administracao(con: duckdb.DuckDBPyConnection | None = None) -> None:
         if usuarios:
             nomes = {f"{u['nome_completo']} · {u.get('matricula') or u.get('email')}": u for u in usuarios}
             u = nomes[st.selectbox("Usuário", list(nomes), key="admin-escopo-user")]
-            atuais = {r["pagina"]: r["permitido"] for r in listar_permissoes(u["id"])}
-            st.markdown("**Visão de páginas**")
-            cols = st.columns(3)
-            escolhas = {p: cols[i % 3].checkbox(p.replace("_", " ").title(), value=atuais.get(p, p not in _PAGINAS_ALLOW_EXPLICITO), key=f"perm-{u['id']}-{p}") for i, p in enumerate(PAGINAS)}
-            if st.button("Salvar páginas"):
-                for pg, val in escolhas.items():
-                    salvar_permissao(u["id"], pg, val)
-                registrar_atividade("alterar_permissoes_pagina", "administracao", {"usuario_id": str(u["id"])})
-                st.success("Permissões salvas.")
-
+            _render_perfil_acesso(u, con)
             st.divider()
-            _render_acesso_por_universo(u, con)
-
-            st.divider()
-            st.markdown("**Escopos avançados (legado)**")
-            st.caption(
-                "Cadastro genérico por tipo (Pacote / Centro de Custo / PEP Filho / "
-                "Projeto). Grava linhas SEM universo — o RBAC de escopo por universo "
-                "acima NÃO lê estas linhas. Mantido para os tipos fora do modelo de "
-                "2 camadas do `docs/08`."
-            )
-            tipo = st.selectbox(
-                "Tipo", TIPOS_ESCOPO, key="admin-escopo-tipo",
-                format_func=lambda t: _ROTULO_TIPO_ESCOPO.get(t, t),
-            )
-            opcoes = _opcoes_escopo(tipo, con)
-            if tipo in _TIPOS_ESCOPO_SELECIONAVEL and opcoes:
-                rotulos = {f"{cod} — {nome}" if nome else cod: (cod, nome) for cod, nome in opcoes}
-                selecionados = st.multiselect(
-                    "Selecione um, vários ou todos",
-                    list(rotulos),
-                    key=f"admin-escopo-multi-{tipo}",
-                )
-                if st.button("Adicionar escopo(s) selecionado(s)") and selecionados:
-                    for rotulo in selecionados:
-                        cod, nome = rotulos[rotulo]
-                        adicionar_escopo(u["id"], tipo, cod, nome)
-                    registrar_atividade("adicionar_escopo", "administracao", {"usuario_id": str(u["id"]), "tipo": tipo, "valores": [rotulos[r][0] for r in selecionados]})
-                    st.success(f"{len(selecionados)} escopo(s) adicionado(s).")
-            else:
-                if tipo in _TIPOS_ESCOPO_SELECIONAVEL:
-                    st.caption("Base local ainda não processada — sem lista real disponível, digite manualmente.")
-                else:
-                    st.caption("Sem lista fechada pra este tipo na fonte de dado — texto livre.")
-                c1, c2 = st.columns(2)
-                valor = c1.text_input("Código/valor exato", key=f"admin-escopo-valor-{tipo}")
-                desc = c2.text_input("Descrição", key=f"admin-escopo-desc-{tipo}")
-                if st.button("Adicionar escopo") and valor:
-                    adicionar_escopo(u["id"], tipo, valor, desc)
-                    registrar_atividade("adicionar_escopo", "administracao", {"usuario_id": str(u["id"]), "tipo": tipo, "valor": valor})
-                    st.success("Escopo adicionado.")
-            st.dataframe(pd.DataFrame(listar_escopos(u["id"])), hide_index=True, use_container_width=True)
+            _render_escopos_legados(u)
 
     with t3:
         st.dataframe(_com_hora_br(pd.DataFrame(listar_atividades())), hide_index=True, use_container_width=True, height=520)

@@ -81,7 +81,10 @@ CSS_MAPA_CALOR = f"""
 """
 
 
-def dados_heatmap_gerencia_pacote(con: duckdb.DuckDBPyConnection, gg_id: str) -> pd.DataFrame:
+def dados_heatmap_gerencia_pacote(
+    con: duckdb.DuckDBPyConnection, gg_id: str,
+    filtros: tuple[tuple[str, list], tuple[str, list]] | None = None,
+) -> pd.DataFrame:
     """1 linha por (Gerência, Pacote) com Orçado/Real/Delta — grão fino
     pro mapa de calor. Mesmo bucket "Não atribuído" do resto da visão por
     Gerência (`nivel2_gg.dados_gerencia_gg`) — no Orçado já não sobra
@@ -92,12 +95,18 @@ def dados_heatmap_gerencia_pacote(con: duckdb.DuckDBPyConnection, gg_id: str) ->
     Gerência na hierarquia SAP. Filtro de Período (Ano/Trimestre/Mês)
     aplicado desde 2026-08-11."""
     pacotes = _pacotes_do_gg(con, gg_id)
-    where_periodo, params_periodo = clausula_periodo()
-    # RBAC de escopo (docs/08): no-op pra GG inteira/admin; recorte por
-    # Gerência pra usuário escopado.
-    where_escopo, params_escopo = clausula_escopo("opex_sustaining")
-    where_periodo += where_escopo
-    params_periodo = params_periodo + params_escopo
+    # `filtros` (2026-10-18): recorte da sidebar + escopo, Orçado só OPEX e
+    # até o último mês fechado (`filtros.clausulas_gerencias_opex`). Sem
+    # ele, comportamento antigo (Período + escopo).
+    if filtros is None:
+        where_periodo, params_periodo = clausula_periodo()
+        # RBAC de escopo (docs/08): no-op pra GG inteira/admin; recorte por
+        # Gerência pra usuário escopado.
+        where_escopo, params_escopo = clausula_escopo("opex_sustaining")
+        where_periodo += where_escopo
+        params_periodo = params_periodo + params_escopo
+        filtros = ((where_periodo, params_periodo), (where_periodo, list(params_periodo)))
+    (frag_orc, par_orc), (frag_real, par_real) = filtros
     if pacotes is None:
         where_orc, params_orc = "WHERE 1=1", []
         where_real, params_real = "WHERE 1=1", []
@@ -105,10 +114,10 @@ def dados_heatmap_gerencia_pacote(con: duckdb.DuckDBPyConnection, gg_id: str) ->
         marcadores = ", ".join("?" * len(pacotes)) if pacotes else "NULL"
         where_orc, params_orc = f"WHERE pacote_id IN ({marcadores})", list(pacotes)
         where_real, params_real = f"WHERE pacote_id IN ({marcadores})", list(pacotes)
-    where_orc += where_periodo
-    params_orc += params_periodo
-    where_real += where_periodo
-    params_real += params_periodo
+    where_orc += frag_orc
+    params_orc += list(par_orc)
+    where_real += frag_real
+    params_real += list(par_real)
 
     df_orc = con.execute(
         f"SELECT COALESCE(gerencia_id, '') AS gerencia_id, pacote_id, "
@@ -270,8 +279,11 @@ def _html_mapa_calor(df: pd.DataFrame, nomes_pacote: dict[str, str]) -> str:
     return "".join(partes)
 
 
-def render_mapa_calor_gerencia_pacote(con: duckdb.DuckDBPyConnection, gg_id: str) -> None:
-    df = dados_heatmap_gerencia_pacote(con, gg_id)
+def render_mapa_calor_gerencia_pacote(
+    con: duckdb.DuckDBPyConnection, gg_id: str,
+    filtros: tuple[tuple[str, list], tuple[str, list]] | None = None,
+) -> None:
+    df = dados_heatmap_gerencia_pacote(con, gg_id, filtros=filtros)
     if df.empty:
         return
     with st.expander("🔥 Mapa de Calor: Gerência x Pacote", expanded=False):

@@ -48,9 +48,20 @@ def set_usuario(usuario_dict: dict) -> None:
     st.session_state["logged_in"] = True
 
 
+# Caches de acesso guardados na sessão (ver permissions.py). Precisam sair
+# junto no logout — achado em 2026-10-18: só `usuario`/`logged_in` eram
+# limpos, e quem entrasse em seguida na MESMA aba herdava os universos,
+# escopos e páginas do usuário anterior.
+CHAVES_CACHE_ACESSO = (
+    "_permissoes_pagina_cache", "_escopos_acesso_cache",
+    "_acesso_assinatura", "_acesso_verificado_em", "_acesso_usuario_id",
+)
+
+
 def clear_session() -> None:
-    """Limpa os dados de sessão do usuário (logout)."""
-    for chave in ("usuario", "logged_in"):
+    """Limpa os dados de sessão do usuário (logout), inclusive os caches de
+    permissão."""
+    for chave in ("usuario", "logged_in", *CHAVES_CACHE_ACESSO):
         st.session_state.pop(chave, None)
 
 

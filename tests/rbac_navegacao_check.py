@@ -16,10 +16,15 @@ import re
 from streamlit.testing.v1 import AppTest
 
 
-def _pagina_ativa(escopos, perms=None):
+def _pagina_ativa(escopos, perms=None, upload=False):
     os.environ.pop("ORCAMENTO_SKIP_LOGIN", None)
     at = AppTest.from_file("app.py", default_timeout=150)
-    at.session_state["usuario"] = {"id": "u1", "papel": "especialista_analista", "nome_completo": "X"}
+    # `permissao_upload` (2026-10-18, docs/13): "Dados e Qualidade" passou a
+    # exigir a capacidade Upload, não só a permissão de página.
+    at.session_state["usuario"] = {
+        "id": "u1", "papel": "especialista_analista", "nome_completo": "X",
+        "permissao_upload": upload,
+    }
     at.session_state["logged_in"] = True
     at.session_state["_escopos_acesso_cache"] = escopos
     at.session_state["_permissoes_pagina_cache"] = {} if perms is None else perms
@@ -46,7 +51,7 @@ _CASOS = [
 def main() -> None:
     falhas = 0
     for nome, esc, esperado in _CASOS:
-        at, titulo = _pagina_ativa(esc)
+        at, titulo = _pagina_ativa(esc, upload=(nome == "sem universo, com upload"))
         ok = (not at.exception) and titulo == esperado
         print(f"{nome:28} -> {titulo!r} (esperado {esperado!r}) {'OK' if ok else 'FALHOU'}")
         falhas += 0 if ok else 1
@@ -55,6 +60,13 @@ def main() -> None:
     at, titulo = _pagina_ativa([], perms={"upload": False})
     ok = (not at.exception) and titulo == "Sem acesso"
     print(f"{'sem nada':28} -> {titulo!r} (esperado 'Sem acesso') {'OK' if ok else 'FALHOU'}")
+    falhas += 0 if ok else 1
+
+    # 2026-10-18 (docs/13): página de upload liberada (padrão) mas SEM a
+    # capacidade Upload -> não vê "Dados e Qualidade" (antes via e usava).
+    at, titulo = _pagina_ativa([], perms={}, upload=False)
+    ok = (not at.exception) and titulo == "Sem acesso"
+    print(f"{'upload sem capacidade':28} -> {titulo!r} (esperado 'Sem acesso') {'OK' if ok else 'FALHOU'}")
     falhas += 0 if ok else 1
 
     if falhas:

@@ -39,7 +39,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.branding import render_page_banner
-from src.dashboard.filtros import clausula_escopo, guardar_e_faixa_universo
+from src.dashboard.filtros import clausulas_recorte, guardar_e_faixa_universo
 from src.dashboard.formatacao import escapar_cifrao_md, fmt_pacote, fmt_pct, fmt_reais_abrev, mapa_nomes_pacote
 from src.dashboard.grafico_interativo import CONFIG_PLOTLY
 from src.dashboard.layout import bloco_resumo_visual
@@ -55,11 +55,21 @@ _ICONE = {"CAPEX": "🏗️", "OPEX": "🛠️"}
 
 
 def _escopo(classificacao: str) -> tuple[str, list]:
-    """Fragmento de recorte por Gerência (RBAC de escopo — docs/08), no
-    universo do lado escolhido (OPEX -> opex_sustaining, CAPEX ->
-    capex_sustaining). `gerencia_id` está populado nos dois fatos, tanto
-    pra linhas OPEX quanto CAPEX de `fact_orcamento`."""
-    return clausula_escopo(UNIVERSO_POR_CLASSIFICACAO[classificacao])
+    """Fragmento do lado Orçado: escopo de RBAC (docs/08) no universo do
+    lado escolhido (OPEX -> opex_sustaining, CAPEX -> capex_sustaining)
+    + recorte da sidebar (2026-10-18, P6 — antes esta aba ignorava todos
+    os filtros, até o Período). `gerencia_id` está populado nas linhas
+    OPEX e CAPEX de `fact_orcamento` (CAPEX por região SP/VP)."""
+    return clausulas_recorte(UNIVERSO_POR_CLASSIFICACAO[classificacao])[0]
+
+
+def _escopo_realizado(classificacao: str) -> tuple[str, list]:
+    """Mesmo recorte, versão `fact_realizado` (só o card usa). Desde o P6
+    (2026-10-18) é o Realizado OPEX do MESMO recorte da sidebar + escopo —
+    não mais a Malha (SP) inteira; o rótulo do card dizia "ref. Malha, não
+    fatiado" e ficou errado (N5, 2026-10-18). Continua só referência: não
+    há Realizado CAPEX carregado pra fatiar."""
+    return clausulas_recorte(UNIVERSO_POR_CLASSIFICACAO[classificacao])[1]
 
 
 def resumo_classificacao(con: duckdb.DuckDBPyConnection, classificacao: str) -> dict:
@@ -76,8 +86,9 @@ def resumo_classificacao(con: duckdb.DuckDBPyConnection, classificacao: str) -> 
         f"WHERE classificacao_contabil = ? AND area LIKE 'Fora Plano%'{esc}",
         [classificacao, *esc_p],
     ).fetchone()
+    esc_r, esc_r_p = _escopo_realizado(classificacao)
     (realizado_total,) = con.execute(
-        f"SELECT SUM(valor_realizado) FROM fact_realizado WHERE 1=1{esc}", esc_p
+        f"SELECT SUM(valor_realizado) FROM fact_realizado WHERE 1=1{esc_r}", esc_r_p
     ).fetchone()
 
     orcado = orcado or 0.0
@@ -246,7 +257,7 @@ def _render_card_classificacao(classificacao: str, resumo: dict) -> None:
             |---|---|
             | Orçado {classificacao} | {fmt_reais_abrev(resumo["orcado"])} |
             {linhas_extra}| % do Orçamento total (Malha) | {fmt_pct(resumo["pct_do_total"])} |
-            | Realizado (ref. Malha, não fatiado) | {fmt_reais_abrev(resumo["realizado_total_sp"])} |
+            | Realizado OPEX do mesmo recorte (referência) | {fmt_reais_abrev(resumo["realizado_total_sp"])} |
             """)
         )
 
@@ -256,21 +267,30 @@ def render_visao_classificacao(con: duckdb.DuckDBPyConnection, classificacao: st
     eh_capex = classificacao == "CAPEX"
     render_page_banner(
         _ICONE[classificacao], _TITULO[classificacao],
-        "Só o Orçado é fatiado por Classificação Contábil — Realizado aparece como referência de Malha (SP) inteira.",
+        "Só o Orçado é fatiado por Classificação Contábil — o Realizado é o OPEX do mesmo recorte, só como referência.",
     )
     guardar_e_faixa_universo(con, UNIVERSO_POR_CLASSIFICACAO[classificacao])  # RBAC de escopo (docs/08)
 
     if eh_capex:
+        # B1 (2026-10-18): mesmo texto do aviso de Contas/CC — "não está
+        # carregado", sem citar fonte (a do Realizado CAPEX ainda vai ser
+        # decidida); antes dizia "não existe em fonte nenhuma".
         st.info(
-            "**Só Orçado.** Não existe Realizado de CAPEX Sustaining em fonte "
-            "nenhuma — o SAP não carrega classificação contábil e cai 100% "
-            "como OPEX (ver docs/07 §3.2). Por isso não há Orçado × Realizado "
-            "nem Projeção aqui; o Realizado abaixo é a referência de Malha "
-            "inteira (não fatiada), como no card."
+            "**Só Orçado.** O Realizado do CAPEX Sustaining ainda não está "
+            "carregado no painel (ver docs/07 §3.2). Por isso não há Orçado × Realizado "
+            "nem Projeção aqui; o Realizado abaixo é o OPEX do mesmo recorte "
+            "(filtros e acesso), só como referência, como no card."
         )
 
     resumo = resumo_classificacao(con, classificacao)
     nomes_pacote = mapa_nomes_pacote(con)
+    filtro_classif = st.session_state.get("filtro_classificacao") or []
+    if filtro_classif and classificacao not in filtro_classif:
+        st.info(
+            f"O filtro de Classificação na barra lateral ({', '.join(filtro_classif)}) "
+            f"exclui o {classificacao} — por isso os valores abaixo zeram. Limpe esse "
+            "filtro para ver esta aba."
+        )
 
     # Card-resumo | divisória | gráfico macro. CAPEX -> por Elemento PEP
     # (tudo PM03, nomeado pelo catálogo); OPEX -> por Pacote (legado).

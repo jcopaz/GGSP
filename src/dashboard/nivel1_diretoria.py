@@ -23,7 +23,7 @@ import pandas as pd
 import streamlit as st
 
 from src.branding import render_page_banner
-from src.dashboard.filtros import clausula_escopo, clausula_periodo
+from src.dashboard.filtros import clausulas_recorte, rotulo_periodo, ultimo_periodo_fechado
 from src.dashboard.formatacao import fmt_pct, fmt_reais_abrev, fmt_semaforo_chip
 from src.engine.semaforo import classificar_semaforo
 
@@ -85,13 +85,14 @@ def resumo_nivel1(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     `CAST(... AS VARCHAR)` evita erro de merge float64 x str quando a
     coluna nula do DuckDB volta como float64 pro pandas.
     """
-    where_periodo, params_periodo = clausula_periodo()
-    # RBAC de escopo (docs/08): no-op pra GG inteira/admin. Pra usuário
-    # escopado numa Gerência, o card do Painel Executivo fica só com o
-    # recorte dele (o filtro é por `gerencia_id`, a própria Gerência).
-    where_escopo, params_escopo = clausula_escopo("opex_sustaining")
-    where_periodo += where_escopo
-    params_periodo = params_periodo + params_escopo
+    # 2026-10-18 (validação de filtros, P4): recorte completo da sidebar +
+    # escopo de RBAC (`clausulas_recorte`) — antes só Período + escopo.
+    # Orçamento (CAPEX/OPEX) mostra o recorte inteiro; Delta/Aderência
+    # comparam só até o último mês fechado (P7, "a realizar").
+    (where_periodo, params_periodo), _ = clausulas_recorte("opex_sustaining")
+    (where_orc_c, params_orc_c), (where_real_c, params_real_c) = clausulas_recorte(
+        "opex_sustaining", con=con, ate_fechamento=True,
+    )
     orcado_gg = con.execute(
         f"SELECT CAST(gg_id AS VARCHAR) AS gg_id, gg_nome, SUM(valor_orcado) AS orcado "
         f"FROM fact_orcamento WHERE gg_id IS NOT NULL{where_periodo} GROUP BY gg_id, gg_nome",
@@ -109,10 +110,16 @@ def resumo_nivel1(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         f"GROUP BY gg_id",
         params_periodo,
     ).df()
+    orcado_opex_comparavel_gg = con.execute(
+        f"SELECT CAST(gg_id AS VARCHAR) AS gg_id, SUM(valor_orcado) AS orcado_opex_comparavel "
+        f"FROM fact_orcamento WHERE gg_id IS NOT NULL AND classificacao_contabil = 'OPEX'{where_orc_c} "
+        f"GROUP BY gg_id",
+        params_orc_c,
+    ).df()
     realizado_gg = con.execute(
         f"SELECT CAST(gg_id AS VARCHAR) AS gg_id, gg_nome, SUM(valor_realizado) AS realizado "
-        f"FROM fact_realizado WHERE gg_id IS NOT NULL{where_periodo} GROUP BY gg_id, gg_nome",
-        params_periodo,
+        f"FROM fact_realizado WHERE gg_id IS NOT NULL{where_real_c} GROUP BY gg_id, gg_nome",
+        params_real_c,
     ).df()
 
     orcado_por_gg_disponivel = not orcado_gg.empty
@@ -121,8 +128,10 @@ def resumo_nivel1(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         por_gg = orcado_gg.merge(realizado_gg, on=["gg_id", "gg_nome"], how="outer")
         por_gg = por_gg.merge(orcado_capex_gg, on="gg_id", how="left")
         por_gg = por_gg.merge(orcado_opex_gg, on="gg_id", how="left")
+        por_gg = por_gg.merge(orcado_opex_comparavel_gg, on="gg_id", how="left")
         por_gg["orcado"] = por_gg["orcado"].fillna(0.0)
         por_gg["orcado_opex"] = por_gg["orcado_opex"].fillna(0.0)
+        por_gg["orcado_opex_comparavel"] = por_gg["orcado_opex_comparavel"].fillna(0.0)
         # orcado_capex fica sem fillna de propósito — ver docstring.
     else:
         # float("nan"), não pd.NA: pd.NA quebra em comparação booleana
@@ -133,14 +142,18 @@ def resumo_nivel1(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         por_gg["orcado"] = float("nan")
         por_gg["orcado_capex"] = float("nan")
         por_gg["orcado_opex"] = float("nan")
+        por_gg["orcado_opex_comparavel"] = float("nan")
     por_gg["realizado"] = por_gg["realizado"].fillna(0.0)
 
     resultado = por_gg.sort_values("gg_id").reset_index(drop=True)
-    resultado["delta_total"] = resultado["realizado"] - resultado["orcado_opex"]
+    resultado["delta_total"] = resultado["realizado"] - resultado["orcado_opex_comparavel"]
     resultado["aderencia"] = resultado.apply(
-        lambda r: (r["realizado"] / r["orcado_opex"]) if pd.notna(r["orcado_opex"]) and r["orcado_opex"] else None,
+        lambda r: (r["realizado"] / r["orcado_opex_comparavel"])
+        if pd.notna(r["orcado_opex_comparavel"]) and r["orcado_opex_comparavel"] else None,
         axis=1,
     )
+    corte = ultimo_periodo_fechado(con)
+    resultado["ate"] = rotulo_periodo(corte)
     return resultado
 
 
@@ -176,7 +189,7 @@ def _render_card_gg(linha: pd.Series) -> None:
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.7rem;">
             <div>
               <div style="font-weight:600;font-size:0.92rem;color:#16213a;">{rotulo}</div>
-              <div style="font-size:0.72rem;color:#8697b3;margin-top:0.1rem;">OPEX × OPEX</div>
+              <div style="font-size:0.72rem;color:#8697b3;margin-top:0.1rem;">OPEX × OPEX{(" · até " + linha["ate"]) if linha.get("ate") else ""}</div>
             </div>
             {fmt_semaforo_chip(status_semaforo)}
           </div>

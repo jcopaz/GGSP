@@ -83,6 +83,8 @@ Centro de Custo direto, sem sub-agrupamento nomeado) — ver
 """
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
+
 import duckdb
 import streamlit as st
 
@@ -259,7 +261,11 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
     st.sidebar.divider()
     st.sidebar.caption("Ajuste os filtros e clique em **Aplicar filtros** no fim.")
 
-    gerencias = _opcoes(con, [("fact_realizado", "gerencia_nome")])
+    # P9 (2026-10-18): Gerências que só têm Orçado (ex.: "DIRETO GG (Marcelo
+    # Modolo)", "OFF GER. DE PLANEJ...") também entram — desde que o filtro
+    # passou a casar por `gerencia_id` (ver `clausulas_recorte_sidebar`),
+    # elas filtram o Orçado de verdade.
+    gerencias = _opcoes(con, [("fact_realizado", "gerencia_nome"), ("dim_gerencia", "gerencia_nome")])
     coordenacoes_todas = _opcoes(con, [("fact_realizado", "coordenacao")])
     centros_custo_todos = _opcoes(con, [("fact_orcamento", "centro_custo_id"), ("fact_realizado", "centro_custo_id")])
     peps = _opcoes(con, [("fact_orcamento", "pep_id")])
@@ -337,7 +343,7 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
 
     col_aplicar, col_limpar = st.sidebar.columns(2)
     aplicar = col_aplicar.button("Aplicar filtros", type="primary", use_container_width=True)
-    limpar = col_limpar.button("Limpar filtros", use_container_width=True)
+    col_limpar.button("Limpar filtros", use_container_width=True, on_click=_limpar_filtros)
 
     if aplicar:
         st.session_state["filtro_gerencia"] = gerencia_sel
@@ -352,11 +358,20 @@ def renderizar_filtros_sidebar(con: duckdb.DuckDBPyConnection) -> None:
         st.session_state["filtro_periodo_trimestres"] = trimestres_sel
         st.session_state["filtro_periodo_meses"] = meses_sel
 
-    if limpar:
-        for chave_filtro, chave_widget in _CHAVES_WIDGET.items():
-            st.session_state.pop(chave_widget, None)
-            st.session_state.pop(chave_filtro, None)
-        st.rerun()
+
+def _limpar_filtros() -> None:
+    """Callback do botão "Limpar filtros" (F3 da validação de 2026-10-18).
+
+    Antes o botão fazia `st.session_state.pop(chave_widget)` + `st.rerun()`
+    depois dos widgets já desenhados: o filtro aplicado sumia, mas o
+    frontend reenviava o valor antigo de cada multiselect no rerun e as
+    tags continuavam lá — no próximo "Aplicar" os filtros velhos voltavam
+    somados ao novo. Num `on_click` o Streamlit roda o callback ANTES de
+    redesenhar os widgets, e aí é permitido gravar a chave do widget: zerar
+    para `[]` limpa as tags de verdade."""
+    for chave_filtro, chave_widget in _CHAVES_WIDGET.items():
+        st.session_state[chave_widget] = []
+        st.session_state.pop(chave_filtro, None)
 
 
 def _anos_disponiveis(con: duckdb.DuckDBPyConnection) -> list[int]:
@@ -697,6 +712,458 @@ def clausula_where(colunas_disponiveis: dict[str, str]) -> tuple[str, list]:
     return " AND " + " AND ".join(condicoes), params
 
 
+def _in(coluna: str, valores: list) -> tuple[str, list]:
+    return f" AND {coluna} IN ({', '.join(['?'] * len(valores))})", list(valores)
+
+
+def recorte_sidebar_ativo() -> bool:
+    """True quando há filtro de Organização/Classificação/Pacote aplicado
+    (não conta Período nem os filtros de CAPEX Obras)."""
+    return any(st.session_state.get(chave) for chave in _CHAVES_SESSAO.values())
+
+
+def clausulas_recorte_sidebar(incluir_periodo: bool = True) -> tuple[tuple[str, list], tuple[str, list]]:
+    """Todos os filtros da sidebar (Organização + Classificação + Pacote +
+    Período), com a MESMA regra de negócio nos dois fatos — devolve
+    `((where_orcado, params), (where_realizado, params))`, fragmentos
+    prontos pra colar depois de "WHERE 1=1" (ou de outra condição).
+
+    Criado em 2026-10-18 (validação de filtros, F1/F4/D1) pra Visão
+    Executiva responder aos filtros sem cada tela reinventar o mapeamento.
+    Regras, por filtro:
+
+    - Gerência (nome, vocabulário do Realizado): resolve pra `gerencia_id`
+      via `dim_gerencia`/`fact_realizado` e filtra `gerencia_id` nos DOIS
+      fatos. No Orçado isso inclui o CAPEX da Base Zero, que já tem
+      `gerencia_id` por região (SP -> GER MALHA (SP), VP -> GER IMPLANT DE
+      OBRAS E MALHA VP — `_GERENCIA_ID_POR_REGIAO_BASE_ZERO`).
+    - Coordenação: Realizado direto; no Orçado vira a lista de Centros de
+      Custo daquela Coordenação (hierarquia estrita CC ⊂ Coordenação,
+      0 exceção — docs/04). CAPEX (PEP, sem CC) fica de fora, correto.
+    - Centro de Custo, Classificação, Pacote: coluna própria nos dois fatos
+      (`fact_realizado.classificacao_contabil` existe e é sempre 'OPEX').
+    - PEP: só existe no Orçado (sempre CAPEX). O Realizado carregado é só
+      OPEX e não tem PEP — com PEP selecionado, Realizado = 0 (`1=0`), em
+      vez de ignorar o filtro e devolver o Realizado inteiro.
+    - Período: `clausula_periodo` nos dois (`incluir_periodo=False` deixa
+      de fora — usado pela curva anual da Tendência, que sempre mostra o
+      ano inteiro).
+
+    Não inclui o escopo de RBAC (`clausula_escopo`) — quem chama combina.
+    """
+    orc: list[tuple[str, list]] = []
+    real: list[tuple[str, list]] = []
+    ss = st.session_state
+
+    gerencias = ss.get("filtro_gerencia") or []
+    if gerencias:
+        marc = ", ".join(["?"] * len(gerencias))
+        sub = (
+            f" AND gerencia_id IN (SELECT gerencia_id FROM dim_gerencia WHERE gerencia_nome IN ({marc}) "
+            f"UNION SELECT gerencia_id FROM fact_realizado WHERE gerencia_nome IN ({marc}))"
+        )
+        orc.append((sub, [*gerencias, *gerencias]))
+        real.append((sub, [*gerencias, *gerencias]))
+
+    coordenacoes = ss.get("filtro_coordenacao") or []
+    if coordenacoes:
+        marc = ", ".join(["?"] * len(coordenacoes))
+        orc.append((
+            f" AND centro_custo_id IN (SELECT DISTINCT centro_custo_id FROM fact_realizado "
+            f"WHERE coordenacao IN ({marc}))",
+            list(coordenacoes),
+        ))
+        real.append(_in("coordenacao", coordenacoes))
+
+    for chave_sessao, coluna in (
+        ("filtro_centro_custo", "centro_custo_id"),
+        ("filtro_classificacao", "classificacao_contabil"),
+        ("filtro_pacote", "pacote_id"),
+    ):
+        valores = ss.get(chave_sessao) or []
+        if valores:
+            orc.append(_in(coluna, valores))
+            real.append(_in(coluna, valores))
+
+    peps = ss.get("filtro_pep") or []
+    if peps:
+        orc.append(_in("pep_id", peps))
+        real.append((" AND 1=0", []))
+
+    if incluir_periodo:
+        periodo = clausula_periodo()
+        orc.append(periodo)
+        real.append(periodo)
+    return combinar_clausulas(*orc), combinar_clausulas(*real)
+
+
+# ===== Fechamento contábil: "a realizar" e mês em aberto (P7 + B4, 2026-10-18)
+#
+# P7 (decisão do Julio): Delta, Aderência e causa comparam Orçado e
+# Realizado só ATÉ o último mês fechado; o Orçado dos meses seguintes
+# aparece à parte, como "a realizar". Totais de Orçamento (o que foi
+# aprovado) e as curvas anuais continuam mostrando o recorte inteiro.
+#
+# B4 (docs/12, 2026-10-18): "último mês com Realizado ≠ 0" não basta — a
+# Consulta de Contas pode ser carregada a qualquer dia, e o mês da carga
+# vem com Realizado PARCIAL (ex.: carga em 15/09 traz Set pela metade).
+# Entrar no Delta derrubava a Aderência e jogava o resto do mês no "Não
+# Justificado". A referência é a DATA DA CARGA do arquivo (tabela
+# `meta_carga`, gravada pelo build), NUNCA a data de hoje, e nada de campo
+# manual — o painel só centraliza o que veio do SAP. Regra (Calendário
+# Integrado de Gestão Financeira da GGFC, jul/26): o fechamento contábil
+# do mês M-1 sai no 5º dia útil de M.
+#   - mês M da carga: sempre aberto ("em andamento");
+#   - M-1: fechado se a carga foi no 5º dia útil de M ou depois; antes
+#     disso continua aberto ("aguardando fechamento contábil");
+#   - corte = min(último mês com Realizado ≠ 0, M-1 ou M-2).
+# O Realizado dos meses abertos aparece à parte, como "Realizado parcial",
+# e NUNCA entra em Real Contabilizado/Delta/Aderência/rankings.
+
+_NOMES_MES_FECH = {1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
+                   7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"}
+
+# Chave de `cfg["caminhos"]` cuja data de carga define o mês em aberto: o
+# `fact_realizado` sai da Consulta de Contas (build_star_schema.py), não do
+# Base Analítico.
+TIPO_CARGA_REALIZADO = "consulta_contas"
+
+# N-ésimo dia útil de M em que o mês M-1 fecha. None/0 desliga a regra e
+# volta a "mês anterior ao da carga = fechado".
+# GAP: dia útil = segunda a sexta, SEM feriados (nacionais/MRS ignorados).
+# Regra vista no calendário da GGFC de jul/26 — falta confirmar com a GGFC
+# se vale todo mês (o calendário varia a cada ciclo).
+DIA_UTIL_FECHAMENTO_CONTABIL: int | None = 5
+
+
+def _mes_anterior(aaaamm: int) -> int:
+    ano, mes = divmod(aaaamm, 100)
+    return (ano - 1) * 100 + 12 if mes == 1 else aaaamm - 1
+
+
+def _mes_seguinte(aaaamm: int) -> int:
+    ano, mes = divmod(aaaamm, 100)
+    return (ano + 1) * 100 + 1 if mes == 12 else aaaamm + 1
+
+
+def _como_data(valor: date | datetime) -> date:
+    return valor.date() if isinstance(valor, datetime) else valor
+
+
+def dia_util_fechamento(ano: int, mes: int, n: int | None = None) -> date:
+    """N-ésimo dia útil (seg–sex, sem feriados — ver GAP em
+    `DIA_UTIL_FECHAMENTO_CONTABIL`) do mês. Ex.: Out/2026 -> 07/10/2026."""
+    n = n or DIA_UTIL_FECHAMENTO_CONTABIL or 1
+    dia = date(ano, mes, 1)
+    contados = 0
+    while True:
+        if dia.weekday() < 5:
+            contados += 1
+            if contados == n:
+                return dia
+        dia += timedelta(days=1)
+
+
+def meses_abertos_na_carga(data_carga: date | datetime) -> list[tuple[int, str]]:
+    """[(aaaamm, situação)] dos meses ainda abertos na data da carga, em
+    ordem: M-1 ("aguardando fechamento contábil", só se a carga foi antes
+    do 5º dia útil de M) e M ("em andamento"). Pura."""
+    d = _como_data(data_carga)
+    mes_carga = d.year * 100 + d.month
+    abertos = [(mes_carga, "em andamento")]
+    if DIA_UTIL_FECHAMENTO_CONTABIL and d < dia_util_fechamento(d.year, d.month):
+        abertos.insert(0, (_mes_anterior(mes_carga), "aguardando fechamento contábil"))
+    return abertos
+
+
+def corte_fechamento(
+    ultimo_com_realizado: int | None, data_carga: date | datetime | None,
+) -> int | None:
+    """Último (ano*100+mês) que entra no Delta. Pura (testada em
+    tests/test_corte_fechamento.py): min(último mês com Realizado ≠ 0,
+    mês anterior ao primeiro mês ainda aberto na carga). None = sem
+    Realizado nenhum (aí não há corte)."""
+    if ultimo_com_realizado is None:
+        return None
+    if data_carga is None:
+        # GAP: base sem `meta_carga` (warehouse antigo ou teste) — sem a
+        # data da carga não dá pra saber se o último mês está completo;
+        # volta à regra antiga (último mês com Realizado), e a nota avisa.
+        return ultimo_com_realizado
+    primeiro_aberto = meses_abertos_na_carga(data_carga)[0][0]
+    return min(ultimo_com_realizado, _mes_anterior(primeiro_aberto))
+
+
+def data_carga_realizado(con: duckdb.DuckDBPyConnection) -> datetime | None:
+    """Quando o arquivo do Realizado foi carregado (`meta_carga`, gravada
+    pelo build — ver `build_star_schema._linhas_meta_carga`). None = tabela
+    ausente (warehouse anterior a 2026-10-18) ou tipo sem registro."""
+    try:
+        (valor,) = con.execute(
+            "SELECT MAX(carregado_em) FROM meta_carga WHERE tipo = ?", [TIPO_CARGA_REALIZADO],
+        ).fetchone()
+    except Exception:
+        return None
+    return valor or None
+
+
+def _ultimo_mes_com_realizado(con: duckdb.DuckDBPyConnection) -> int | None:
+    """Último (ano*100+mês) com Realizado diferente de zero em
+    `fact_realizado` — ex.: 202609. `fact_realizado` vem pré-populado com
+    zeros nos meses futuros (ver tendencia.py), por isso o `<> 0`."""
+    try:
+        (valor,) = con.execute(
+            "SELECT MAX(ano * 100 + mes) FROM fact_realizado WHERE valor_realizado <> 0"
+        ).fetchone()
+    except Exception:
+        return None
+    return int(valor) if valor else None
+
+
+def ultimo_periodo_fechado(con: duckdb.DuckDBPyConnection) -> int | None:
+    """Último mês fechado (entra no Delta) — `corte_fechamento` sobre o
+    dado e a data da carga. Nome mantido: todas as telas já usam."""
+    return corte_fechamento(_ultimo_mes_com_realizado(con), data_carga_realizado(con))
+
+
+def mes_em_andamento(con: duckdb.DuckDBPyConnection) -> int | None:
+    """Mês da carga do Realizado (sempre aberto). None sem `meta_carga`."""
+    data = data_carga_realizado(con)
+    if data is None:
+        return None
+    return meses_abertos_na_carga(data)[-1][0]
+
+
+def meses_em_aberto(con: duckdb.DuckDBPyConnection) -> list[tuple[int, str]]:
+    """Meses abertos na carga que ficam DEPOIS do corte (1 ou 2). Vazio
+    sem `meta_carga` ou sem Realizado."""
+    data = data_carga_realizado(con)
+    corte = ultimo_periodo_fechado(con)
+    if data is None or corte is None:
+        return []
+    return [(m, s) for m, s in meses_abertos_na_carga(data) if m > corte]
+
+
+def rotulo_periodo(aaaamm: int | None) -> str:
+    if not aaaamm:
+        return ""
+    return f"{_NOMES_MES_FECH[aaaamm % 100]}/{aaaamm // 100}"
+
+
+def rotulo_meses_em_aberto(meses: list[tuple[int, str]]) -> str:
+    """"Out/2026 em andamento" ou "Set/2026 aguardando fechamento contábil
+    e Out/2026 em andamento"."""
+    return " e ".join(f"{rotulo_periodo(m)} {s}" for m, s in meses)
+
+
+def clausula_ate_fechamento(con: duckdb.DuckDBPyConnection) -> tuple[str, list]:
+    corte = ultimo_periodo_fechado(con)
+    if corte is None:
+        return "", []
+    return " AND (ano * 100 + mes) <= ?", [corte]
+
+
+def clausula_apos_fechamento(con: duckdb.DuckDBPyConnection) -> tuple[str, list]:
+    corte = ultimo_periodo_fechado(con)
+    if corte is None:
+        return " AND 1=0", []
+    return " AND (ano * 100 + mes) > ?", [corte]
+
+
+def orcado_a_realizar(con: duckdb.DuckDBPyConnection, filtro_orcado_sem_corte: tuple[str, list]) -> float:
+    """Orçado do recorte nos meses DEPOIS do último fechado — a parte que
+    ainda não pode ser comparada com Realizado (desde B4 inclui o(s) mês(es)
+    em aberto, cujo Realizado é parcial)."""
+    frag, params = combinar_clausulas(filtro_orcado_sem_corte, clausula_apos_fechamento(con))
+    (valor,) = con.execute(f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE 1=1{frag}", params).fetchone()
+    return float(valor or 0.0)
+
+
+def valores_em_andamento(
+    con: duckdb.DuckDBPyConnection,
+    filtro_orc_sem_corte: tuple[str, list],
+    filtro_real_sem_corte: tuple[str, list],
+) -> dict | None:
+    """Orçado e Realizado PARCIAL do(s) mês(es) em aberto no recorte —
+    `{"meses": [(aaaamm, situação)], "mes": mês da carga, "orcado",
+    "realizado"}`. Só informativo: nunca entra no Delta. None sem mês em
+    aberto ou com os dois lados zerados. Carga no dia 1–2 (Realizado 0,
+    Orçado > 0) aparece — decisão do dono: o leitor precisa ver que o mês
+    existe e ainda não tem lançamento."""
+    meses = meses_em_aberto(con)
+    if not meses:
+        return None
+    lista = [m for m, _ in meses]
+    marc = ", ".join(["?"] * len(lista))
+    frag_o, par_o = filtro_orc_sem_corte
+    frag_r, par_r = filtro_real_sem_corte
+    (orcado,) = con.execute(
+        f"SELECT SUM(valor_orcado) FROM fact_orcamento WHERE (ano * 100 + mes) IN ({marc}){frag_o}",
+        [*lista, *par_o],
+    ).fetchone()
+    (realizado,) = con.execute(
+        f"SELECT SUM(valor_realizado) FROM fact_realizado WHERE (ano * 100 + mes) IN ({marc}){frag_r}",
+        [*lista, *par_r],
+    ).fetchone()
+    orcado, realizado = float(orcado or 0.0), float(realizado or 0.0)
+    if not orcado and not realizado:
+        return None
+    return {"meses": meses, "mes": lista[-1], "orcado": orcado, "realizado": realizado}
+
+
+def realizado_apos_carga(con: duckdb.DuckDBPyConnection, filtro_real_sem_corte: tuple[str, list]) -> float:
+    """Realizado do recorte com competência DEPOIS do mês da carga — não
+    deveria existir (R7 da validação com o Copilot da MRS). Fica fora do
+    Delta e do "parcial"; sem este número ele sumiria calado (Regra de
+    Ouro). 0 sem `meta_carga`."""
+    mes_carga = mes_em_andamento(con)
+    if mes_carga is None:
+        return 0.0
+    frag, params = filtro_real_sem_corte
+    (valor,) = con.execute(
+        f"SELECT SUM(valor_realizado) FROM fact_realizado WHERE (ano * 100 + mes) > ?{frag}",
+        [mes_carga, *params],
+    ).fetchone()
+    return float(valor or 0.0)
+
+
+def nota_fechamento(
+    con: duckdb.DuckDBPyConnection,
+    a_realizar: float | None = None,
+    em_andamento: dict | None = None,
+    realizado_futuro: float = 0.0,
+) -> None:
+    """Legenda padrão embaixo dos cards com Delta: até onde vai o Delta,
+    data da carga, mês(es) em aberto com o Realizado parcial, o "a
+    realizar" e o alerta de Realizado com competência futura."""
+    from src.dashboard.formatacao import escapar_cifrao_md, fmt_reais_abrev
+
+    corte = ultimo_periodo_fechado(con)
+    if corte is None:
+        # Base sem nenhum Realizado ≠ 0 (ex.: carga no 1º dia do ano, ou
+        # Consulta de Contas sem Realizado): não há corte, e o Delta compara
+        # o Orçado com Realizado zero. Antes a nota simplesmente sumia (2ª
+        # revisão do Astra, 2026-10-18) — agora avisa, sem mexer no cálculo.
+        st.warning(
+            "Não há Realizado contabilizado nesta base: o Delta e a Aderência abaixo "
+            "comparam o Orçado com Realizado zero. Confira a carga da Consulta de Contas "
+            "(Gestão › Dados e Qualidade)."
+        )
+        return
+
+    data_carga = data_carga_realizado(con)
+    texto = f"Delta e Aderência acumulados até {rotulo_periodo(corte)}"
+    if data_carga is None:
+        texto += (
+            " (data da carga do Realizado não registrada nesta base — corte pelo último mês "
+            "com Realizado)."
+        )
+    else:
+        texto += f" (Realizado carregado em {_como_data(data_carga):%d/%m/%Y})."
+    if em_andamento:
+        texto += (
+            f" {rotulo_meses_em_aberto(em_andamento['meses'])} — fora do Delta: Realizado "
+            f"parcial {fmt_reais_abrev(em_andamento['realizado'])} x Orçado "
+            f"{fmt_reais_abrev(em_andamento['orcado'])}."
+        )
+    if a_realizar:
+        texto += (
+            f" Orçado de {rotulo_periodo(_mes_seguinte(corte))} em diante no recorte: "
+            f"{fmt_reais_abrev(a_realizar)} — a realizar."
+        )
+    if data_carga is not None and DIA_UTIL_FECHAMENTO_CONTABIL:
+        texto += (
+            f" Fechamento contábil: o mês fecha no {DIA_UTIL_FECHAMENTO_CONTABIL}º dia útil do "
+            "mês seguinte (calendário da GGFC) — carga antes disso deixa o mês anterior em aberto."
+        )
+    st.caption(escapar_cifrao_md(texto))
+    if realizado_futuro:
+        st.warning(escapar_cifrao_md(
+            f"Atenção: {fmt_reais_abrev(realizado_futuro)} de Realizado com competência após "
+            f"{rotulo_periodo(mes_em_andamento(con))} — lançamento futuro, verificar a base."
+        ))
+
+
+def nota_fechamento_recorte(
+    con: duckdb.DuckDBPyConnection,
+    filtro_orc_sem_corte: tuple[str, list],
+    filtro_real_sem_corte: tuple[str, list],
+) -> None:
+    """`nota_fechamento` completa a partir do par (Orçado, Realizado) SEM
+    corte de um recorte — usada pelos cards de Contas, CC e Manutenção."""
+    nota_fechamento(
+        con,
+        a_realizar=orcado_a_realizar(con, filtro_orc_sem_corte),
+        em_andamento=valores_em_andamento(con, filtro_orc_sem_corte, filtro_real_sem_corte),
+        realizado_futuro=realizado_apos_carga(con, filtro_real_sem_corte),
+    )
+
+
+def clausulas_recorte(
+    universo: str = "opex_sustaining",
+    incluir_periodo: bool = True,
+    con: duckdb.DuckDBPyConnection | None = None,
+    ate_fechamento: bool = False,
+) -> tuple[tuple[str, list], tuple[str, list]]:
+    """`clausulas_recorte_sidebar` + escopo de RBAC do `universo` (+ corte
+    no último mês fechado, quando `ate_fechamento=True` e `con` é dado) —
+    o par (Orçado, Realizado) que toda tela com Orçado x Realizado deve
+    usar. Sem filtro, fora do RBAC e sem corte, os fragmentos são vazios."""
+    (where_o, params_o), (where_r, params_r) = clausulas_recorte_sidebar(incluir_periodo=incluir_periodo)
+    where_e, params_e = clausula_escopo(universo)
+    orc = [(where_o, params_o), (where_e, params_e)]
+    real = [(where_r, params_r), (where_e, list(params_e))]
+    if ate_fechamento and con is not None:
+        corte = clausula_ate_fechamento(con)
+        orc.append(corte)
+        real.append(corte)
+    return combinar_clausulas(*orc), combinar_clausulas(*real)
+
+
+def clausulas_gerencias_opex(con: duckdb.DuckDBPyConnection) -> tuple[tuple[str, list], tuple[str, list]]:
+    """Recorte das visões "por Gerência" (Gerências Locais do Resumo, "Ver
+    por Gerência" e mapa de calor de Desvios e Causas): sidebar + escopo,
+    até o último mês fechado, Orçado só OPEX. Antes (até 2026-10-18) o
+    Orçado por Gerência somava o CAPEX da Base Zero (SP -> GER MALHA,
+    VP -> GER IMPLANT ... VP) contra um Realizado só OPEX."""
+    (where_o, params_o), real = clausulas_recorte("opex_sustaining", con=con, ate_fechamento=True)
+    return (" AND classificacao_contabil = 'OPEX'" + where_o, params_o), real
+
+
+_FILTROS_INCOMPATIVEIS_COM_CAUSA = (
+    "filtro_gerencia", "filtro_coordenacao", "filtro_centro_custo", "filtro_pep",
+)
+
+
+def causa_disponivel_no_recorte() -> bool:
+    """O waterfall de causa (e % Explicado / Não Justificado) só fecha em
+    recortes que a causa consegue acompanhar: Período (explicacoes.csv tem
+    ano/mês), Pacote (a causa é rastreada por Pacote inteiro) e
+    Classificação que inclua OPEX (o waterfall é OPEX x OPEX). Gerência/
+    Coordenação/Centro de Custo/PEP cortam DENTRO do Pacote — atribuir a
+    causa a esse sub-recorte exigiria inventar rateio (Regra de Ouro,
+    docs/02 item 22)."""
+    if any(st.session_state.get(k) for k in _FILTROS_INCOMPATIVEIS_COM_CAUSA):
+        return False
+    classificacao = st.session_state.get("filtro_classificacao") or []
+    return not classificacao or "OPEX" in classificacao
+
+
+def pacotes_filtro() -> list[str] | None:
+    return list(st.session_state.get("filtro_pacote") or []) or None
+
+
+AVISO_CAUSA_INDISPONIVEL = (
+    "🔎 Decomposição por causa indisponível neste recorte. A causa "
+    "(Físico, Efeito Preço, Carry Over…) é rastreada por Pacote "
+    "inteiro — filtros de Gerência, Coordenação, Centro de Custo, "
+    "PEP ou Classificação só CAPEX cortam dentro do Pacote, e "
+    "atribuir a causa a esse pedaço exigiria inventar rateio. "
+    "Orçado, Realizado, Delta e Aderência já estão filtrados. "
+    "Para ver o waterfall, deixe só Período, Pacote ou Classificação OPEX."
+)
+
+
 def algum_filtro_ativo() -> bool:
     filtros_simples = any(
         st.session_state.get(chave) for chave in _CHAVES_SESSAO.values()
@@ -728,45 +1195,80 @@ _ROTULOS_FILTRO_SIMPLES = {
 }
 
 
-def resumo_filtros_ativos() -> str | None:
-    """"Gerência: Malha SP · Período: Jan–Jun" com os filtros de fato
-    aplicados agora (chaves `filtro_*`, não o rascunho `w_*`) — None
-    quando nenhum filtro está ativo. `algum_filtro_ativo()` já existia
-    (booleano puro) mas não alimentava nada visível na tela — o painel
-    tem 4 grupos de filtro que só valem depois de "Aplicar filtros", sem
-    esse indicador fora da sidebar (que pode estar colapsada) não tinha
-    como saber, voltando numa aba depois, se o número era um recorte ou
-    o total."""
+# P3 (2026-10-18): quais filtros da sidebar cada universo de página respeita.
+# A faixa "Filtros ativos" separa o que vale na página aberta do que não se
+# aplica — antes ela listava tudo, inclusive filtros que a página ignorava.
+_CHAVE_PERIODO = "__periodo__"
+_FILTROS_MANUTENCAO = frozenset(_CHAVES_SESSAO.values()) | {_CHAVE_PERIODO}
+FILTROS_APLICAVEIS: dict[str, frozenset[str]] = {
+    "manutencao": _FILTROS_MANUTENCAO,
+    "obras": frozenset({"filtro_projeto_capex", "filtro_elemento_pep_capex", _CHAVE_PERIODO}),
+    "especialista": frozenset(),  # filtros próprios no topo da página
+}
+
+
+def _partes_filtros_ativos() -> list[tuple[str, str]]:
+    """[(chave, "Rótulo: valores")] dos filtros aplicados agora (chaves
+    `filtro_*`, não o rascunho `w_*`), na ordem visual da sidebar."""
     partes = [
-        f"{rotulo}: {', '.join(str(v) for v in st.session_state[chave])}"
+        (chave, f"{rotulo}: {', '.join(str(v) for v in st.session_state[chave])}")
         for chave, rotulo in _ROTULOS_FILTRO_SIMPLES.items()
         if st.session_state.get(chave)
     ]
-
     anos = st.session_state.get("filtro_periodo_anos") or []
     trimestres = st.session_state.get("filtro_periodo_trimestres") or []
     meses = st.session_state.get("filtro_periodo_meses") or []
+    periodo = []
     if meses:
-        partes.append(f"Mês: {', '.join(_NOMES_MES[m] for m in meses)}")
+        periodo.append(f"Mês: {', '.join(_NOMES_MES[m] for m in meses)}")
     elif trimestres:
-        partes.append(f"Trimestre: {', '.join(f'T{t}' for t in trimestres)}")
+        periodo.append(f"Trimestre: {', '.join(f'T{t}' for t in trimestres)}")
     if anos:
-        partes.append(f"Ano: {', '.join(str(a) for a in anos)}")
+        periodo.append(f"Ano: {', '.join(str(a) for a in anos)}")
+    if periodo:
+        partes.append((_CHAVE_PERIODO, " · ".join(periodo)))
+    return partes
 
+
+def resumo_filtros_ativos(universo: str | None = None) -> str | None:
+    """"Gerência: Malha SP · Período: Jan–Jun" com os filtros de fato
+    aplicados agora — None quando nenhum filtro está ativo. Com `universo`,
+    só os filtros que valem naquele universo (ver `FILTROS_APLICAVEIS`)."""
+    aplicaveis = FILTROS_APLICAVEIS.get(universo) if universo else None
+    partes = [
+        texto for chave, texto in _partes_filtros_ativos()
+        if aplicaveis is None or chave in aplicaveis
+    ]
     return " · ".join(partes) if partes else None
 
 
-def renderizar_badge_filtros_ativos() -> None:
+def renderizar_badge_filtros_ativos(universo: str | None = None) -> None:
     """1 linha no topo de cada página com o recorte de filtro atual —
-    chamado de `app.py`, logo depois da checagem de base pronta, pra
-    valer em toda página navegável de uma vez (ver docstring de
-    `resumo_filtros_ativos`)."""
-    resumo = resumo_filtros_ativos()
-    if resumo:
-        # Chip discreto (6.4.0) no lugar do st.info full-width, que
-        # gritava em toda página — classe `.f360-badge-filtros` em
+    chamado de `app.py`. Com `universo` ("manutencao", "obras",
+    "especialista"), mostra à parte, em cinza, os filtros ativos que NÃO se
+    aplicam à página aberta (P3, 2026-10-18)."""
+    partes = _partes_filtros_ativos()
+    if not partes:
+        return
+    aplicaveis = FILTROS_APLICAVEIS.get(universo) if universo else None
+    validos = [t for c, t in partes if aplicaveis is None or c in aplicaveis]
+    fora = [t for c, t in partes if aplicaveis is not None and c not in aplicaveis]
+    html = []
+    if validos:
+        # Chip discreto (6.4.0) — classe `.f360-badge-filtros` em
         # branding.inject_shell_css.
-        st.markdown(
-            f'<div class="f360-badge-filtros">🔎 Filtros ativos &nbsp;·&nbsp; {resumo}</div>',
-            unsafe_allow_html=True,
+        html.append(
+            f'<div class="f360-badge-filtros">🔎 Filtros ativos &nbsp;·&nbsp; {_html_escape(" · ".join(validos))}</div>'
         )
+    if fora:
+        html.append(
+            '<div class="f360-badge-filtros" style="opacity:0.6;">'
+            f'⊘ Não se aplica nesta página &nbsp;·&nbsp; {_html_escape(" · ".join(fora))}</div>'
+        )
+    st.markdown("".join(html), unsafe_allow_html=True)
+
+
+def _html_escape(texto: str) -> str:
+    import html as _html
+
+    return _html.escape(texto, quote=False)

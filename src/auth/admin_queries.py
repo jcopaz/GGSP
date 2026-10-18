@@ -44,12 +44,11 @@ def adicionar_escopo(usuario_id,tipo,valor,descricao=''):
 def desativar_escopo(escopo_id): executar("update app.escopo_acesso set ativo=false where id=%s",(escopo_id,))
 
 def listar_escopos_universo(usuario_id):
-    """Linhas de escopo COM universo (RBAC de escopo — docs/08). Resiliente
-    a coluna ausente (migração ainda não rodada no Neon): devolve []."""
-    try:
-        return buscar_todos("select universo,tipo,valor,descricao from app.escopo_acesso where usuario_id=%s and universo is not null and ativo=true order by universo,tipo,valor",(usuario_id,))
-    except Exception:
-        return []
+    """Linhas de escopo COM universo (RBAC de escopo — docs/08). A exceção
+    SOBE: a migração do docs/08 já rodou, e esconder a falha fazia a tela
+    tratar erro de leitura como "lista vazia" (= Sem acesso) e o próximo
+    Salvar apagava o acesso real (docs/13 N1, 2026-10-18)."""
+    return buscar_todos("select universo,tipo,valor,descricao from app.escopo_acesso where usuario_id=%s and universo is not null and ativo=true order by universo,tipo,valor",(usuario_id,))
 def substituir_escopo_universo(usuario_id, universo, linhas):
     """Troca ATÔMICA das linhas do usuário nesse universo. `linhas`: lista
     de (tipo, valor, descricao). Lista vazia = usuário deixa de ver o
@@ -79,3 +78,48 @@ def listar_escopos_todos_ativos():
         "select e.usuario_id, e.universo, e.tipo, e.valor from app.escopo_acesso e "
         "join app.usuario u on u.id = e.usuario_id where e.ativo = true and u.ativo = true"
     )
+def salvar_perfil_acesso(usuario_id, papel, capacidades, escopos, paginas, paginas_remover=()):
+    """Grava um Perfil de acesso (docs/13) numa transação só: papel +
+    capacidades em `app.usuario`, escopo de cada universo (delete+insert,
+    mesmo padrão de `substituir_escopo_universo`) e as permissões de página.
+    Ou grava tudo, ou nada (`conectar()` faz rollback se estourar) — antes
+    eram 3 botões/3 gravações independentes, e uma falha no meio deixava o
+    perfil pela metade.
+
+    `capacidades`: {coluna: bool} só com as 4 colunas permissao_*.
+    `escopos`: {universo: [(tipo, valor, descricao)]} — lista vazia tira o universo.
+    `paginas`: {pagina: bool}.
+    `paginas_remover`: páginas cujas linhas em `app.permissao_pagina` são
+    APAGADAS na mesma transação (perfil pronto limpa as negações legadas)."""
+    colunas = ("permissao_upload", "permissao_exportacao",
+               "permissao_justificativa_macro", "permissao_justificativa_micro")
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "update app.usuario set papel=%s, " + ", ".join(f"{c}=%s" for c in colunas)
+                + ", atualizado_em=now() where id=%s",
+                (papel, *(bool(capacidades.get(c, False)) for c in colunas), usuario_id),
+            )
+            for universo, linhas in escopos.items():
+                cur.execute("delete from app.escopo_acesso where usuario_id=%s and universo=%s", (usuario_id, universo))
+                for tipo, valor, desc in linhas:
+                    cur.execute(
+                        "insert into app.escopo_acesso(usuario_id,universo,tipo,valor,descricao) "
+                        "values(%s,%s,%s,%s,%s) on conflict do nothing",
+                        (usuario_id, universo, tipo, valor, desc or ""),
+                    )
+            for pagina, permitido in paginas.items():
+                cur.execute(
+                    "insert into app.permissao_pagina(usuario_id,pagina,permitido) values(%s,%s,%s) "
+                    "on conflict(usuario_id,pagina) do update set permitido=excluded.permitido",
+                    (usuario_id, pagina, bool(permitido)),
+                )
+            if paginas_remover:
+                cur.execute(
+                    "delete from app.permissao_pagina where usuario_id=%s and pagina = any(%s)",
+                    (usuario_id, list(paginas_remover)),
+                )
+def desativar_escopos_legados(usuario_id):
+    """Escopos sem universo não liberam nem filtram nada desde o docs/08 —
+    desativa todos do usuário (soft delete, mantém o histórico)."""
+    executar("update app.escopo_acesso set ativo=false where usuario_id=%s and universo is null", (usuario_id,))
