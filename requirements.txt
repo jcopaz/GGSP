@@ -26,3 +26,18 @@ python-calamine==0.8.2
 pyxlsb==1.0.10
 psycopg2-binary==2.9.12
 bcrypt==5.0.0
+
+# Servidor do Streamlit 1.57 (dependências dele, não nossas) — pinadas em
+# 2026-10-19: o Reboot do Cloud instalou starlette 1.9.0, incompatível com
+# o streamlit 1.57 ("Expected ASGI message 'http.response.start'") — todo
+# arquivo servido pelo app (vídeo do login em app/static, GIF do st.logo)
+# passou a dar HTTP 500 e o logo sumiu. Reproduzido local: 1.9.0 -> 500,
+# 1.7.0 -> 200. Mesma lição do pin de 2026-09-09: dependência transitiva
+# sem versão também muda sozinha a cada deploy. Versões = .venv testado.
+starlette==1.7.0
+uvicorn==0.54.0
+anyio==4.15.1
+httptools==0.8.0
+websockets==17.1
+python-multipart==0.0.32
+itsdangerous==2.2.0
